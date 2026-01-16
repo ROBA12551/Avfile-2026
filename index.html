@@ -873,6 +873,7 @@
             </div>
         </aside>
 
+
         <main class="main-content">
             <div class="analysis-header">
                 <div class="symbol-display">
@@ -888,11 +889,6 @@
                         </div>
                     </div>
                 </div>
-                        <label style="display:flex;align-items:center;gap:8px;font-size:12px;">
-    <input type="checkbox" id="alertToggle">
-    Enable Signal Alerts (BUY / SELL)
-</label>
-
                 <div class="metrics-grid">
                     <div class="metric-card">
                         <div class="metric-label">Signal Confidence</div>
@@ -919,7 +915,10 @@
                     </div>
                 </div>
             </div>
-            
+                    <label style="display:flex;align-items:center;gap:8px;font-size:12px;">
+    <input type="checkbox" id="alertToggle">
+    Enable Signal Alerts (BUY / SELL)
+</label>
             <div class="analysis-sections">
                 <div class="analysis-section">
                     <div class="section-title-large">Signal Logic Analysis</div>
@@ -1392,8 +1391,7 @@ const allSellValid = sellScore === conditions.sellConditions.length;
             
             // Set up intervals
             setInterval(updateClock, 1000);
-            addChatMessage('bot', `Analyzing ${analysis.symbol}...`);
-
+            setInterval(updateMarketData, 5000);
             
             // Event listeners
             setupEventListeners();
@@ -1874,23 +1872,7 @@ function triggerAlertIfNeeded(analysis) {
             textarea.style.height = 'auto';
             textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
         }
-        document.addEventListener('DOMContentLoaded', () => {
-    if ('Notification' in window && Notification.permission !== 'granted') {
-        Notification.requestPermission();
-    }
-if (analysis.signal !== data.previousSignal) {
-    addChatMessage(
-        'bot',
-        `Signal changed for ${analysis.symbol}: ${analysis.signal} (${analysis.confidence}%)`
-    );
-    data.previousSignal = analysis.signal;
-}
-
-});
-
-
-
-
+        
         // ===== INITIALIZATION =====
         document.addEventListener('DOMContentLoaded', initializeUI);
     </script>
