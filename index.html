@@ -1127,10 +1127,42 @@
                 min-width: 70px;
                 padding: 0 16px;
             }
+              .ad-slot{
+    width:100%;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    margin:14px 0;
+    min-height:60px; /* CLS対策 */
+  }
+  .ad-slot.compact{ min-height:55px; margin:10px 0; }
+  .ad-slot.native{ min-height:250px; } /* ネイティブ用の余白 */
+  .ad-label{
+    position:absolute;
+    top:6px; left:10px;
+    font-size:10px;
+    color: var(--text-tertiary);
+    opacity:.7;
+    pointer-events:none;
+  }
+  .ad-wrap{
+    position:relative;
+    width:100%;
+    display:flex;
+    justify-content:center;
+  }
+  /* チャット右カラム内広告 */
+  .chat-ad{
+    padding:10px 12px;
+    border-top:1px solid var(--border-light);
+    background:rgba(255,255,255,.6);
+    backdrop-filter: blur(6px);
+  }
         }
     </style>
 </head>
 <body>
+<!-- ======= Quantum Edge (with Adsterra ads inserted) ======= -->
 <div class="grid-overlay"></div>
 
 <div class="container">
@@ -1239,6 +1271,21 @@
         </div>
       </div>
 
+      <!-- ✅ Adsterra Banner 320x50 (main top) -->
+      <div class="ad-slot compact" style="width:100%;display:flex;justify-content:center;align-items:center;margin:10px 0;min-height:55px;">
+        <script>
+          atOptions = {
+            'key' : '0ae9496cb3179a56fa08bdd46749db17',
+            'format' : 'iframe',
+            'height' : 50,
+            'width' : 320,
+            'params' : {}
+          };
+        </script>
+        <script src="https://engagementidentifiers.com/0ae9496cb3179a56fa08bdd46749db17/invoke.js"></script>
+      </div>
+    </div><!-- /analysis-header -->
+
     <div class="analysis-sections">
       <div class="analysis-section">
         <div class="section-title-large">Signal Logic Analysis</div>
@@ -1247,17 +1294,20 @@
         </div>
       </div>
 
+      <!-- ✅ Adsterra Native Banner (between sections) -->
+      <div class="ad-slot native" style="width:100%;display:flex;justify-content:center;align-items:center;margin:14px 0;min-height:250px;">
+        <div id="container-df57e9de66ade56b58febdb393e7d29c"></div>
+      </div>
+      <script async="async" data-cfasync="false"
+        src="https://engagementidentifiers.com/df57e9de66ade56b58febdb393e7d29c/invoke.js">
+      </script>
+
       <div class="analysis-section" id="tradingPlanSection">
         <div class="section-title-large">Trading Plan</div>
         <div class="plan-grid" id="tradingPlanGrid">
           <!-- Trading plan will be dynamically loaded -->
         </div>
       </div>
-
-
-      <script async="async" data-cfasync="false"
-        src="https://engagementidentifiers.com/df57e9de66ade56b58febdb393e7d29c/invoke.js">
-      </script>
 
       <div class="warning-box" id="warningBox">
         <div class="warning-title">
@@ -1278,6 +1328,22 @@
     <div class="chat-header">
       <div class="chat-title">Quantitative Analysis AI</div>
       <div class="chat-subtitle">Ask about signal logic, risk parameters, or market conditions.</div>
+    </div>
+
+    <!-- ✅ Adsterra Banner 320x50 (inside chat panel) -->
+    <div class="chat-ad" style="padding:10px 12px;border-top:1px solid var(--border-light);">
+      <div class="ad-slot compact" style="width:100%;display:flex;justify-content:center;align-items:center;margin:0;min-height:55px;">
+        <script>
+          atOptions = {
+            'key' : '0ae9496cb3179a56fa08bdd46749db17',
+            'format' : 'iframe',
+            'height' : 50,
+            'width' : 320,
+            'params' : {}
+          };
+        </script>
+        <script src="https://engagementidentifiers.com/0ae9496cb3179a56fa08bdd46749db17/invoke.js"></script>
+      </div>
     </div>
 
     <div class="chat-display" id="chatDisplay">
@@ -1301,6 +1367,214 @@
     </div>
   </aside>
 </div>
+
+<!-- ======= Quantum Edge (with Adsterra ads inserted) ======= -->
+<div class="grid-overlay"></div>
+
+<div class="container">
+  <header class="header">
+    <div class="logo-area">
+      <div class="logo">QE</div>
+      <div>
+        <div class="logo-text">Quantum Edge</div>
+        <div class="logo-subtext">Quantitative Trading Signal Engine</div>
+      </div>
+    </div>
+
+    <div class="status-bar">
+      <div class="exchange-selector">
+        <button class="exchange-btn active">ALL</button>
+        <button class="exchange-btn">MEXC</button>
+        <button class="exchange-btn">BINANCE</button>
+        <button class="exchange-btn">BYBIT</button>
+        <button class="exchange-btn">OKX</button>
+      </div>
+
+      <div class="status-indicator">
+        <div class="status-dot"></div>
+        <span style="font-size: 12px; font-weight: 600;">REAL-TIME</span>
+      </div>
+
+      <div style="margin-top:6px;font-size:12px;"></div>
+      <button class="sidebar-toggle" onclick="toggleSidebar()">Symbols</button>
+    </div>
+  </header>
+
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="search-section">
+      <div class="search-wrapper">
+        <svg class="search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M11.468 11.468L14 14m-1.333-7.333a6 6 0 11-12 0 6 6 0 0112 0z"
+            stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <input type="text" class="search-input" id="searchInput" placeholder="Search BTC, ETH, SOL...">
+      </div>
+    </div>
+
+    <div class="symbols-section">
+      <div class="section-header">
+        <div class="section-title">Active Signals</div>
+        <div class="symbol-count" id="symbolCount">0 symbols</div>
+      </div>
+      <div class="symbol-grid" id="symbolGrid">
+        <!-- Symbols will be dynamically loaded -->
+      </div>
+    </div>
+  </aside>
+
+  <!-- ✅ 中央カラム：必ず main-content を開始 -->
+  <main class="main-content">
+
+    <div class="analysis-header">
+      <div class="symbol-display">
+        <div class="symbol-details">
+          <h1 id="currentSymbol">BTC/USDT</h1>
+          <div class="symbol-badge hold" id="signalBadge">HOLD</div>
+        </div>
+
+        <div class="price-display-large">
+          <div class="current-price-large" id="currentPrice">$42,850.30</div>
+          <div class="price-details">
+            <span id="priceChange" class="positive">+2.45%</span>
+            <span style="color: var(--text-tertiary); font-size: 11px;">24h: $24.5B</span>
+          </div>
+        </div>
+      </div>
+
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px; margin-bottom: 12px;">
+        <input type="checkbox" id="alertToggle">
+        Enable Signal Alerts
+      </label>
+
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-label">Signal Confidence</div>
+          <div class="metric-value" id="confidenceValue">68%</div>
+          <div class="confidence-meter">
+            <div class="confidence-fill" id="confidenceFill" style="width: 68%"></div>
+          </div>
+          <div class="metric-subtext">≥65% for valid</div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-label">RSI (14)</div>
+          <div class="metric-value" id="rsiValue">58.2</div>
+          <div class="metric-subtext">48-55: HOLD</div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-label">MACD</div>
+          <div class="metric-value" id="macdValue">Bullish</div>
+          <div class="metric-subtext" id="macdSubtext">—</div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-label">Risk/Reward</div>
+          <div class="metric-value" id="rrValue">1:2.4</div>
+          <div class="metric-subtext">Min: 1:2</div>
+        </div>
+      </div>
+
+      <!-- ✅ Adsterra Banner 320x50 (main top) -->
+      <div class="ad-slot compact" style="width:100%;display:flex;justify-content:center;align-items:center;margin:10px 0;min-height:55px;">
+        <script>
+          atOptions = {
+            'key' : '0ae9496cb3179a56fa08bdd46749db17',
+            'format' : 'iframe',
+            'height' : 50,
+            'width' : 320,
+            'params' : {}
+          };
+        </script>
+        <script src="https://engagementidentifiers.com/0ae9496cb3179a56fa08bdd46749db17/invoke.js"></script>
+      </div>
+    </div><!-- /analysis-header -->
+
+    <div class="analysis-sections">
+      <div class="analysis-section">
+        <div class="section-title-large">Signal Logic Analysis</div>
+        <div class="conditions-grid" id="conditionsGrid">
+          <!-- Conditions will be dynamically loaded -->
+        </div>
+      </div>
+
+      <!-- ✅ Adsterra Native Banner (between sections) -->
+      <div class="ad-slot native" style="width:100%;display:flex;justify-content:center;align-items:center;margin:14px 0;min-height:250px;">
+        <div id="container-df57e9de66ade56b58febdb393e7d29c"></div>
+      </div>
+      <script async="async" data-cfasync="false"
+        src="https://engagementidentifiers.com/df57e9de66ade56b58febdb393e7d29c/invoke.js">
+      </script>
+
+      <div class="analysis-section" id="tradingPlanSection">
+        <div class="section-title-large">Trading Plan</div>
+        <div class="plan-grid" id="tradingPlanGrid">
+          <!-- Trading plan will be dynamically loaded -->
+        </div>
+      </div>
+
+      <div class="warning-box" id="warningBox">
+        <div class="warning-title">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M8 5V8M8 11H8.01M15 8C15 11.866 11.866 15 8 15C4.13401 15 1 11.866 1 8C1 4.13401 4.13401 1 8 1C11.866 1 15 4.13401 15 8Z"
+              stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Signal Warning
+        </div>
+        <div class="warning-content" id="warningContent">
+          Price near Bollinger Upper Band without clear breakout. Volume confirmation required. Risk/Reward below optimal levels. Recommended: HOLD until stronger confirmation.
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="chat-panel">
+    <div class="chat-header">
+      <div class="chat-title">Quantitative Analysis AI</div>
+      <div class="chat-subtitle">Ask about signal logic, risk parameters, or market conditions.</div>
+    </div>
+
+    <!-- ✅ Adsterra Banner 320x50 (inside chat panel) -->
+    <div class="chat-ad" style="padding:10px 12px;border-top:1px solid var(--border-light);">
+      <div class="ad-slot compact" style="width:100%;display:flex;justify-content:center;align-items:center;margin:0;min-height:55px;">
+        <script>
+          atOptions = {
+            'key' : '0ae9496cb3179a56fa08bdd46749db17',
+            'format' : 'iframe',
+            'height' : 50,
+            'width' : 320,
+            'params' : {}
+          };
+        </script>
+        <script src="https://engagementidentifiers.com/0ae9496cb3179a56fa08bdd46749db17/invoke.js"></script>
+      </div>
+    </div>
+
+    <div class="chat-display" id="chatDisplay">
+      <div class="chat-message bot">
+        <div class="message-header">
+          <span class="message-sender bot">QUANTITATIVE AI</span>
+          <span class="message-time">Just now</span>
+        </div>
+        <div class="message-content">
+          System initialized. Following strict quantitative rules.
+        </div>
+      </div>
+    </div>
+
+    <div class="chat-input-area">
+      <div class="chat-input-wrapper">
+        <textarea class="chat-input" id="chatInput"
+          placeholder="Ask: Why HOLD? Show risk analysis..." rows="2"></textarea>
+        <button class="send-button" onclick="sendMessage()">SEND</button>
+      </div>
+    </div>
+  </aside>
+</div>
+
+
 
 
     <script>
@@ -2192,6 +2466,12 @@
         // ===== INITIALIZATION =====
         document.addEventListener('DOMContentLoaded', initializeUI);
     </script>
+<!-- ✅ Adsterra Social Bar -->
+<script src="https://engagementidentifiers.com/85/2e/2f/852e2f17b1991c3f50aaebd695e47c67.js"></script>
+
+<!-- ✅ Adsterra Popunder -->
+<script src="https://engagementidentifiers.com/c6/2d/0c/c62d0ca51e96f7e4dd1001e15656504f.js"></script>
+<!-- ======= /Quantum Edge (with Adsterra ads inserted) ======= -->
 
 </body>
 </html>
