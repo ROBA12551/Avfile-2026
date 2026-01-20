@@ -16,15 +16,21 @@ const viewerState = {
   isLoaded: false,
 };
 
+// アップロード管理（SimpleUploadManager へのアクセス用）
+const appState = {
+  github: null,
+};
+
 /**
  * 初期化
  */
 document.addEventListener('DOMContentLoaded', async () => {
   viewerState.storage = new StorageManager();
+  appState.github = new SimpleUploadManager(); // localStorage アクセス用
 
-  // URL から Release ID を取得
+  // URL から File ID を取得
   const urlParams = new URLSearchParams(window.location.search);
-  viewerState.releaseId = urlParams.get('id') || getReleaseIdFromPath();
+  viewerState.releaseId = urlParams.get('id') || getFileIdFromPath();
 
   if (!viewerState.releaseId) {
     showError('No file specified');
@@ -41,46 +47,48 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 /**
- * パスから Release ID を抽出
- * 例: /v/123456 → 123456
+ * パスから File ID を抽出
+ * 例: /?id=xxx-xxx-xxx → xxx-xxx-xxx
+ * または: /view/xxx-xxx-xxx → xxx-xxx-xxx
  */
-function getReleaseIdFromPath() {
-  const pathMatch = window.location.pathname.match(/\/v\/(\d+)/);
+function getFileIdFromPath() {
+  // クエリパラメータから取得
+  const urlParams = new URLSearchParams(window.location.search);
+  const id = urlParams.get('id');
+  if (id) return id;
+  
+  // パスから取得
+  const pathMatch = window.location.pathname.match(/\/view\/(.+)$/);
   return pathMatch ? pathMatch[1] : null;
 }
 
 /**
- * ファイル情報を取得（GitHub から）
+ * ファイル情報を取得（localStorage から）
  */
 async function loadFileInfo() {
   try {
     console.log('📥 Loading file info...');
     showPreparing();
 
-    // モック実装: 実際は Netlify Function で取得
-    // const response = await fetch(`/.netlify/functions/file-info?releaseId=${viewerState.releaseId}`);
-    // const data = await response.json();
+    // localStorage からファイルデータを取得
+    const fileData = appState.github?.getFileData(viewerState.releaseId);
+    
+    if (fileData) {
+      console.log('✅ File found in localStorage');
+      viewerState.fileData = fileData;
+      
+      // 再生回数を増加
+      viewerState.storage.incrementViewCount(viewerState.fileData.id);
+      
+      // UI を更新
+      showContent(viewerState.fileData);
+      viewerState.isLoaded = true;
+      console.log('✅ File loaded');
+    } else {
+      // localStorage に見つからない場合
+      throw new Error('File not found');
+    }
 
-    // テスト用のサンプルデータ
-    viewerState.fileData = {
-      file_id: 'test-' + viewerState.releaseId,
-      release_id: viewerState.releaseId,
-      title: 'Sample Video',
-      original_filename: 'sample-video.mp4',
-      compressed_size: 95000000,
-      created_at: new Date().toISOString(),
-      download_url: `https://github.com/releases/download/video_${viewerState.releaseId}/video_${viewerState.releaseId}.mp4`,
-      view_count: Math.floor(Math.random() * 100),
-    };
-
-    // 再生回数を増加
-    viewerState.storage.incrementViewCount(viewerState.fileData.file_id);
-
-    // UI を更新
-    showContent(viewerState.fileData);
-    viewerState.isLoaded = true;
-
-    console.log('✅ File loaded');
   } catch (error) {
     console.error('❌ Error loading file:', error);
     showError('Failed to load file. ' + error.message);
@@ -120,26 +128,52 @@ function showContent(fileData) {
   document.getElementById('errorArea').style.display = 'none';
 
   // ファイル情報を表示
-  document.getElementById('fileName').textContent = fileData.title || fileData.original_filename;
+  const fileName = fileData.name || fileData.title || fileData.original_filename || 'File';
+  document.getElementById('fileName').textContent = fileName;
 
   // ファイルサイズをフォーマット
-  const sizeInMB = (fileData.compressed_size / 1024 / 1024).toFixed(1);
+  const fileSize = fileData.size || fileData.compressed_size || 0;
+  const sizeInMB = (fileSize / 1024 / 1024).toFixed(1);
   document.getElementById('fileSize').innerHTML =
     `<strong>Size:</strong> ${sizeInMB} MB`;
 
   // アップロード日時
-  const uploadDate = new Date(fileData.created_at).toLocaleString();
+  const uploadTime = fileData.uploadedAt || fileData.created_at || new Date().toISOString();
+  const uploadDate = new Date(uploadTime).toLocaleString();
   document.getElementById('uploadTime').innerHTML =
     `<strong>Uploaded:</strong> ${uploadDate}`;
 
-  // 動画ソースを設定
-  const videoSource = document.getElementById('videoSource');
-  videoSource.src = fileData.download_url;
-  videoSource.type = 'video/mp4';
+  // ファイルタイプを判定
+  const fileType = fileData.type || 'application/octet-stream';
+  const isVideo = fileType.startsWith('video/');
+  const isImage = fileType.startsWith('image/');
 
-  // ビデオプレイヤーを再読み込み
-  const videoPlayer = document.getElementById('videoPlayer');
-  videoPlayer.load();
+  // 動画の場合
+  if (isVideo && fileData.data) {
+    const videoSource = document.getElementById('videoSource');
+    videoSource.src = `data:${fileType};base64,${fileData.data}`;
+    videoSource.type = fileType;
+
+    const videoPlayer = document.getElementById('videoPlayer');
+    videoPlayer.style.display = 'block';
+    videoPlayer.load();
+  } else if (isImage && fileData.data) {
+    // 画像の場合
+    const videoWrapper = document.querySelector('.video-wrapper');
+    videoWrapper.innerHTML = `<img src="data:${fileType};base64,${fileData.data}" style="max-width: 100%; max-height: 600px; object-fit: contain;" />`;
+  } else if (fileData.data) {
+    // その他のファイル
+    const videoWrapper = document.querySelector('.video-wrapper');
+    videoWrapper.innerHTML = `<div style="text-align: center; padding: 40px;">
+      <h3>${fileName}</h3>
+      <p>File type: ${fileType}</p>
+      <button id="downloadFileBtn" class="btn btn-primary" style="margin-top: 20px;">Download File</button>
+    </div>`;
+    
+    document.getElementById('downloadFileBtn')?.addEventListener('click', () => {
+      downloadFile(fileData);
+    });
+  }
 
   // 共有 URL を設定
   const shareUrl = window.location.href;
@@ -181,13 +215,7 @@ function setupEventListeners() {
   // ダウンロードボタン
   document.getElementById('downloadBtn')?.addEventListener('click', () => {
     if (viewerState.fileData) {
-      const link = document.createElement('a');
-      link.href = viewerState.fileData.download_url;
-      link.download = viewerState.fileData.original_filename || 'download';
-      link.target = '_blank';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      downloadFile(viewerState.fileData);
     }
   });
 
@@ -284,4 +312,35 @@ function setupSocialShare() {
     const body = encodeURIComponent(`Check out this video:\n\n${shareUrl}`);
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
   });
+}
+
+/**
+ * ファイルをダウンロード
+ */
+function downloadFile(fileData) {
+  const fileName = fileData.name || fileData.original_filename || 'file';
+  
+  if (fileData.data) {
+    // Base64 データからダウンロード
+    const link = document.createElement('a');
+    link.href = `data:${fileData.type || 'application/octet-stream'};base64,${fileData.data}`;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    console.log('✅ Download started:', fileName);
+  } else if (fileData.downloadUrl) {
+    // URL からダウンロード
+    const link = document.createElement('a');
+    link.href = fileData.downloadUrl;
+    link.download = fileName;
+    link.target = '_blank';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    console.log('✅ Download started:', fileName);
+  } else {
+    console.error('❌ No file data available for download');
+    alert('File data not available. Please try again.');
+  }
 }
