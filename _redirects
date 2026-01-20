@@ -1,5 +1,12 @@
+# Root with query parameters
+/?id=:id  /view.html?id=:id  200
+
+# Specific routes
 /policy  /policy.html  200
 /upload  /upload.html  200
-/?id=*  /view.html?id=:id  200
+
+# Path-based routes
 /v/*  /view.html  200
+
+# Catch-all for SPA
 /*  /index.html  200
