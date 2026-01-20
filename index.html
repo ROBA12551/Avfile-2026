@@ -72,10 +72,10 @@
               <path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"></path>
             </svg>
             <h2 class="upload-title">Drop Files or Click to Upload</h2>
-            <p class="upload-subtitle">Instant upload • Unlimited downloads • No expiry</p>
-            <input type="file" id="fileInput" multiple style="display: none" />
+            <p class="upload-subtitle">Fast upload • Unlimited downloads • No expiry • All file types</p>
+            <input type="file" id="fileInput" accept="*/*" multiple style="display: none" />
             <button class="btn-upload" id="uploadBtn">Select File</button>
-            <p class="upload-info">Max 5GB • No account needed</p>
+            <p class="upload-info">Max 100MB • All file types supported</p>
           </div>
 
           <!-- Processing State -->
@@ -110,8 +110,8 @@
               </div>
 
               <div class="success-stats">
-                <p><span id="totalUploads">0</span> files uploaded</p>
-                <p><span id="totalStorage">0</span> MB total storage</p>
+                <p> <span id="totalUploads">0</span> files uploaded</p>
+                <p> <span id="totalStorage">0</span> MB total storage</p>
               </div>
             </div>
 
@@ -120,11 +120,12 @@
             </div>
           </div>
 
+          <!-- Error Display -->
           <div class="error-area" id="errorArea" style="display: none">
             <div class="error-icon">✕</div>
             <h2>Upload Failed</h2>
             <p id="errorMessage" class="error-message"></p>
-            <button class="btn btn-primary" id="retryBtn">Try Again</button>
+            <button class="btn-retry" id="retryBtn">Try Again</button>
           </div>
         </div>
       </section>
@@ -143,25 +144,21 @@
           </div>
 
           <div class="feature-card">
-
             <h3>Works Everywhere</h3>
             <p>Upload from any device.</p>
           </div>
 
           <div class="feature-card">
-
             <h3>No Login</h3>
             <p>Start sharing instantly.</p>
           </div>
 
           <div class="feature-card">
-
             <h3>Unlimited</h3>
             <p>Unlimited downloads, files never expire.</p>
           </div>
 
           <div class="feature-card">
-
             <h3>Simple & Fast</h3>
             <p>No complicated setup needed.</p>
           </div>

@@ -1,9 +1,4 @@
-/**
- * js/compress-simple.js
- * 
- * Simplified FFmpeg compression without complex loading
- * Falls back to no compression if FFmpeg unavailable
- */
+
 
 class VideoCompressionEngine {
   constructor(config = {}) {
@@ -17,7 +12,7 @@ class VideoCompressionEngine {
       ...config,
     };
 
-    console.log('🎬 VideoCompressionEngine initialized');
+    console.log('VideoCompressionEngine initialized');
     this.isReady = true; // FFmpeg なしでもスタート可能
   }
 
@@ -25,7 +20,7 @@ class VideoCompressionEngine {
    * FFmpeg が準備完了になるまで待機（常に true）
    */
   async waitUntilReady(maxWait = 5000) {
-    console.log('✅ Engine ready');
+    console.log('Engine ready');
     return true;
   }
 
@@ -34,23 +29,30 @@ class VideoCompressionEngine {
    */
   async compress(file, onProgress = () => {}) {
     try {
-      console.log(`📁 File received: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB)`);
+      console.log(`File received: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB)`);
+      
+      // ファイルサイズ確認
+      const maxSize = 100 * 1024 * 1024; // 100MB
+      if (file.size > maxSize) {
+        throw new Error(`File size (${(file.size / 1024 / 1024).toFixed(1)}MB) exceeds 100MB limit`);
+      }
       
       onProgress(10, 'Preparing file...');
 
-      // FFmpeg が利用可能か確認
-      if (window.FFmpeg && window.FFmpeg.FFmpeg) {
-        console.log('✅ FFmpeg available, attempting compression...');
+      // ビデオファイルか確認
+      const isVideo = file.type.startsWith('video/');
+      
+      if (isVideo && window.FFmpeg && window.FFmpeg.FFmpeg) {
+        console.log(' Video file + FFmpeg available, attempting compression...');
         return await this.compressWithFFmpeg(file, onProgress);
       } else {
-        console.warn('⚠️ FFmpeg not available, using fallback compression');
-        return await this.fallbackCompress(file, onProgress);
+        console.log(` Using file as-is (${isVideo ? 'video' : 'document/image'} file)`);
+        onProgress(100, 'Ready');
+        return file;
       }
     } catch (error) {
-      console.error('❌ Compression error:', error.message);
-      // エラー時はファイルをそのまま返す
-      onProgress(100, 'Using original file');
-      return file; // Blob として返す
+      console.error('Error:', error.message);
+      throw error;
     }
   }
 
@@ -110,21 +112,21 @@ class VideoCompressionEngine {
       const compressedData = this.ffmpeg.FS('readFile', outputFileName);
       const blob = new Blob([compressedData.buffer], { type: 'video/mp4' });
 
-      console.log(`✅ Compressed: ${(blob.size / 1024 / 1024).toFixed(1)}MB`);
+      console.log(`Compressed: ${(blob.size / 1024 / 1024).toFixed(1)}MB`);
 
       // メモリクリーンアップ
       try {
         this.ffmpeg.FS('unlink', inputFileName);
         this.ffmpeg.FS('unlink', outputFileName);
       } catch (e) {
-        console.warn('⚠️ Could not clean up files');
+        console.warn('Could not clean up files');
       }
 
       onProgress(100, 'Complete!');
       return blob;
     } catch (error) {
-      console.error('❌ FFmpeg compression failed:', error.message);
-      console.warn('⚠️ Falling back to simple compression');
+      console.error('FFmpeg compression failed:', error.message);
+      console.warn(' Falling back to simple compression');
       return await this.fallbackCompress(file, onProgress);
     }
   }
@@ -140,13 +142,13 @@ class VideoCompressionEngine {
 
     if (file.size <= maxSize) {
       // ファイルサイズが OK なら そのまま返す
-      console.log('✅ File size OK, using as-is');
+      console.log('File size OK, using as-is');
       onProgress(100, 'Ready');
       return file;
     }
 
     // ファイルサイズが大きい場合は圧縮フラグを設定
-    console.warn('⚠️ File too large, may need reduction');
+    console.warn('File too large, may need reduction');
     onProgress(100, 'File prepared');
     
     return file; // そのまま返す

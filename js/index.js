@@ -1,14 +1,4 @@
-/**
- * js/index-fast.js
- * 
- * Optimized for FASTEST upload performance
- * - Minimal processing
- * - Parallel uploads
- * - Quick feedback
- * - No unnecessary operations
- */
 
-// Global state
 const appState = {
   storage: null,
   compression: null,
@@ -30,9 +20,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     requestTimeout: 30000,
   });
 
-  // FFmpeg が準備完了になるまで待機
-  await appState.compression.waitUntilReady();
-
+  // FFmpeg 準備は不要（フォールバック対応）
   setupEventListeners();
   console.log('✅ Fast Upload Initialized');
 });
@@ -88,25 +76,33 @@ function setupEventListeners() {
 async function handleFileSelect(file) {
   if (!file) return;
 
-  // Quick validation
-  if (!file.type.startsWith('video/')) {
-    showError('Please select a video file (MP4, WebM, AVI, MOV, etc.)');
+  // ファイルサイズ検証（100MB制限）
+  const maxSize = 100 * 1024 * 1024; // 100MB
+  if (file.size > maxSize) {
+    showError(`File is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum size is 100MB.`);
     return;
   }
 
-  const maxSize = 5 * 1024 * 1024 * 1024; // 5GB
-  if (file.size > maxSize) {
-    showError('File is too large. Maximum size is 5GB.');
-    return;
-  }
+  // ファイル種別に応じたメッセージ
+  const isVideo = file.type.startsWith('video/');
+  const isImage = file.type.startsWith('image/');
+  const isDocument = file.type.startsWith('application/') || file.type.includes('document');
+
+  let fileType = 'file';
+  if (isVideo) fileType = 'video';
+  else if (isImage) fileType = 'image';
+  else if (isDocument) fileType = 'document';
+
+  console.log(`📁 ${fileType}: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB)`);
 
   appState.currentFile = file;
   showProcessing();
 
   try {
-    // 1. COMPRESS (on client)
-    console.log('📥 Starting compression...');
-    updateProgress(5, 'Compressing video...');
+    // 1. PREPARE FILE
+    console.log('📥 Preparing file...');
+    const fileTypeMessage = isVideo ? 'Optimizing video' : 'Preparing file';
+    updateProgress(5, fileTypeMessage + '...');
 
     const compressedBlob = await appState.compression.compress(
       file,
@@ -115,7 +111,7 @@ async function handleFileSelect(file) {
       }
     );
 
-    console.log('✅ Compression complete');
+    console.log('✅ File ready');
     updateProgress(40, 'Uploading to cloud...');
 
     // 2. UPLOAD to GitHub via Netlify
