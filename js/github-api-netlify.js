@@ -1,335 +1,181 @@
+/**
+ * js/simple-upload.js
+ * 
+ * シンプルなアップロード処理
+ * GitHub Releases へ直接アップロード（Netlify Functions 不要）
+ */
 
-
-class GitHubUploadManagerNetlify {
+class SimpleUploadManager {
   constructor(config = {}) {
-    // Netlify Functions のベース URL（自動検出）
-    this.apiBaseUrl = config.apiBaseUrl || '/.netlify/functions';
-    this.requestTimeout = config.requestTimeout || 30000;
-
-    // キャッシュ
-    this.cache = new Map();
-    this.cacheTTL = 3600 * 1000; // 1時間
-  }
-
-  /**
-   * Netlify Functions にリクエストを送信
-   * @param {string} functionName - Function 名
-   * @param {string} method - HTTP メソッド
-   * @param {Object} body - リクエストボディ
-   * @returns {Promise<Object>}
-   */
-  async callFunction(functionName, method = 'POST', body = null) {
-    const url = `${this.apiBaseUrl}/${functionName}`;
-
-    const options = {
-      method: method,
-      headers: {
-        'Content-Type': 'application/json',
-      },
+    this.config = {
+      apiBaseUrl: 'https://api.github.com',
+      requestTimeout: 30000,
+      ...config,
     };
+  }
 
-    if (body) {
-      options.body = typeof body === 'string' ? body : JSON.stringify(body);
-    }
-
-    console.log(`[Netlify] ${method} ${functionName}`);
-
+  /**
+   * GitHub に直接アップロード
+   */
+  async uploadToGitHub(fileBlob, fileName, onProgress = () => {}) {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), this.requestTimeout);
-
-      const response = await fetch(url, {
-        ...options,
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        const error = new Error(data.error || `HTTP ${response.status}`);
-        error.status = response.status;
-        throw error;
+      // GitHub Token は環境変数から取得（ローカル開発用）
+      let token = localStorage.getItem('github_token');
+      
+      if (!token) {
+        // デモモード - ローカルストレージに保存
+        console.warn('⚠️ No GitHub token found. Using demo mode.');
+        return this.createDemoUpload(fileBlob, fileName, onProgress);
       }
 
-      return data;
-    } catch (error) {
-      if (error.name === 'AbortError') {
-        throw new Error(`Request timeout (${this.requestTimeout}ms)`);
-      }
-      throw error;
-    }
-  }
+      const owner = localStorage.getItem('github_owner') || 'avfile-demo';
+      const repo = localStorage.getItem('github_repo') || 'avfile-storage';
 
-  /**
-   * キャッシュ付きでリクエストを実行
-   * @param {string} key - キャッシュキー
-   * @param {Function} fn - 実行関数
-   * @returns {Promise}
-   */
-  async withCache(key, fn) {
-    const now = Date.now();
-    const cached = this.cache.get(key);
+      console.log(`📤 Uploading to ${owner}/${repo}...`);
+      onProgress(50, 'Uploading file...');
 
-    if (cached && now < cached.expiresAt) {
-      console.log(`[Cache HIT] ${key}`);
-      return cached.value;
-    }
-
-    console.log(`[Cache MISS] ${key}`);
-    const value = await fn();
-
-    this.cache.set(key, {
-      value: value,
-      expiresAt: now + this.cacheTTL,
-    });
-
-    return value;
-  }
-
-  /**
-   * Release を作成
-   * @param {string} releaseTag - タグ名
-   * @param {Object} metadata - メタデータ
-   * @returns {Promise<Object>}
-   */
-  async createRelease(releaseTag, metadata) {
-    console.log('📝 Creating release:', releaseTag);
-
-    const response = await this.callFunction('github-upload', 'POST', {
-      action: 'create-release',
-      releaseTag: releaseTag,
-      metadata: metadata,
-    });
-
-    if (!response.success) {
-      throw new Error(response.error || 'Failed to create release');
-    }
-
-    console.log('✅ Release created:', response.data.release_id);
-    return response.data;
-  }
-
-  /**
-   * Asset をアップロード
-   * @param {string} uploadUrl - GitHub upload_url
-   * @param {Blob} fileBlob - ファイル
-   * @param {string} fileName - ファイル名
-   * @param {Function} onProgress - 進捗コールバック
-   * @returns {Promise<Object>}
-   */
-  async uploadAsset(uploadUrl, fileBlob, fileName, onProgress = () => {}) {
-    console.log(`📤 Uploading asset: ${fileName}`);
-
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-
-      reader.onload = async () => {
-        try {
-          onProgress(50, 'Sending to server...');
-
-          // Base64 に変換
-          const base64 = reader.result.split(',')[1];
-
-          const response = await this.callFunction('github-upload', 'POST', {
-            action: 'upload-asset',
-            fileBase64: base64,
-            uploadUrl: uploadUrl,
-            fileName: fileName,
-          });
-
-          if (!response.success) {
-            throw new Error(response.error || 'Failed to upload asset');
-          }
-
-          onProgress(100, 'Upload complete');
-          console.log('✅ Asset uploaded:', response.data.asset_id);
-
-          resolve(response.data);
-        } catch (error) {
-          reject(error);
-        }
-      };
-
-      reader.onerror = () => {
-        reject(new Error('Failed to read file'));
-      };
-
-      reader.readAsDataURL(fileBlob);
-    });
-  }
-
-  /**
-   * ファイル情報を取得
-   * @param {number} releaseId - Release ID
-   * @returns {Promise<Object>}
-   */
-  async getFileInfo(releaseId) {
-    const cacheKey = `file:${releaseId}`;
-
-    return this.withCache(cacheKey, async () => {
-      console.log(`📥 Getting file info: ${releaseId}`);
-
+      // Base64 にエンコード
+      const base64 = await this.fileToBase64(fileBlob);
+      
+      // GitHub API でアップロード
       const response = await fetch(
-        `${this.apiBaseUrl}/file-info?action=get-release&releaseId=${releaseId}`
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to get file info');
-      }
-
-      return data.data;
-    });
-  }
-
-  /**
-   * Release を削除（Admin用）
-   * @param {number} releaseId - Release ID
-   * @returns {Promise<boolean>}
-   */
-  async deleteRelease(releaseId) {
-    console.log(`🗑️ Deleting release: ${releaseId}`);
-
-    const response = await this.callFunction('github-upload', 'POST', {
-      action: 'delete-release',
-      releaseId: releaseId,
-    });
-
-    if (!response.success) {
-      throw new Error(response.error || 'Failed to delete release');
-    }
-
-    // キャッシュをクリア
-    this.cache.delete(`file:${releaseId}`);
-
-    console.log('✅ Release deleted');
-    return true;
-  }
-
-  /**
-   * 一括アップロード（Release + Asset）
-   * @param {Blob} fileBlob - 圧縮済みファイル
-   * @param {Object} metadata - メタデータ
-   * @param {Function} onProgress - 進捗コールバック
-   * @returns {Promise<Object>}
-   */
-  async uploadWithMetadata(fileBlob, metadata, onProgress = () => {}) {
-    try {
-      onProgress(5, 'Creating release...');
-
-      // 1. Release を作成
-      const release = await this.createRelease(
-        `video_${metadata.file_id}`,
-        metadata
-      );
-
-      onProgress(25, 'Uploading file to server...');
-
-      // 2. Asset をアップロード
-      const asset = await this.uploadAsset(
-        release.upload_url,
-        fileBlob,
-        `${metadata.file_id}.mp4`,
-        (percent, message) => {
-          const overallPercent = 25 + percent * 0.75;
-          onProgress(overallPercent, message);
+        `${this.config.apiBaseUrl}/repos/${owner}/${repo}/contents/${fileName}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: `Upload: ${fileName}`,
+            content: base64,
+          }),
         }
       );
 
+      if (!response.ok) {
+        throw new Error(`GitHub API Error (${response.status}): ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      onProgress(90, 'Creating download link...');
+
+      // ダウンロードリンクを生成
+      const downloadUrl = `https://raw.githubusercontent.com/${owner}/${repo}/main/${fileName}`;
+      
       onProgress(100, 'Upload complete!');
 
       return {
-        release_id: release.release_id,
-        asset_id: asset.asset_id,
-        asset_url: asset.download_url,
-        release_url: release.html_url,
-        file_name: asset.name,
+        success: true,
+        fileName: fileName,
+        downloadUrl: downloadUrl,
+        fileSize: fileBlob.size,
       };
     } catch (error) {
-      console.error('❌ Upload failed:', error);
+      console.error('❌ Upload error:', error.message);
       throw error;
     }
   }
 
   /**
-   * 最新リリース一覧を取得
-   * @param {number} limit - 取得件数
-   * @returns {Promise<Array>}
+   * デモモード - ローカルストレージにアップロード
    */
-  async getLatestReleases(limit = 10) {
-    const cacheKey = `releases:latest:${limit}`;
+  async createDemoUpload(fileBlob, fileName, onProgress = () => {}) {
+    try {
+      console.log('📁 Demo mode: Saving to localStorage...');
+      
+      onProgress(50, 'Processing file...');
 
-    return this.withCache(cacheKey, async () => {
-      console.log(`📊 Getting latest releases (limit: ${limit})`);
+      // UUID を生成
+      const fileId = this.generateUUID();
+      
+      // Base64 にエンコード
+      const base64 = await this.fileToBase64(fileBlob);
 
-      const response = await fetch(
-        `${this.apiBaseUrl}/file-info?action=latest-releases&limit=${limit}`
-      );
+      onProgress(80, 'Saving file info...');
 
-      const data = await response.json();
+      // ローカルストレージに保存
+      const fileInfo = {
+        id: fileId,
+        name: fileName,
+        size: fileBlob.size,
+        type: fileBlob.type,
+        uploadedAt: new Date().toISOString(),
+        data: base64,
+      };
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to get releases');
-      }
+      // アップロード情報を保存
+      let uploads = JSON.parse(localStorage.getItem('avfile_uploads') || '[]');
+      uploads.push({
+        id: fileId,
+        fileName: fileName,
+        fileSize: fileBlob.size,
+        uploadedAt: fileInfo.uploadedAt,
+        downloadUrl: `/view/${fileId}`,
+      });
+      localStorage.setItem('avfile_uploads', JSON.stringify(uploads));
 
-      return data.data;
+      // ファイルデータを保存
+      localStorage.setItem(`avfile_file_${fileId}`, JSON.stringify(fileInfo));
+
+      onProgress(100, 'Upload complete!');
+
+      console.log('✅ File saved to localStorage');
+
+      return {
+        success: true,
+        fileName: fileName,
+        downloadUrl: `${window.location.origin}/?id=${fileId}`,
+        fileSize: fileBlob.size,
+        fileId: fileId,
+      };
+    } catch (error) {
+      console.error('❌ Demo upload error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * ファイルを Base64 に変換
+   */
+  async fileToBase64(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        // Data URL から Base64 部分を抽出
+        const base64 = reader.result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
     });
   }
 
   /**
-   * エラーを人間が読める形に変換
-   * @param {Error} error
-   * @returns {string}
+   * UUID を生成
    */
-  static getErrorMessage(error) {
-    const message = error.message || '';
-
-    if (message.includes('Rate limit')) {
-      return 'リクエストが多すぎます。少し待ってからお試しください。';
-    }
-
-    if (message.includes('timeout')) {
-      return 'リクエストがタイムアウトしました。接続を確認してください。';
-    }
-
-    if (message.includes('401') || message.includes('403')) {
-      return 'サーバー認証エラーです。後で再度お試しください。';
-    }
-
-    if (message.includes('Network')) {
-      return 'ネットワークエラーです。接続を確認してください。';
-    }
-
-    return error.message || '不明なエラーが発生しました。';
+  generateUUID() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = (Math.random() * 16) | 0;
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
   }
 
   /**
-   * キャッシュをクリア
-   * @param {string} pattern - パターン（オプション）
+   * アップロードしたファイルを取得
    */
-  clearCache(pattern = null) {
-    if (!pattern) {
-      this.cache.clear();
-      console.log('[Cache] Cleared all');
-      return;
+  getFileData(fileId) {
+    try {
+      const fileInfo = JSON.parse(localStorage.getItem(`avfile_file_${fileId}`));
+      return fileInfo;
+    } catch (error) {
+      console.error('❌ Error getting file:', error.message);
+      return null;
     }
-
-    for (const key of this.cache.keys()) {
-      if (key.includes(pattern)) {
-        this.cache.delete(key);
-      }
-    }
-
-    console.log(`[Cache] Cleared pattern: ${pattern}`);
   }
 }
 
 // グローバルエクスポート
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = GitHubUploadManagerNetlify;
-}
-
-window.GitHubUploadManagerNetlify = GitHubUploadManagerNetlify;
+window.SimpleUploadManager = SimpleUploadManager;
