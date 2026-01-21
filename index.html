@@ -1052,9 +1052,7 @@ class GitHubUploader {
       body: JSON.stringify({
         action: 'upload-asset-binary',
         uploadUrl: uploadUrl,
-        fileName: sanitizedFileName,
-        fileBase64: base64,
-        fileId,
+                fileId,
         fileSize,
       }),
     });
