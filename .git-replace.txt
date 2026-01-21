@@ -1,0 +1,2 @@
+regex:ghp_[A-Za-z0-9]{30,}==>REMOVED
+regex:github_pat_[A-Za-z0-9_]{30,}==>REMOVED

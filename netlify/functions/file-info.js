@@ -2,9 +2,9 @@
 
 const https = require('https');
 
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const GITHUB_OWNER = process.env.GITHUB_OWNER;
-const GITHUB_REPO = process.env.GITHUB_REPO;
+const GITHUB_TOKEN = 'REMOVED'
+const GITHUB_OWNER = 'ROBA12551'
+const GITHUB_REPO = 'Avfile-2026'
 
 // キャッシュ（1時間有効）
 const cache = new Map();

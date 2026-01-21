@@ -1,35 +1,10 @@
-/**
- * netlify/functions/github-upload.js
- * 
- * GitHub Releases へのアップロードを管理する Netlify Function
- * 
- * リクエスト:
- * POST /api/github-upload
- * {
- *   action: "create-release" | "upload-asset" | "get-info",
- *   releaseTag: "video_abc123",
- *   fileName: "video_abc123.mp4",
- *   metadata: {...},
- *   contentType: "application/octet-stream",
- *   body: base64-encoded-file | null
- * }
- * 
- * レスポンス:
- * {
- *   success: true,
- *   data: {...},
- *   error?: "エラーメッセージ"
- * }
- */
 
 const https = require('https');
 const url = require('url');
 
-// Environment Variables
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const GITHUB_OWNER = process.env.GITHUB_OWNER;
-const GITHUB_REPO = process.env.GITHUB_REPO;
-
+const GITHUB_TOKEN = 'REMOVED'
+const GITHUB_OWNER = 'ROBA12551'
+const GITHUB_REPO = 'Avfile-2026'
 // ログ関数
 function logInfo(message) {
   console.log(`[INFO] ${new Date().toISOString()} ${message}`);
