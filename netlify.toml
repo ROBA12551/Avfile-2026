@@ -1,7 +1,8 @@
 # Netlify Configuration for Avfile
 
 [build]
-  command = "echo 'Building Avfile...' && exit 0"
+  command = "exit 0
+"
   publish = "."
   functions = "netlify/functions"
 
