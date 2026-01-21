@@ -6,7 +6,7 @@ const GITHUB_REPO  = process.env.GITHUB_REPO;
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 500;
-const MAX_REQUEST_SIZE = 50 * 1024 * 1024; // 50MB
+const MAX_REQUEST_SIZE = 50 * 1024 * 1024;
 
 function logInfo(msg) {
   console.log(`[INFO] ${new Date().toISOString()} ${msg}`);
@@ -345,78 +345,6 @@ async function createViewOnServer(fileIds, passwordHash, origin) {
   }
 }
 
-function parseFormData(buffer, boundary) {
-  const fields = {};
-  const files = {};
-  
-  try {
-    const cleanBoundary = boundary.replace(/^-+|-+$/g, '');
-    const delimiter = `--${cleanBoundary}`;
-    const endDelimiter = `--${cleanBoundary}--`;
-    
-    const bodyString = buffer.toString('binary');
-    const parts = bodyString.split(delimiter);
-    
-    logInfo(`[FORMDATA] Boundary: ${cleanBoundary}`);
-    logInfo(`[FORMDATA] Total parts: ${parts.length}`);
-    
-    for (let i = 0; i < parts.length; i++) {
-      let part = parts[i];
-      
-      if (!part || part.trim() === '' || part.includes(endDelimiter)) {
-        continue;
-      }
-      
-      part = part.replace(/^\r?\n/, '');
-      
-      const doubleNewline = part.indexOf('\r\n\r\n');
-      if (doubleNewline === -1) {
-        logWarn(`[FORMDATA] Part ${i}: No header/body separator found`);
-        continue;
-      }
-
-      const headerSection = part.substring(0, doubleNewline);
-      const bodyContent = part.substring(doubleNewline + 4);
-      
-      const cleanBody = bodyContent.replace(/\r?\n$/, '');
-
-      const nameMatch = headerSection.match(/name="([^"]+)"/);
-      if (!nameMatch) {
-        logWarn(`[FORMDATA] Part ${i}: No name field found`);
-        continue;
-      }
-      
-      const fieldName = nameMatch[1];
-      const filenameMatch = headerSection.match(/filename="([^"]+)"/);
-      
-      if (filenameMatch) {
-        const filename = filenameMatch[1];
-        const fileData = Buffer.from(cleanBody, 'binary');
-        
-        files[fieldName] = {
-          filename: filename,
-          data: fileData
-        };
-        
-        logInfo(`[FORMDATA] File: ${fieldName} = ${filename} (${(fileData.length / 1024 / 1024).toFixed(2)} MB)`);
-      } else {
-        fields[fieldName] = cleanBody.trim();
-        logInfo(`[FORMDATA] Field: ${fieldName} = ${fields[fieldName].substring(0, 100)}...`);
-      }
-    }
-    
-    logInfo(`[FORMDATA] Parse complete: ${Object.keys(fields).length} fields, ${Object.keys(files).length} files`);
-    
-  } catch (error) {
-    logError(`[FORMDATA] Parse error: ${error.message}`);
-    logError(`[FORMDATA] Stack: ${error.stack}`);
-    throw error;
-  }
-  
-  return { fields, files };
-}
-
-
 exports.handler = async (event) => {
   try {
     logInfo(`=== REQUEST START ===`);
@@ -440,7 +368,7 @@ exports.handler = async (event) => {
         headers: {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'POST,OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
+          'Access-Control-Allow-Headers': 'Content-Type,Content-Length',
         },
         body: '',
       };
@@ -456,29 +384,37 @@ exports.handler = async (event) => {
     let body;
     const contentType = event.headers['content-type'] || event.headers['Content-Type'] || '';
     
-    if (contentType.includes('multipart/form-data')) {
-      logInfo('[FORMDATA] Detected multipart/form-data');
+    // ★ バイナリデータの場合
+    if (contentType.includes('application/octet-stream')) {
+      logInfo('[BINARY] Detected binary data');
       
-      const boundaryMatch = contentType.match(/boundary=([^\s;]+)/);
-      if (!boundaryMatch) {
-        throw new Error('No boundary found in FormData');
+      // ★ クエリパラメータから最小限のメタデータを取得
+      const action = event.queryStringParameters?.action;
+      const uploadUrl = event.queryStringParameters?.url;
+      const fileName = event.queryStringParameters?.name;
+      
+      logInfo(`[BINARY] Query params - action: ${action}, url: ${uploadUrl ? 'present' : 'missing'}, name: ${fileName}`);
+      
+      if (!action || !uploadUrl || !fileName) {
+        throw new Error('Missing required parameters: action, url, name');
       }
       
-      const boundary = boundaryMatch[1];
-      const rawBody = event.isBase64Encoded 
+      // バイナリデータを取得
+      const binaryData = event.isBase64Encoded 
         ? Buffer.from(event.body, 'base64')
-        : Buffer.from(event.body, 'utf8');
+        : Buffer.from(event.body, 'binary');
       
-      const { fields, files } = parseFormData(rawBody, boundary);
+      logInfo(`[BINARY] Binary data size: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
       
       body = {
-        action: fields.action,
-        ...fields,
-        _files: files
+        action: action,
+        uploadUrl: uploadUrl,
+        fileName: fileName,
+        fileSize: binaryData.length,
+        _binaryData: binaryData
       };
-      
-      logInfo(`[FORMDATA] Parsed: action=${body.action}, fields=${Object.keys(fields).length}, files=${Object.keys(files).length}`);
     } else {
+      // JSON の場合
       try {
         body = JSON.parse(event.body || '{}');
       } catch (e) {
@@ -493,6 +429,7 @@ exports.handler = async (event) => {
         };
       }
     }
+
     logInfo(`Action: ${body.action}`);
     
     let response;
@@ -517,71 +454,61 @@ exports.handler = async (event) => {
         break;
       }
 
-     case 'upload-asset-binary': {
-  logInfo(`[BINARY] Starting upload`);
-  
-  let fileName, uploadUrl, fileId, fileSize;
-  let binaryData = null;
+      case 'upload-asset-binary': {
+        logInfo(`[BINARY] Starting upload`);
+        
+        let fileName, uploadUrl;
+        let binaryData = null;
 
-  // ★ JSON形式でBase64を受け取る
-  if (body && body.fileBase64) {
-    logInfo(`[BINARY] Using JSON with Base64`);
-    
-    fileName = body.fileName;
-    uploadUrl = body.uploadUrl;
-    fileId = body.fileId;
-    fileSize = body.fileSize;
-    
-    // ★ Base64をBufferに変換
-    binaryData = Buffer.from(body.fileBase64, 'base64');
-    
-    logInfo(`[BINARY] Base64 decoded: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
-    logInfo(`[BINARY] File name: ${fileName}`);
-    logInfo(`[BINARY] File ID: ${fileId}`);
-  } else {
-    logError(`[BINARY] No file data found`);
-    logError(`[BINARY] body keys: ${Object.keys(body).join(', ')}`);
-    throw new Error('No file data provided (fileBase64 missing)');
-  }
+        // ★ バイナリデータを取得
+        if (body._binaryData) {
+          logInfo(`[BINARY] Using binary data`);
+          
+          fileName = body.fileName;
+          uploadUrl = body.uploadUrl;
+          binaryData = body._binaryData;
+          
+          logInfo(`[BINARY] Binary data received: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
+          logInfo(`[BINARY] File name: ${fileName}`);
+        } else {
+          logError(`[BINARY] No binary data found`);
+          throw new Error('No binary data provided');
+        }
 
-  // バリデーション
-  if (!fileName) throw new Error('fileName not found');
-  if (!uploadUrl) throw new Error('uploadUrl not found');
-  if (!binaryData || binaryData.length === 0) throw new Error('File data is empty');
+        // バリデーション
+        if (!fileName) throw new Error('fileName not found');
+        if (!uploadUrl) throw new Error('uploadUrl not found');
+        if (!binaryData || binaryData.length === 0) throw new Error('File data is empty');
 
-  logInfo(`[BINARY] Validated - File: ${fileName}, Size: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
-  
-  // ★ GitHub にバイナリアップロード
-  logInfo(`[BINARY] Uploading to GitHub API...`);
-  
-  let cleanUrl = String(uploadUrl).trim();
-  cleanUrl = cleanUrl.replace('{?name,label}', '');
-  cleanUrl = cleanUrl.replace('{?name}', '');
-  cleanUrl = cleanUrl.replace(/\{[?&].*?\}/g, '');
+        logInfo(`[BINARY] Validated - File: ${fileName}, Size: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
+        logInfo(`[BINARY] Uploading to GitHub API...`);
+        
+        let cleanUrl = String(uploadUrl).trim();
+        cleanUrl = cleanUrl.replace('{?name,label}', '');
+        cleanUrl = cleanUrl.replace('{?name}', '');
+        cleanUrl = cleanUrl.replace(/\{[?&].*?\}/g, '');
 
-  const encodedFileName = encodeURIComponent(fileName);
-  const assetUrl = `${cleanUrl}?name=${encodedFileName}`;
+        const encodedFileName = encodeURIComponent(fileName);
+        const assetUrl = `${cleanUrl}?name=${encodedFileName}`;
 
-  logInfo(`[BINARY] GitHub upload URL: ${assetUrl.substring(0, 100)}...`);
+        logInfo(`[BINARY] GitHub upload URL: ${assetUrl.substring(0, 100)}...`);
 
-  const assetResponse = await githubUploadRequest('POST', assetUrl, binaryData);
+        const assetResponse = await githubUploadRequest('POST', assetUrl, binaryData);
 
-  if (!assetResponse || !assetResponse.id) {
-    throw new Error('Asset upload response missing id field');
-  }
+        if (!assetResponse || !assetResponse.id) {
+          throw new Error('Asset upload response missing id field');
+        }
 
-  logInfo(`[BINARY] GitHub upload complete: Asset ID ${assetResponse.id}`);
+        logInfo(`[BINARY] GitHub upload complete: Asset ID ${assetResponse.id}`);
 
-  const result = {
-    asset_id: assetResponse.id,
-    name: assetResponse.name,
-    size: assetResponse.size,
-    download_url: assetResponse.browser_download_url,
-  };
-
-  response = result;
-  break;
-}
+        response = {
+          asset_id: assetResponse.id,
+          name: assetResponse.name,
+          size: assetResponse.size,
+          download_url: assetResponse.browser_download_url,
+        };
+        break;
+      }
 
       case 'get-github-json': {
         logInfo('Getting github.json');
