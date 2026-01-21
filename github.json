@@ -342,6 +342,13 @@
       "downloadUrl": "https://github.com/ROBA12551/Avfile-2026/releases/download/file_f_ex5c4cbbv/open-folder.png",
       "fileSize": 5690,
       "uploadedAt": "2026-01-21T10:09:50.639Z"
+    },
+    {
+      "fileId": "f_ex5c4cbbv",
+      "fileName": "open-folder.png",
+      "downloadUrl": "https://github.com/ROBA12551/Avfile-2026/releases/download/file_f_ex5c4cbbv/open-folder.png",
+      "fileSize": 5690,
+      "uploadedAt": "2026-01-21T10:09:50.309Z"
     }
   ],
   "views": [
@@ -544,5 +551,5 @@
       "createdAt": "2026-01-21T09:55:30.549Z"
     }
   ],
-  "lastUpdated": "2026-01-21T09:55:30.549Z"
+  "lastUpdated": "2026-01-21T10:09:50.309Z"
 }
