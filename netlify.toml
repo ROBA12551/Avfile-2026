@@ -13,13 +13,17 @@
 [context.production.environment]
   GITHUB_TOKEN = ""
   GITHUB_OWNER = ""
-  GITHUB_REPO = "Avfile"
+  GITHUB_REPO = "avfile-storage"
   DISCORD_WEBHOOK_URL = ""
 
-# Redirects for single-page app - ORDER MATTERS (most specific first)
-# Specific routes
+# Redirects - Specific pages
 [[redirects]]
   from = "/policy"
+  to = "/policy.html"
+  status = 200
+
+[[redirects]]
+  from = "/team"
   to = "/policy.html"
   status = 200
 
@@ -33,17 +37,11 @@
   to = "/debug.html"
   status = 200
 
-# Path-based routes
-[[redirects]]
-  from = "/v/*"
-  to = "/view.html"
-  status = 200
-
-# Catch-all: send all other requests to view.html
-# This includes root and root with query params like /?id=xxx
+# Catch-all: Send everything to index.html (which is now the viewer)
+# This includes / and /?id=xxx
 [[redirects]]
   from = "/*"
-  to = "/view.html"
+  to = "/index.html"
   status = 200
 
 # Security headers
