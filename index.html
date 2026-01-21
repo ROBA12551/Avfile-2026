@@ -1021,7 +1021,8 @@ class GitHubUploader {
     if (!data.success) throw new Error(data.error);
     return data.data;
   }
-  // ★ GitHub に直接アップロード（Netlify Functions をバイパス）
+
+// ★ Netlify Functions 経由でアップロード（Token 不要）
 async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   const sanitizedFileName = this.sanitizeFileName(fileName);
 
@@ -1037,71 +1038,38 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
     throw new Error('Invalid uploadUrl provided');
   }
 
-  // ★ GitHub Token を確認
-  const githubToken = localStorage.getItem('github_token') || '';
-  if (!githubToken) {
-    console.error('[UPLOAD_BINARY] GitHub token not found in localStorage');
-    throw new Error('GitHub token not configured. Please set it in localStorage.');
-  }
+  // ★ ファイルを Base64 に変換
+  console.log('[UPLOAD_BINARY] Converting to Base64...');
+  const base64 = await toBase64Fast(fileObject);
+  console.log('[UPLOAD_BINARY] Base64 length:', base64.length, 'chars');
 
-  // ★ GitHub に直接アップロード
-  console.log('[UPLOAD_BINARY] Uploading directly to GitHub API...');
+  // ★ Netlify Functions に送信
+  console.log('[UPLOAD_BINARY] Sending to Netlify Functions...');
 
-  // uploadUrl をクリーンアップ
-  let cleanUrl = String(uploadUrl).trim();
-  cleanUrl = cleanUrl.replace('{?name,label}', '');
-  cleanUrl = cleanUrl.replace('{?name}', '');
-  cleanUrl = cleanUrl.replace(/\{[?&].*?\}/g, '');
-
-  const encodedFileName = encodeURIComponent(sanitizedFileName);
-  const assetUrl = `${cleanUrl}?name=${encodedFileName}`;
-
-  console.log('[UPLOAD_BINARY] GitHub URL:', assetUrl.substring(0, 80) + '...');
-
-  // ファイルを ArrayBuffer に変換
-  console.log('[UPLOAD_BINARY] Converting file to ArrayBuffer...');
-  const arrayBuffer = await fileObject.arrayBuffer();
-  console.log('[UPLOAD_BINARY] ArrayBuffer size:', (arrayBuffer.byteLength / 1024 / 1024).toFixed(2), 'MB');
-  
-  console.log('[UPLOAD_BINARY] Sending to GitHub API...');
-
-  const response = await fetch(assetUrl, {
+  const response = await fetch(this.functionUrl, {
     method: 'POST',
-    headers: {
-      'Authorization': `token ${githubToken}`,
-      'Content-Type': 'application/octet-stream',
-      'User-Agent': 'Avfile-Direct-Upload',
-    },
-    body: arrayBuffer,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'upload-asset-binary',
+      uploadUrl: uploadUrl,
+      fileName: sanitizedFileName,
+      fileBase64: base64,
+      fileId,
+      fileSize,
+    }),
   });
-
-  console.log('[UPLOAD_BINARY] GitHub response status:', response.status);
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => '');
-    console.error('[UPLOAD_BINARY] GitHub upload error:', response.status, errorText);
-    throw new Error(`GitHub upload failed: ${response.status} - ${errorText}`);
+    console.error('[UPLOAD_BINARY] Error:', response.status, errorText);
+    throw new Error(`Upload failed: ${response.status} - ${errorText}`);
   }
 
   const data = await response.json();
-
-  if (!data.id) {
-    throw new Error('Asset upload response missing id field');
-  }
-
-  console.log('[UPLOAD_BINARY] GitHub upload complete - Asset ID:', data.id);
-  console.log('[UPLOAD_BINARY] Download URL:', data.browser_download_url);
-
-  // ★ 非同期で github.json を更新（Netlify Functions 経由）
-  this.updateGithubJsonAsync(fileId, sanitizedFileName, data.browser_download_url, fileSize)
-    .catch(err => console.error('[ASYNC] github.json update error:', err.message));
-
-  return {
-    asset_id: data.id,
-    name: data.name,
-    size: data.size,
-    download_url: data.browser_download_url,
-  };
+  if (!data.success) throw new Error(data.error || 'Upload failed');
+  
+  console.log('[UPLOAD_BINARY] Complete - Asset ID:', data.data.asset_id);
+  return data.data;
 }
 
 // ★ github.json を非同期更新

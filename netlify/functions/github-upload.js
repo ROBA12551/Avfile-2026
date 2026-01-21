@@ -35,7 +35,82 @@ function generateShortId(len = 6) {
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
-
+/**
+ * github.json に非同期で追記（ダウンロード不要）
+ */
+async function updateGithubJsonAsync(fileInfo) {
+  try {
+    logInfo(`[ASYNC_UPDATE] Starting async update for file: ${fileInfo.fileId}`);
+    
+    // 現在の github.json を取得（SHA を取得するため）
+    const path = `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`;
+    
+    let currentData, currentSha;
+    
+    try {
+      const res = await githubRequest('GET', path);
+      
+      if (res.content) {
+        const decoded = Buffer.from(res.content, 'base64').toString('utf-8');
+        currentData = JSON.parse(decoded);
+        currentSha = res.sha;
+        
+        logInfo(`[ASYNC_UPDATE] Current github.json: ${currentData.files.length} files, SHA: ${currentSha}`);
+      } else {
+        // ファイルが存在しない場合は新規作成
+        currentData = { files: [], views: [], lastUpdated: new Date().toISOString() };
+        currentSha = null;
+        
+        logInfo(`[ASYNC_UPDATE] github.json not found - creating new`);
+      }
+    } catch (error) {
+      // 404 エラーの場合は新規作成
+      if (error.message.includes('404')) {
+        currentData = { files: [], views: [], lastUpdated: new Date().toISOString() };
+        currentSha = null;
+        
+        logInfo(`[ASYNC_UPDATE] github.json not found - creating new`);
+      } else {
+        throw error;
+      }
+    }
+    
+    // ファイル情報を追加
+    currentData.files = currentData.files || [];
+    currentData.files.push(fileInfo);
+    currentData.lastUpdated = new Date().toISOString();
+    
+    logInfo(`[ASYNC_UPDATE] Adding file: ${fileInfo.fileName}`);
+    logInfo(`[ASYNC_UPDATE] Total files: ${currentData.files.length}`);
+    
+    // 更新内容を Base64 エンコード
+    const content = Buffer.from(JSON.stringify(currentData, null, 2)).toString('base64');
+    
+    // GitHub に保存
+    const payload = {
+      message: `Add file: ${fileInfo.fileName} - ${new Date().toISOString()}`,
+      content,
+      branch: 'main',
+    };
+    
+    if (currentSha) {
+      payload.sha = currentSha;
+      logInfo(`[ASYNC_UPDATE] Updating existing file with SHA: ${currentSha}`);
+    } else {
+      logInfo(`[ASYNC_UPDATE] Creating new file`);
+    }
+    
+    await githubRequest('PUT', path, payload);
+    
+    logInfo(`[ASYNC_UPDATE] ✓ github.json updated successfully`);
+    
+  } catch (error) {
+    logError(`[ASYNC_UPDATE] Failed to update github.json: ${error.message}`);
+    
+    // エラーでも処理は続行（ファイル自体はアップロード済み）
+    logWarn(`[ASYNC_UPDATE] File was uploaded successfully, but github.json update failed`);
+  }
+}
 async function githubRequest(method, path, body = null, headers = {}) {
   return new Promise((resolve, reject) => {
     const options = {
@@ -559,82 +634,84 @@ exports.handler = async (event) => {
         break;
       }
 
-      // ★ バイナリ直接アップロード（FormData対応）
-      case 'upload-asset-binary': {
-        logInfo(`[BINARY] Uploading asset`);
-        
-        let fileName, uploadUrl, fileId, fileSize;
-        let binaryData = null;
+case 'upload-asset-binary': {
+  logInfo(`[BINARY] Starting upload`);
+  
+  let fileName, uploadUrl, fileId, fileSize;
+  let binaryData = null;
 
-        // FormData の場合
-        if (body._files && body._files.file) {
-          logInfo(`[BINARY] Using FormData file`);
-          
-          fileName = body.fileName || body._files.file.filename;
-          uploadUrl = body.uploadUrl;
-          fileId = body.fileId;
-          fileSize = parseInt(body.fileSize) || body._files.file.data.length;
-          binaryData = body._files.file.data;
-          
-          logInfo(`[BINARY] FormData: ${fileName}, ${binaryData.length} bytes`);
-        } 
-        // JSON の場合（後方互換性）
-        else if (body.fileBase64) {
-          logInfo(`[BINARY] Using JSON with Base64`);
-          
-          fileName = body.fileName;
-          uploadUrl = body.uploadUrl;
-          fileId = body.fileId;
-          fileSize = body.fileSize;
-          binaryData = Buffer.from(body.fileBase64, 'base64');
-        }
+  const contentType = event.headers['content-type'] || event.headers['Content-Type'] || '';
 
-        if (!fileName) throw new Error('fileName not found');
-        if (!uploadUrl) throw new Error('uploadUrl not found');
-        if (!binaryData || binaryData.length === 0) throw new Error('File data not found');
+  // JSON の場合（Base64）
+  if (body && body.fileBase64) {
+    logInfo(`[BINARY] Using JSON with Base64`);
+    
+    fileName = body.fileName;
+    uploadUrl = body.uploadUrl;
+    fileId = body.fileId;
+    fileSize = body.fileSize;
+    binaryData = Buffer.from(body.fileBase64, 'base64');
+    
+    logInfo(`[BINARY] Base64 decoded: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
+  }
 
-        logInfo(`[BINARY] File: ${fileName}, Size: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
+  // バリデーション
+  if (!fileName) throw new Error('fileName not found');
+  if (!uploadUrl) throw new Error('uploadUrl not found');
+  if (!binaryData || binaryData.length === 0) throw new Error('File data not found');
 
-        // GitHub にアップロード
-        let cleanUrl = String(uploadUrl).trim();
-        cleanUrl = cleanUrl.replace('{?name,label}', '');
-        cleanUrl = cleanUrl.replace('{?name}', '');
-        cleanUrl = cleanUrl.replace(/\{[?&].*?\}/g, '');
+  logInfo(`[BINARY] File: ${fileName}, Size: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
+  
+  // GitHub にアップロード
+  logInfo(`[BINARY] Uploading to GitHub API...`);
+  
+  let cleanUrl = String(uploadUrl).trim();
+  cleanUrl = cleanUrl.replace('{?name,label}', '');
+  cleanUrl = cleanUrl.replace('{?name}', '');
+  cleanUrl = cleanUrl.replace(/\{[?&].*?\}/g, '');
 
-        const encodedFileName = encodeURIComponent(fileName);
-        const assetUrl = `${cleanUrl}?name=${encodedFileName}`;
+  const encodedFileName = encodeURIComponent(fileName);
+  const assetUrl = `${cleanUrl}?name=${encodedFileName}`;
 
-        logInfo(`[BINARY] Uploading to: ${assetUrl.substring(0, 100)}...`);
+  logInfo(`[BINARY] GitHub upload URL: ${assetUrl.substring(0, 100)}...`);
 
-        const assetResponse = await githubUploadRequest('POST', assetUrl, binaryData);
+  const assetResponse = await githubUploadRequest('POST', assetUrl, binaryData);
 
-        if (!assetResponse || !assetResponse.id) {
-          throw new Error('Asset upload response missing id field');
-        }
+  if (!assetResponse || !assetResponse.id) {
+    throw new Error('Asset upload response missing id field');
+  }
 
-        logInfo(`[BINARY] Upload success: ${assetResponse.id}`);
+  logInfo(`[BINARY] GitHub upload complete: ${assetResponse.id}`);
 
-        const result = {
-          asset_id: assetResponse.id,
-          name: assetResponse.name,
-          size: assetResponse.size,
-          download_url: assetResponse.browser_download_url,
-        };
+  const result = {
+    asset_id: assetResponse.id,
+    name: assetResponse.name,
+    size: assetResponse.size,
+    download_url: assetResponse.browser_download_url,
+  };
 
-        // 非同期で github.json を更新
-        if (fileId) {
-          updateGithubJsonAsync(
-            fileId,
-            fileName,
-            result.download_url,
-            fileSize || result.size
-          ).catch(err => logError(`[BINARY] Async update error: ${err.message}`));
-        }
-
-        response = result;
-        break;
+  // ★ 非同期で github.json に追記（待たない）
+  if (fileId) {
+    const fileInfo = {
+      fileId,
+      fileName,
+      downloadUrl: result.download_url,
+      fileSize: fileSize || result.size,
+      uploadedAt: new Date().toISOString(),
+      metadata: {
+        extension: fileName.split('.').pop(),
+        mimeType: body.mimeType || 'application/octet-stream'
       }
+    };
+    
+    // 非同期で更新（レスポンスは待たない）
+    updateGithubJsonAsync(fileInfo)
+      .catch(err => logError(`[BINARY] Async update error: ${err.message}`));
+  }
 
+  response = result;
+  break;
+}
       case 'get-github-json': {
         logInfo('Getting github.json');
         const result = await getGithubJson();
