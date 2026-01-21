@@ -69,7 +69,31 @@ async function githubRequest(method, path, body = null, headers = {}) {
 async function githubUploadRequest(method, fullUrl, body, headers = {}) {
   return new Promise((resolve, reject) => {
     try {
-      const parsed = new URL(fullUrl);
+      // ★ 修正: URL形式を完全にチェック
+      if (!fullUrl || typeof fullUrl !== 'string') {
+        throw new Error('Invalid uploadUrl: empty or not a string');
+      }
+
+      // ★ 修正: URI Templateを削除（複数パターン対応）
+      let cleanUrl = fullUrl.trim();
+      cleanUrl = cleanUrl.replace('{?name,label}', '');
+      cleanUrl = cleanUrl.replace('{?name}', '');
+      cleanUrl = cleanUrl.replace(/\{[?&].*?\}/g, ''); // 正規表現で全パターン対応
+
+      logInfo(`Clean Upload URL: ${cleanUrl.substring(0, 80)}...`);
+
+      // ★ 修正: URL形式を厳密にチェック
+      let parsed;
+      try {
+        parsed = new URL(cleanUrl);
+      } catch (e) {
+        throw new Error(`Invalid URL format: ${e.message}`);
+      }
+
+      // ★ 修正: hostname が uploads.github.com であることを確認
+      if (!parsed.hostname.includes('github.com')) {
+        logInfo(`⚠️ Warning: hostname is ${parsed.hostname}, expected github.com`);
+      }
 
       const options = {
         hostname: parsed.hostname,
@@ -84,11 +108,15 @@ async function githubUploadRequest(method, fullUrl, body, headers = {}) {
         },
       };
 
+      if (body && typeof body !== 'string' && !Buffer.isBuffer(body)) {
+        body = Buffer.from(body);
+      }
+
       if (body) {
         options.headers['Content-Length'] = body.length;
       }
 
-      logInfo(`Upload Request: ${method} ${parsed.hostname}`);
+      logInfo(`Upload Request: ${method} ${parsed.hostname}${parsed.pathname.substring(0, 50)}...`);
 
       const req = https.request(options, (res) => {
         let data = '';
@@ -112,6 +140,7 @@ async function githubUploadRequest(method, fullUrl, body, headers = {}) {
       if (body) req.write(body);
       req.end();
     } catch (e) {
+      logError(`Upload Request Error: ${e.message}`);
       reject(e);
     }
   });
@@ -138,38 +167,44 @@ async function createRelease(tag, metadata) {
   };
 }
 
-// ★ 修正: uploadAsset関数のURL処理を改善
+// ★ 修正: uploadAsset関数を完全にリファクタリング
 async function uploadAsset(uploadUrl, fileData, fileName) {
   try {
     logInfo(`Preparing asset upload: ${fileName}`);
 
-    // ★ 重要: uploadUrl のURI Templateを正しく処理
-    let assetUrl = String(uploadUrl).trim();
-    
-    // URI Template の各パターンを削除
-    assetUrl = assetUrl.replace('{?name,label}', '');
-    assetUrl = assetUrl.replace('{?name}', '');
-    assetUrl = assetUrl.replace(/\{[?&].*?\}/, '');
-    
-    // クエリ文字列のセパレータを決定
-    const separator = assetUrl.includes('?') ? '&' : '?';
-    assetUrl = `${assetUrl}${separator}name=${encodeURIComponent(fileName)}`;
-
-    logInfo(`Cleaned Upload URL: ${assetUrl.substring(0, 80)}...`);
-
-    // URLの妥当性をチェック
-    try {
-      new URL(assetUrl);
-    } catch (e) {
-      logError(`Invalid URL format: ${assetUrl}`);
-      throw new Error(`Invalid upload URL: ${e.message}`);
+    // ★ 修正: uploadUrlをバリデーション
+    if (!uploadUrl || typeof uploadUrl !== 'string') {
+      throw new Error('Invalid uploadUrl provided');
     }
+
+    // ★ 修正: URI Templateを削除
+    let baseUrl = String(uploadUrl).trim();
+    baseUrl = baseUrl.replace('{?name,label}', '');
+    baseUrl = baseUrl.replace('{?name}', '');
+    baseUrl = baseUrl.replace(/\{[?&].*?\}/g, '');
+
+    // ★ 修正: fileName をエンコード
+    const encodedFileName = encodeURIComponent(fileName);
+    const assetUrl = `${baseUrl}?name=${encodedFileName}`;
+
+    logInfo(`Asset URL: ${assetUrl.substring(0, 100)}...`);
+
+    // ★ 修正: fileData が Buffer であることを確認
+    if (!Buffer.isBuffer(fileData)) {
+      if (typeof fileData === 'string') {
+        fileData = Buffer.from(fileData, 'base64');
+      } else {
+        throw new Error('Invalid fileData type');
+      }
+    }
+
+    logInfo(`File size: ${fileData.length} bytes`);
 
     const data = await githubUploadRequest('POST', assetUrl, fileData, { 
       'Content-Type': 'application/octet-stream' 
     });
 
-    logInfo(`Asset uploaded successfully: ${data.id || 'unknown'}`);
+    logInfo(`Asset uploaded successfully`);
 
     return {
       asset_id: data.id,
@@ -236,7 +271,6 @@ async function createViewOnServer(fileIds, passwordHash, origin) {
 
   json.views = json.views || [];
   
-  // 共有URL を作成
   const shareUrl = `${(origin || '').replace(/\/$/, '')}/d/${viewId}`;
 
   json.views.push({
@@ -275,7 +309,7 @@ exports.handler = async (event) => {
     logError('Missing GitHub env vars');
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: 'Missing GitHub env vars' }),
+      body: JSON.stringify({ success: false, error: 'Missing GitHub env vars' }),
     };
   }
 
@@ -293,11 +327,10 @@ exports.handler = async (event) => {
         logInfo(`Action: upload-asset fileName=${body.fileName}`);
         const assetResponse = await uploadAsset(
           body.uploadUrl,
-          Buffer.from(body.fileBase64, 'base64'),
+          body.fileBase64, // base64文字列として渡される
           body.fileName
         );
 
-        // ファイル情報を github.json に保存
         const current = await getGithubJson();
         const json = current.data;
         json.files = json.files || [];
