@@ -813,10 +813,6 @@ function escapeHtml(t) {
   d.textContent = t;
   return d.innerHTML;
 }
-
-/* =====================
-   Upload
-===================== */
 function setupUploadHandlers() {
   fileInput.multiple = true;
   selectFileBtn.onclick = () => fileInput.click();
@@ -830,53 +826,91 @@ function setupUploadHandlers() {
     }
     await uploadMultiple(files);
   };
+
+  // ✅ ここに追加する
+  const copyBtn = document.getElementById('copyUrlBtn');
+  const shareInput = document.getElementById('shareUrl');
+
+  if (copyBtn && shareInput) {
+    copyBtn.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(shareInput.value);
+        alert('Copied!');
+      } catch {
+        alert('Copy failed');
+      }
+    };
+  }
 }
 
 async function uploadMultiple(files) {
-  const uploadManager = new SimpleUploadManager();
-  const github = uploadManager.githubUploader;
+  // ===== UI: uploading =====
+  uploadUI.style.display = 'none';
+  processingArea.style.display = 'block';
+  successArea.style.display = 'none';
+  errorArea.style.display = 'none';
 
-  const uploadedIds = [];
+  try {
+    const uploadManager = new SimpleUploadManager();
+    const github = uploadManager.githubUploader;
+    const uploadedIds = [];
 
-  for (const file of files) {
-    const result = await uploadManager.uploadFile(file, file.name);
-    uploadedIds.push(result.fileId);
-  }
-
-  // short url
-  const viewId = generateShortId(6);
-
-  // 🔐 pw switch
-  const pwEnabled = document.getElementById('pwSwitch')?.checked;
-  let passwordHash = null;
-
-  if (pwEnabled) {
-    const pw = prompt('Set password');
-    if (!pw) {
-      alert('Password required');
-      return;
+    // ===== upload files =====
+    for (const file of files) {
+      const result = await uploadManager.uploadFile(file, file.name);
+      uploadedIds.push(result.fileId);
     }
-    passwordHash = await sha256(pw);
+
+    // ===== short url =====
+    const viewId = generateShortId(6);
+
+    // ===== password (optional) =====
+    const pwEnabled = document.getElementById('pwSwitch')?.checked;
+    let passwordHash = null;
+
+    if (pwEnabled) {
+      const pw = prompt('Set password');
+      if (!pw) {
+        throw new Error('Password required');
+      }
+      passwordHash = await sha256(pw);
+    }
+
+    // ===== save view to github.json =====
+    const json = await github.getGithubJson();
+
+    json.views = json.views || [];
+    json.views.push({
+      viewId,
+      files: uploadedIds,
+      password: passwordHash,
+      createdAt: new Date().toISOString()
+    });
+
+    await github.saveGithubJson(json);
+
+    // ===== success UI =====
+    const shareUrl = `${location.origin}/d/${viewId}`;
+    const input = document.getElementById('shareUrl');
+    if (input) input.value = shareUrl;
+
+    processingArea.style.display = 'none';
+    successArea.style.display = 'block';
+
+    // ⚠️ Clipboard は失敗してもOK（UXを壊さない）
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+    } catch {
+      console.warn('Clipboard blocked (user must click Copy)');
+    }
+
+  } catch (err) {
+    console.error(err);
+
+    processingArea.style.display = 'none';
+    errorArea.style.display = 'block';
+    errorMessage.textContent = err.message || 'Upload failed';
   }
-
-  // ✅ json は必ずここで取得
-  const json = await github.getGithubJson();
-
-  json.views = json.views || [];
-  json.views.push({
-    viewId,
-    files: uploadedIds,
-    password: passwordHash,
-    createdAt: new Date().toISOString()
-  });
-
-  await github.saveGithubJson(json);
-
-  const shareUrl = `${location.origin}/d/${viewId}`;
-  const input = document.getElementById('shareUrl');
-  if (input) input.value = shareUrl;
-
-  navigator.clipboard.writeText(shareUrl);
 }
 
 async function loadAndDisplayView(viewId) {
