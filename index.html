@@ -610,16 +610,16 @@
                     </label>
                 </div>
 
-                <div id="processingArea" style="display: none; text-align: center; color: #e0e0e0;">
-                    <h3 id="processingTitle">Uploading...</h3>
+                <div id="processingArea" style="display: none; text-align: center; color: #e0e0e0; padding: 2rem; background: rgba(102, 126, 234, 0.05); border-radius: 12px; border: 1px solid rgba(102, 126, 234, 0.2);">
+                    <h3 id="processingTitle" style="font-size: 1.3rem; margin-bottom: 1rem;">Uploading New...</h3>
                     <p id="processingMessage" style="color: #909090; margin: 1rem 0; font-size: 0.95rem;">Preparing file...</p>
                     <div class="progress-container" style="margin: 2rem auto;">
                         <div class="progress-bar">
                             <div id="progressFill" class="progress-fill"></div>
                         </div>
-                        <p id="progressText" style="margin-top: 0.5rem; color: #909090; font-weight: 500;">0%</p>
+                        <p id="progressText" style="margin-top: 0.5rem; color: #909090; font-weight: 500; font-size: 1.1rem;">0%</p>
                     </div>
-                    <div class="spinner" style="width: 40px; height: 40px; margin: 1.5rem auto;"></div>
+                    <div class="spinner" style="width: 50px; height: 50px; margin: 1.5rem auto;"></div>
                 </div>
 
                 <div id="successArea" style="display: none;">
@@ -628,7 +628,7 @@
                         <h2>Upload Complete</h2>
                         <p style="color: #909090; margin: 1rem 0;">Your file is ready to share</p>
                         <div class="url-container">
-                            <input id="shareUrl" type="text" readonly class="url-input" />
+                            <input id="shareUrl" type="text" readonly class="url-input" placeholder="Share URL will appear here..." />
                             <button class="btn" id="copyUrlBtn">Copy</button>
                         </div>
                         <button class="btn" id="uploadMoreBtn" style="margin-top: 1rem;">Upload Another</button>
@@ -750,6 +750,7 @@ const viewId =
    Init
 ===================== */
 async function initApp() {
+  console.log('App initialized. ViewId:', viewId);
   if (!viewId) {
     showUploadUI();
     setupUploadHandlers();
@@ -768,10 +769,10 @@ function showUploadUI() {
   const fileViewerUI = document.getElementById('fileViewerUI');
   const errorUI = document.getElementById('errorUI');
   
-  uploadUI.style.display = 'block';
-  loadingUI.style.display = 'none';
-  fileViewerUI.style.display = 'none';
-  errorUI.style.display = 'none';
+  if (uploadUI) uploadUI.style.display = 'block';
+  if (loadingUI) loadingUI.style.display = 'none';
+  if (fileViewerUI) fileViewerUI.style.display = 'none';
+  if (errorUI) errorUI.style.display = 'none';
 }
 
 function showLoadingUI() {
@@ -780,10 +781,10 @@ function showLoadingUI() {
   const fileViewerUI = document.getElementById('fileViewerUI');
   const errorUI = document.getElementById('errorUI');
   
-  uploadUI.style.display = 'none';
-  loadingUI.style.display = 'block';
-  fileViewerUI.style.display = 'none';
-  errorUI.style.display = 'none';
+  if (uploadUI) uploadUI.style.display = 'none';
+  if (loadingUI) loadingUI.style.display = 'block';
+  if (fileViewerUI) fileViewerUI.style.display = 'none';
+  if (errorUI) errorUI.style.display = 'none';
 }
 
 function showViewerUI() {
@@ -792,10 +793,10 @@ function showViewerUI() {
   const fileViewerUI = document.getElementById('fileViewerUI');
   const errorUI = document.getElementById('errorUI');
   
-  uploadUI.style.display = 'none';
-  loadingUI.style.display = 'none';
-  fileViewerUI.style.display = 'block';
-  errorUI.style.display = 'none';
+  if (uploadUI) uploadUI.style.display = 'none';
+  if (loadingUI) loadingUI.style.display = 'none';
+  if (fileViewerUI) fileViewerUI.style.display = 'block';
+  if (errorUI) errorUI.style.display = 'none';
 }
 
 function showErrorUI(msg) {
@@ -805,11 +806,11 @@ function showErrorUI(msg) {
   const errorUI = document.getElementById('errorUI');
   const errorMsg = document.getElementById('errorMsg');
   
-  uploadUI.style.display = 'none';
-  loadingUI.style.display = 'none';
-  fileViewerUI.style.display = 'none';
-  errorUI.style.display = 'block';
-  errorMsg.textContent = msg;
+  if (uploadUI) uploadUI.style.display = 'none';
+  if (loadingUI) loadingUI.style.display = 'none';
+  if (fileViewerUI) fileViewerUI.style.display = 'none';
+  if (errorUI) errorUI.style.display = 'block';
+  if (errorMsg) errorMsg.textContent = msg;
 }
 
 /* =====================
@@ -853,28 +854,32 @@ function setupUploadHandlers() {
   const closeModalBtn = document.getElementById('closeModalBtn');
 
   // ファイル選択ボタン
-  fileInput.multiple = true;
-  selectFileBtn.onclick = () => fileInput.click();
+  if (fileInput && selectFileBtn) {
+    fileInput.multiple = true;
+    selectFileBtn.onclick = () => fileInput.click();
+  }
 
   // ファイル選択時
-  fileInput.onchange = async (e) => {
-    const files = [...e.target.files];
-    if (!files.length) return;
-    if (files.length > MAX_FILES) {
-      alert('You can upload up to 5 files');
-      return;
-    }
-    await uploadMultiple(files);
-  };
+  if (fileInput) {
+    fileInput.onchange = async (e) => {
+      const files = [...e.target.files];
+      if (!files.length) return;
+      if (files.length > MAX_FILES) {
+        alert('You can upload up to 5 files');
+        return;
+      }
+      await uploadMultiple(files);
+    };
+  }
 
   // URLをコピーボタン
   if (copyUrlBtn && shareUrl) {
     copyUrlBtn.onclick = async () => {
       try {
         await navigator.clipboard.writeText(shareUrl.value);
-        alert('Copied to clipboard!');
+        alert('✓ Copied to clipboard!');
       } catch {
-        alert('Copy failed');
+        alert('× Copy failed');
       }
     };
   }
@@ -883,7 +888,7 @@ function setupUploadHandlers() {
   if (uploadMoreBtn) {
     uploadMoreBtn.onclick = () => {
       showUploadUI();
-      fileInput.value = '';
+      if (fileInput) fileInput.value = '';
     };
   }
 
@@ -891,21 +896,21 @@ function setupUploadHandlers() {
   if (retryBtn) {
     retryBtn.onclick = () => {
       showUploadUI();
-      fileInput.value = '';
+      if (fileInput) fileInput.value = '';
     };
   }
 
   // ファイル履歴ボタン
   if (fileHistoryBtn) {
     fileHistoryBtn.onclick = () => {
-      fileHistoryModal.style.display = 'block';
+      if (fileHistoryModal) fileHistoryModal.style.display = 'block';
     };
   }
 
   // モーダルを閉じるボタン
   if (closeModalBtn) {
     closeModalBtn.onclick = () => {
-      fileHistoryModal.style.display = 'none';
+      if (fileHistoryModal) fileHistoryModal.style.display = 'none';
     };
   }
 
@@ -918,9 +923,12 @@ function setupUploadHandlers() {
 }
 
 /* =====================
-   Upload Multiple Files
+   Upload Multiple Files - WITH DEBUG LOGS
 ===================== */
 async function uploadMultiple(files) {
+  console.log('=== UPLOAD START ===');
+  console.log('Files to upload:', files);
+  
   const uploadUI = document.getElementById('uploadUI');
   const processingArea = document.getElementById('processingArea');
   const successArea = document.getElementById('successArea');
@@ -932,18 +940,40 @@ async function uploadMultiple(files) {
   const shareUrl = document.getElementById('shareUrl');
   const errorMessage = document.getElementById('errorMessage');
 
-  // UI切り替え
-  uploadUI.style.display = 'none';
-  successArea.style.display = 'none';
-  errorArea.style.display = 'none';
+  console.log('DOM Elements Found:', {
+    uploadUI: !!uploadUI,
+    processingArea: !!processingArea,
+    successArea: !!successArea,
+    errorArea: !!errorArea,
+    progressFill: !!progressFill,
+    progressText: !!progressText
+  });
 
-  processingArea.style.display = 'block';
-  processingTitle.textContent = 'Uploading...';
-  progressFill.style.width = '0%';
-  progressText.textContent = '0%';
+  // UI切り替え - 確実に非表示
+  if (uploadUI) {
+    uploadUI.style.display = 'none';
+    console.log('✓ uploadUI hidden');
+  }
+  if (successArea) successArea.style.display = 'none';
+  if (errorArea) errorArea.style.display = 'none';
+
+  // processingAreaを表示
+  if (processingArea) {
+    processingArea.style.display = 'block';
+    console.log('✓ processingArea DISPLAYED');
+  } else {
+    console.error('ERROR: processingArea not found!');
+    return;
+  }
+
+  if (processingTitle) processingTitle.textContent = 'Uploading New...';
+  if (progressFill) progressFill.style.width = '0%';
+  if (progressText) progressText.textContent = '0%';
 
   // 再描画強制
-  await new Promise(r => setTimeout(r, 50));
+  await new Promise(r => setTimeout(r, 150));
+  
+  console.log('Processing area should be visible now');
 
   const uploadManager = new SimpleUploadManager();
   const uploadedIds = [];
@@ -954,17 +984,25 @@ async function uploadMultiple(files) {
       const fileNumber = i + 1;
       const totalFiles = files.length;
 
-      processingMessage.textContent = `Uploading ${fileNumber} / ${totalFiles}: ${escapeHtml(file.name)}`;
+      const msgText = `Uploading ${fileNumber} / ${totalFiles}: ${escapeHtml(file.name)}`;
+      console.log(msgText);
+      
+      if (processingMessage) {
+        processingMessage.textContent = msgText;
+      }
 
+      // 進捗コールバック付きでアップロード
       const result = await uploadManager.uploadFile(
         file,
         file.name,
         (progress) => {
-          // ファイルごとの進捗を全体の進捗に変換
           const overallProgress = ((i + progress / 100) / totalFiles) * 100;
           const p = Math.min(100, Math.max(0, overallProgress));
-          progressFill.style.width = p + '%';
-          progressText.textContent = Math.round(p) + '%';
+          
+          if (progressFill) progressFill.style.width = p + '%';
+          if (progressText) progressText.textContent = Math.round(p) + '%';
+          
+          console.log(`Progress: ${Math.round(p)}%`);
         }
       );
 
@@ -972,25 +1010,43 @@ async function uploadMultiple(files) {
 
       // resultの構造をチェック
       const fileId = result?.fileId || result?.id || generateShortId();
+      console.log('Generated fileId:', fileId);
       uploadedIds.push(fileId);
     }
 
+    console.log('All files uploaded. IDs:', uploadedIds);
+
     // 完了 - 共有URLを生成
-    processingArea.style.display = 'none';
+    if (processingArea) processingArea.style.display = 'none';
     
     const firstFileId = uploadedIds[0];
     const shareLink = `${window.location.origin}/d/${firstFileId}`;
-    shareUrl.value = shareLink;
+    console.log('Share link generated:', shareLink);
     
-    successArea.style.display = 'block';
-    progressFill.style.width = '100%';
-    progressText.textContent = '100%';
+    if (shareUrl) {
+      shareUrl.value = shareLink;
+      console.log('✓ Share URL set in input');
+    }
+    
+    if (successArea) {
+      successArea.style.display = 'block';
+      console.log('✓ Success area DISPLAYED');
+    }
+    
+    if (progressFill) progressFill.style.width = '100%';
+    if (progressText) progressText.textContent = '100%';
 
   } catch (e) {
     console.error('Upload error:', e);
-    processingArea.style.display = 'none';
-    errorArea.style.display = 'block';
-    errorMessage.textContent = e.message || 'Upload failed. Please try again.';
+    console.error('Error stack:', e.stack);
+    
+    if (processingArea) processingArea.style.display = 'none';
+    if (errorArea) {
+      errorArea.style.display = 'block';
+      if (errorMessage) {
+        errorMessage.textContent = e.message || 'Upload failed. Please try again.';
+      }
+    }
   }
 }
 
@@ -1015,10 +1071,12 @@ async function loadAndDisplayView(viewId) {
     }
 
     const fileViewerUI = document.getElementById('fileViewerUI');
-    fileViewerUI.innerHTML = '';
+    if (fileViewerUI) {
+      fileViewerUI.innerHTML = '';
 
-    for (const file of data.files) {
-      fileViewerUI.innerHTML += renderFileBlock(file);
+      for (const file of data.files) {
+        fileViewerUI.innerHTML += renderFileBlock(file);
+      }
     }
 
     showViewerUI();
@@ -1038,7 +1096,7 @@ function renderFileBlock(file) {
   if (/\.(mp4|webm|ogg)$/i.test(url)) {
     return `
       <div style="margin:2rem;text-align:center">
-        <video controls preload="metadata" style="max-width:95%;border-radius:12px">
+        <video controls preload="metadata" style="max-width:95%;border-radius:12px;max-height:60vh">
           <source src="${url}">
         </video>
         <br />
@@ -1050,7 +1108,7 @@ function renderFileBlock(file) {
   if (/\.(png|jpg|jpeg|gif|webp)$/i.test(url)) {
     return `
       <div style="margin:2rem;text-align:center">
-        <img src="${url}" style="max-width:95%;border-radius:12px">
+        <img src="${url}" style="max-width:95%;border-radius:12px;max-height:60vh">
         <br />
         <a class="btn" href="${url}" download>Download</a>
       </div>
