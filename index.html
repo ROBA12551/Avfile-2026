@@ -4,8 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Avfile - Fast File Sharing</title>
-    <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin-allow-popups">
-    <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
     <link rel="icon" type="image/png" href="/images/folder.png">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -584,8 +582,8 @@ async function loadAndDisplayView(viewId) {
             </div>
           </div>
           <div class="file-actions">
-            <a href="${url}" download class="file-action-btn">📥 Download</a>
-            <button class="file-action-btn" onclick="navigator.clipboard.writeText('${url}'); this.textContent='Copied!'; setTimeout(()=>this.textContent='🔗 Copy Link', 2000);">🔗 Copy Link</button>
+            <a href="${url}" download class="file-action-btn"> Download</a>
+            <button class="file-action-btn" onclick="navigator.clipboard.writeText('${url}'); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy Link', 2000);"> Copy Link</button>
           </div>
         </div>
         ${preview}
