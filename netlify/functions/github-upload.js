@@ -1,10 +1,11 @@
 
+
 const https = require('https');
 const url = require('url');
 
-const GITHUB_TOKEN = 'REMOVED'
-const GITHUB_OWNER = 'ROBA12551'
-const GITHUB_REPO = 'Avfile-2026'
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+const GITHUB_OWNER = process.env.GITHUB_OWNER;
+const GITHUB_REPO = process.env.GITHUB_REPO;
 // ログ関数
 function logInfo(message) {
   console.log(`[INFO] ${new Date().toISOString()} ${message}`);
