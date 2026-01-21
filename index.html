@@ -983,97 +983,83 @@ class GitHubUploader {
     
     return data.data;
   }
+// ★ バイナリを Netlify Functions 経由で GitHub へアップロード
+async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
+  const sanitizedFileName = this.sanitizeFileName(fileName);
 
-  // ★ バイナリを GitHub へ直接アップロード（Netlify Functions を経由しない）
-  async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
-    const sanitizedFileName = this.sanitizeFileName(fileName);
+  console.log('[UPLOAD_BINARY] File:', sanitizedFileName);
+  console.log('[UPLOAD_BINARY] Size:', (fileSize / 1024 / 1024).toFixed(2), 'MB');
 
-    console.log('[UPLOAD_BINARY] Original fileName:', fileName);
-    console.log('[UPLOAD_BINARY] Sanitized fileName:', sanitizedFileName);
-    console.log('[UPLOAD_BINARY] File size:', (fileSize / 1024 / 1024).toFixed(2), 'MB');
-
-    if (!fileObject) {
-      throw new Error('Invalid file object provided');
-    }
-
-    if (!uploadUrl || typeof uploadUrl !== 'string') {
-      throw new Error('Invalid uploadUrl provided');
-    }
-
-    let processedFile = fileObject;
+  let processedFile = fileObject;
+  
+  // 動画圧縮
+  const MAX_SIZE = 2.5 * 1024 * 1024;
+  const isVideo = fileObject.type && fileObject.type.startsWith('video/');
+  
+  if (isVideo && fileObject.size > MAX_SIZE) {
+    console.log(`[UPLOAD_BINARY] 動画圧縮開始`);
     
-    // ★ 動画ファイルで2.5MB以上なら圧縮
-    const MAX_SIZE = 2.5 * 1024 * 1024;
-    const isVideo = fileObject.type && fileObject.type.startsWith('video/');
-    
-    if (isVideo && fileObject.size > MAX_SIZE) {
-      console.log(`[UPLOAD_BINARY] 動画圧縮開始: ${(fileObject.size / 1024 / 1024).toFixed(2)} MB`);
+    try {
+      const compressor = new VideoCompressionEngineLocal();
+      processedFile = await compressor.compress(fileObject, (progress) => {
+        console.log(`[UPLOAD_BINARY] 圧縮: ${progress}%`);
+        if (document.getElementById('statusMessage')) {
+          document.getElementById('statusMessage').textContent = `圧縮中: ${progress}%`;
+        }
+      });
       
-      try {
-        const compressor = new VideoCompressionEngineLocal();
-        processedFile = await compressor.compress(fileObject, (progress, msg) => {
-          console.log(`[UPLOAD_BINARY] 圧縮中: ${progress}%`);
-          if (document.getElementById('statusMessage')) {
-            document.getElementById('statusMessage').textContent = `動画圧縮中: ${progress}%`;
-          }
-        });
-        
-        const originalMB = (fileObject.size / 1024 / 1024).toFixed(2);
-        const compressedMB = (processedFile.size / 1024 / 1024).toFixed(2);
-        const ratio = ((1 - processedFile.size / fileObject.size) * 100).toFixed(0);
-        
-        console.log(`[UPLOAD_BINARY] 圧縮完了: ${originalMB}MB → ${compressedMB}MB (${ratio}% 削減)`);
-      } catch (compressionError) {
-        console.warn(`[UPLOAD_BINARY] 圧縮失敗、元ファイルを使用:`, compressionError.message);
-        processedFile = fileObject;
-      }
-    } else {
-      console.log(`[UPLOAD_BINARY] 圧縮スキップ: ${(fileObject.size / 1024 / 1024).toFixed(2)} MB`);
+      console.log(`[UPLOAD_BINARY] 圧縮完了`);
+    } catch (compressionError) {
+      console.warn(`[UPLOAD_BINARY] 圧縮失敗`, compressionError.message);
+      processedFile = fileObject;
     }
-
-    // ★ ArrayBuffer に変換
-    console.log('[UPLOAD_BINARY] Converting to ArrayBuffer...');
-    const arrayBuffer = await processedFile.arrayBuffer();
-    console.log('[UPLOAD_BINARY] ArrayBuffer size:', (arrayBuffer.byteLength / 1024 / 1024).toFixed(2), 'MB');
-
-    // ★ GitHub の upload_url から {?name,label} を削除してクリーンな URL に
-    const cleanUploadUrl = uploadUrl.replace(/\{\?.*\}$/, '');
-    
-    // ★ name パラメータを追加
-    const finalUrl = `${cleanUploadUrl}?name=${encodeURIComponent(sanitizedFileName)}`;
-
-    console.log('[UPLOAD_BINARY] Uploading directly to GitHub...');
-    console.log('[UPLOAD_BINARY] Target URL:', finalUrl);
-
-    // ★ GitHub へ直接バイナリアップロード
-    const response = await fetch(finalUrl, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/octet-stream',
-        'Content-Length': arrayBuffer.byteLength.toString()
-      },
-      body: arrayBuffer
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '');
-      console.error('[UPLOAD_BINARY] GitHub upload error:', response.status, errorText);
-      throw new Error(`GitHub upload failed: ${response.status} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    
-    console.log('[UPLOAD_BINARY] Complete - Asset uploaded to GitHub');
-    console.log('[UPLOAD_BINARY] Browser download URL:', data.browser_download_url);
-    
-    return {
-      success: true,
-      asset_id: data.id,
-      browser_download_url: data.browser_download_url,
-      name: data.name,
-      size: data.size
-    };
   }
+
+  // ArrayBuffer に変換
+  const arrayBuffer = await processedFile.arrayBuffer();
+
+  // ★ Netlify Functions 経由でアップロード（CORS回避）
+  const params = new URLSearchParams({
+    action: 'upload-asset-binary',
+    url: uploadUrl,
+    name: sanitizedFileName
+  });
+
+  const finalUrl = `${this.functionUrl}?${params.toString()}`;
+
+  console.log('[UPLOAD_BINARY] Uploading via Netlify Functions...');
+
+  const response = await fetch(finalUrl, {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/octet-stream',
+      'Content-Length': arrayBuffer.byteLength.toString()
+    },
+    body: arrayBuffer
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    console.error('[UPLOAD_BINARY] Error:', response.status, errorText);
+    throw new Error(`Upload failed: ${response.status}`);
+  }
+
+  const data = await response.json();
+  
+  if (!data.success) {
+    throw new Error(data.error || 'Upload failed');
+  }
+  
+  console.log('[UPLOAD_BINARY] Complete');
+  
+  return {
+    success: true,
+    asset_id: data.data.asset_id,
+    browser_download_url: data.data.download_url,
+    name: data.data.name,
+    size: data.data.size
+  };
+}
 
   // ★ ファイル情報を github.json に即座に追加
   async addFileToGithubJson(fileData) {

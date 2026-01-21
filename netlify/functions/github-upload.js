@@ -35,19 +35,16 @@ function sleep(ms) {
 function getFileType(fileName, mimeType) {
   const ext = fileName.toLowerCase().split('.').pop();
   
-  // 画像
   if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext) || 
       (mimeType && mimeType.startsWith('image/'))) {
     return 'image';
   }
   
-  // 動画
   if (['mp4', 'webm', 'mov', 'avi', 'mkv', 'm4v', '3gp'].includes(ext) || 
       (mimeType && mimeType.startsWith('video/'))) {
     return 'video';
   }
   
-  // その他
   return 'file';
 }
 
@@ -113,6 +110,90 @@ async function githubRequest(method, path, body = null, headers = {}) {
   });
 }
 
+// ★ GitHub Uploadsへのリクエスト（CORS回避）
+async function githubUploadRequest(method, fullUrl, body, headers = {}) {
+  return new Promise((resolve, reject) => {
+    try {
+      if (!fullUrl || typeof fullUrl !== 'string') {
+        throw new Error('Invalid uploadUrl');
+      }
+
+      let cleanUrl = fullUrl.trim();
+      cleanUrl = cleanUrl.replace(/\{[?&].*?\}/g, '');
+
+      logInfo(`Upload URL: ${cleanUrl.substring(0, 80)}...`);
+
+      const parsed = new URL(cleanUrl);
+
+      let uploadBody = body;
+      let contentLength = 0;
+
+      if (Buffer.isBuffer(body)) {
+        uploadBody = body;
+        contentLength = body.length;
+      } else {
+        throw new Error('Body must be a Buffer');
+      }
+
+      const options = {
+        hostname: parsed.hostname,
+        port: 443,
+        path: parsed.pathname + parsed.search,
+        method,
+        timeout: 120000,
+        headers: {
+          'Authorization': `token ${GITHUB_TOKEN}`,
+          'User-Agent': 'Avfile-Netlify',
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': contentLength,
+          ...headers,
+        },
+      };
+
+      logInfo(`Upload: ${method} ${parsed.hostname}${parsed.pathname.substring(0, 50)}...`);
+      logInfo(`Size: ${(contentLength / 1024 / 1024).toFixed(2)} MB`);
+
+      const req = https.request(options, (res) => {
+        let data = '';
+        res.on('data', (c) => (data += c));
+        res.on('end', () => {
+          logInfo(`Upload Response: ${res.statusCode}`);
+          
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            try {
+              resolve(data ? JSON.parse(data) : {});
+            } catch (e) {
+              logError(`JSON parse error: ${e.message}`);
+              resolve({});
+            }
+          } else {
+            const errorMsg = `Upload Error ${res.statusCode}: ${data || 'Unknown'}`;
+            logError(errorMsg);
+            reject(new Error(errorMsg));
+          }
+        });
+      });
+
+      req.on('error', (err) => {
+        logError(`Upload error: ${err.message}`);
+        reject(err);
+      });
+
+      req.on('timeout', () => {
+        logError('Upload timeout (120s)');
+        req.destroy();
+        reject(new Error('Upload timeout'));
+      });
+      
+      if (uploadBody) req.write(uploadBody);
+      req.end();
+    } catch (e) {
+      logError(`Upload Request Error: ${e.message}`);
+      reject(e);
+    }
+  });
+}
+
 async function createRelease(tag, metadata) {
   const path = `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases`;
   const body = {
@@ -123,13 +204,13 @@ async function createRelease(tag, metadata) {
     prerelease: false,
   };
 
-  logInfo(`[CREATE_RELEASE] Creating release with tag: ${tag}`);
+  logInfo(`Creating release: ${tag}`);
 
   try {
     const data = await githubRequest('POST', path, body);
     
     if (!data || !data.id) {
-      throw new Error('Release creation response missing id field');
+      throw new Error('Release creation failed');
     }
 
     logInfo(`Release created: ${data.id}`);
@@ -141,7 +222,7 @@ async function createRelease(tag, metadata) {
       tag_name: data.tag_name,
     };
   } catch (error) {
-    logError(`[CREATE_RELEASE] Failed: ${error.message}`);
+    logError(`Create release failed: ${error.message}`);
     throw error;
   }
 }
@@ -154,7 +235,7 @@ async function getGithubJson() {
     const res = await githubRequest('GET', path);
     
     if (!res.content) {
-      logInfo('github.json not found, creating new one');
+      logInfo('github.json not found, creating new');
       return {
         data: { files: [], views: [], lastUpdated: new Date().toISOString() },
         sha: null,
@@ -167,7 +248,7 @@ async function getGithubJson() {
     parsed.files = Array.isArray(parsed.files) ? parsed.files : [];
     parsed.views = Array.isArray(parsed.views) ? parsed.views : [];
 
-    logInfo(`github.json retrieved: ${parsed.files.length} files, ${parsed.views.length} views, SHA: ${res.sha}`);
+    logInfo(`github.json: ${parsed.files.length} files, ${parsed.views.length} views`);
 
     return { data: parsed, sha: res.sha };
   } catch (error) {
@@ -182,7 +263,7 @@ async function getGithubJson() {
 async function saveGithubJson(jsonData, sha = null, retryCount = 0) {
   const path = `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`;
 
-  logInfo(`Saving: ${jsonData.files.length} files, ${jsonData.views.length} views (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+  logInfo(`Saving github.json (attempt ${retryCount + 1}/${MAX_RETRIES})`);
 
   const content = Buffer.from(JSON.stringify(jsonData, null, 2)).toString('base64');
 
@@ -194,29 +275,19 @@ async function saveGithubJson(jsonData, sha = null, retryCount = 0) {
 
   if (sha) {
     payload.sha = sha;
-    logInfo(`Using SHA: ${sha}`);
-  } else {
-    logInfo(`Creating new github.json (no SHA)`);
   }
 
   try {
     await githubRequest('PUT', path, payload);
-    logInfo('github.json saved successfully');
+    logInfo('github.json saved');
   } catch (error) {
     if (error.message.includes('409') && retryCount < MAX_RETRIES) {
-      logWarn(`SHA競合検出。リトライ中... (${retryCount + 1}/${MAX_RETRIES})`);
+      logWarn(`SHA conflict, retrying... (${retryCount + 1}/${MAX_RETRIES})`);
       
       await sleep(RETRY_DELAY * (retryCount + 1));
       
-      try {
-        const latest = await getGithubJson();
-        logInfo(`最新の SHA を取得: ${latest.sha}`);
-        
-        return await saveGithubJson(jsonData, latest.sha, retryCount + 1);
-      } catch (retryError) {
-        logError(`リトライ失敗: ${retryError.message}`);
-        throw new Error(`Failed to save github.json after ${retryCount + 1} attempts: ${error.message}`);
-      }
+      const latest = await getGithubJson();
+      return await saveGithubJson(jsonData, latest.sha, retryCount + 1);
     }
 
     logError(`Failed to save github.json: ${error.message}`);
@@ -224,30 +295,27 @@ async function saveGithubJson(jsonData, sha = null, retryCount = 0) {
   }
 }
 
-// ★ ファイルメタデータをgithub.jsonに即座に追加
+// ★ ファイル情報を github.json に追加
 async function addFileToGithubJson(fileData) {
-  logInfo(`[ADD_FILE] Adding file to github.json: ${fileData.fileId}`);
+  logInfo(`Adding file: ${fileData.fileId}`);
   
   try {
     const current = await getGithubJson();
     const json = current.data;
 
-    // 既存チェック
     const exists = json.files.some(f => f.fileId === fileData.fileId);
     if (exists) {
-      logWarn(`[ADD_FILE] File already exists: ${fileData.fileId}`);
+      logWarn(`File already exists: ${fileData.fileId}`);
       return { success: true, message: 'File already exists' };
     }
 
-    // ファイルタイプを判定
     const fileType = getFileType(fileData.fileName, fileData.mimeType);
     
-    // ファイル情報を追加
     json.files.push({
       fileId: fileData.fileId,
       fileName: fileData.fileName,
       fileSize: fileData.fileSize,
-      fileType: fileType, // ★ 'image' | 'video' | 'file'
+      fileType: fileType,
       mimeType: fileData.mimeType || 'application/octet-stream',
       releaseId: fileData.releaseId,
       releaseTag: fileData.releaseTag,
@@ -260,7 +328,7 @@ async function addFileToGithubJson(fileData) {
 
     await saveGithubJson(json, current.sha, 0);
 
-    logInfo(`[ADD_FILE] File added successfully: ${fileData.fileId} (type: ${fileType})`);
+    logInfo(`File added: ${fileData.fileId} (type: ${fileType})`);
 
     return { 
       success: true, 
@@ -268,14 +336,14 @@ async function addFileToGithubJson(fileData) {
       fileType: fileType
     };
   } catch (error) {
-    logError(`[ADD_FILE] Failed: ${error.message}`);
+    logError(`Add file failed: ${error.message}`);
     throw error;
   }
 }
 
 async function createViewOnServer(fileIds, passwordHash, origin) {
   try {
-    logInfo(`Creating view with ${fileIds.length} files`);
+    logInfo(`Creating view: ${fileIds.length} files`);
 
     const current = await getGithubJson();
     const json = current.data;
@@ -318,7 +386,7 @@ async function createViewOnServer(fileIds, passwordHash, origin) {
       shareUrl: shareUrl,
     };
   } catch (error) {
-    logError(`Failed to create view: ${error.message}`);
+    logError(`Create view failed: ${error.message}`);
     throw error;
   }
 }
@@ -326,7 +394,7 @@ async function createViewOnServer(fileIds, passwordHash, origin) {
 exports.handler = async (event) => {
   try {
     logInfo(`=== REQUEST START ===`);
-    logInfo(`Method: ${event.httpMethod}, Path: ${event.path}`);
+    logInfo(`Method: ${event.httpMethod}`);
 
     if (!GITHUB_TOKEN || !GITHUB_OWNER || !GITHUB_REPO) {
       logError('Missing environment variables');
@@ -356,22 +424,52 @@ exports.handler = async (event) => {
     logInfo(`Request size: ${(requestSize / 1024 / 1024).toFixed(2)} MB`);
     
     if (requestSize > MAX_REQUEST_SIZE) {
-      throw new Error(`Request too large: ${(requestSize / 1024 / 1024).toFixed(2)} MB (max: 50 MB)`);
+      throw new Error(`Request too large: ${(requestSize / 1024 / 1024).toFixed(2)} MB`);
     }
 
     let body;
-    try {
-      body = JSON.parse(event.body || '{}');
-    } catch (e) {
-      logError(`Failed to parse JSON: ${e.message}`);
-      return {
-        statusCode: 400,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          success: false, 
-          error: 'Invalid JSON'
-        }),
+    const contentType = event.headers['content-type'] || event.headers['Content-Type'] || '';
+    
+    // ★ バイナリデータ
+    if (contentType.includes('application/octet-stream')) {
+      logInfo('[BINARY] Detected');
+      
+      const action = event.queryStringParameters?.action;
+      const uploadUrl = event.queryStringParameters?.url;
+      const fileName = event.queryStringParameters?.name;
+      
+      if (!action || !uploadUrl || !fileName) {
+        throw new Error('Missing parameters: action, url, name');
+      }
+      
+      const binaryData = event.isBase64Encoded 
+        ? Buffer.from(event.body, 'base64')
+        : Buffer.from(event.body, 'binary');
+      
+      logInfo(`[BINARY] Size: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
+      
+      body = {
+        action: action,
+        uploadUrl: uploadUrl,
+        fileName: fileName,
+        fileSize: binaryData.length,
+        _binaryData: binaryData
       };
+    } else {
+      // JSON
+      try {
+        body = JSON.parse(event.body || '{}');
+      } catch (e) {
+        logError(`Invalid JSON: ${e.message}`);
+        return {
+          statusCode: 400,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            success: false, 
+            error: 'Invalid JSON'
+          }),
+        };
+      }
     }
 
     logInfo(`Action: ${body.action}`);
@@ -380,26 +478,61 @@ exports.handler = async (event) => {
 
     switch (body.action) {
       case 'create-release': {
-        logInfo(`Creating release: ${body.releaseTag}`);
-        if (!body.releaseTag) {
-          throw new Error('releaseTag is required');
-        }
+        if (!body.releaseTag) throw new Error('releaseTag required');
         response = await createRelease(body.releaseTag, body.metadata);
         break;
       }
 
-      // ★ ファイル情報をgithub.jsonに即座に追加
-      case 'add-file': {
-        logInfo(`[ADD_FILE] Request received`);
+      // ★ バイナリアップロード（Netlify Functions経由）
+      case 'upload-asset-binary': {
+        logInfo(`[BINARY] Uploading`);
         
-        if (!body.fileData) {
-          throw new Error('fileData is required');
+        let fileName, uploadUrl, binaryData;
+
+        if (body._binaryData) {
+          fileName = body.fileName;
+          uploadUrl = body.uploadUrl;
+          binaryData = body._binaryData;
+        } else {
+          throw new Error('No binary data');
         }
+
+        if (!fileName || !uploadUrl || !binaryData) {
+          throw new Error('Missing required fields');
+        }
+
+        logInfo(`[BINARY] File: ${fileName}, Size: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
+        
+        let cleanUrl = String(uploadUrl).trim().replace(/\{[?&].*?\}/g, '');
+        const encodedFileName = encodeURIComponent(fileName);
+        const assetUrl = `${cleanUrl}?name=${encodedFileName}`;
+
+        logInfo(`[BINARY] Uploading to GitHub...`);
+
+        const assetResponse = await githubUploadRequest('POST', assetUrl, binaryData);
+
+        if (!assetResponse || !assetResponse.id) {
+          throw new Error('Asset upload failed');
+        }
+
+        logInfo(`[BINARY] Upload complete: ${assetResponse.id}`);
+
+        response = {
+          asset_id: assetResponse.id,
+          name: assetResponse.name,
+          size: assetResponse.size,
+          download_url: assetResponse.browser_download_url,
+        };
+        break;
+      }
+
+      case 'add-file': {
+        if (!body.fileData) throw new Error('fileData required');
         
         const required = ['fileId', 'fileName', 'fileSize', 'releaseId', 'releaseTag', 'downloadUrl'];
         for (const field of required) {
           if (!body.fileData[field]) {
-            throw new Error(`fileData.${field} is required`);
+            throw new Error(`fileData.${field} required`);
           }
         }
         
@@ -408,29 +541,14 @@ exports.handler = async (event) => {
       }
 
       case 'get-github-json': {
-        logInfo('Getting github.json');
         const result = await getGithubJson();
         response = result.data;
         break;
       }
 
-      case 'save-github-json': {
-        logInfo('Saving github.json');
-        if (!body.jsonData) {
-          throw new Error('jsonData is required');
-        }
-        const current = await getGithubJson();
-        await saveGithubJson(body.jsonData, current.sha, 0);
-        response = { success: true };
-        break;
-      }
-
       case 'create-view': {
-        logInfo(`Creating view with ${body.fileIds ? body.fileIds.length : 0} files`);
         const fileIds = Array.isArray(body.fileIds) ? body.fileIds : [];
-        if (fileIds.length === 0) {
-          throw new Error('fileIds is required and must be non-empty array');
-        }
+        if (fileIds.length === 0) throw new Error('fileIds required');
         response = await createViewOnServer(
           fileIds,
           body.passwordHash || null,
@@ -443,7 +561,7 @@ exports.handler = async (event) => {
         throw new Error(`Unknown action: ${body.action}`);
     }
 
-    logInfo(`=== REQUEST SUCCESS ===`);
+    logInfo(`=== SUCCESS ===`);
     
     return {
       statusCode: 200,
@@ -455,9 +573,8 @@ exports.handler = async (event) => {
     };
 
   } catch (e) {
-    logError(`=== REQUEST FAILED ===`);
+    logError(`=== FAILED ===`);
     logError(`Error: ${e.message}`);
-    logError(`Stack: ${e.stack}`);
     
     return {
       statusCode: 500,
