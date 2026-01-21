@@ -728,18 +728,21 @@
     <script src="js/simple-upload.js?v=16"></script>
 <script>
 /* =====================
-   Config
+   Config / Params
 ===================== */
 const MAX_FILES = 5;
-const urlParams = new URLSearchParams(window.location.search);
-const viewIdParam = urlParams.get('id');      // 短縮URL
-const idsParam = urlParams.get('ids');        // 直接指定URL
-const rawFileIds = idsParam
-  ? idsParam.split(',').map(v => v.trim()).filter(Boolean)
-  : [];
+const urlParams = new URLSearchParams(location.search);
 
-const params = new URLSearchParams(location.search);
+// /d/aZ3fK9 対応
+const pathMatch = location.pathname.match(/^\/d\/([a-zA-Z0-9]+)/);
+const viewId =
+  pathMatch?.[1] ||
+  urlParams.get('id') ||
+  null;
 
+/* =====================
+   Init
+===================== */
 async function initApp() {
   if (!viewId) {
     showUploadUI();
@@ -750,7 +753,6 @@ async function initApp() {
   }
 }
 
-
 /* =====================
    UI State
 ===================== */
@@ -759,7 +761,6 @@ function showUploadUI() {
   loadingUI.style.display = 'none';
   fileViewerUI.style.display = 'none';
   errorUI.style.display = 'none';
-  viewerControls.style.display = 'none';
 }
 
 function showLoadingUI() {
@@ -771,7 +772,6 @@ function showViewerUI() {
   uploadUI.style.display = 'none';
   loadingUI.style.display = 'none';
   fileViewerUI.style.display = 'block';
-  viewerControls.style.display = 'none';
 }
 
 function showErrorUI(msg) {
@@ -783,25 +783,8 @@ function showErrorUI(msg) {
 }
 
 /* =====================
-   Upload
+   Utils
 ===================== */
-function setupUploadHandlers() {
-  fileInput.multiple = true;
-  selectFileBtn.onclick = () => fileInput.click();
-
-  fileInput.onchange = async (e) => {
-    const files = [...e.target.files];
-    if (files.length === 0) return;
-
-    if (files.length > MAX_FILES) {
-      alert('You can upload up to 5 files');
-      return;
-    }
-
-    await uploadMultiple(files);
-  };
-}
-
 function generateShortId(len = 6) {
   const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let out = '';
@@ -811,88 +794,97 @@ function generateShortId(len = 6) {
   return out;
 }
 
+async function sha256(text) {
+  const buf = new TextEncoder().encode(text);
+  const hash = await crypto.subtle.digest('SHA-256', buf);
+  return [...new Uint8Array(hash)]
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function escapeHtml(t) {
+  const d = document.createElement('div');
+  d.textContent = t;
+  return d.innerHTML;
+}
+
+/* =====================
+   Upload
+===================== */
+function setupUploadHandlers() {
+  fileInput.multiple = true;
+  selectFileBtn.onclick = () => fileInput.click();
+
+  fileInput.onchange = async (e) => {
+    const files = [...e.target.files];
+    if (!files.length) return;
+    if (files.length > MAX_FILES) {
+      alert('You can upload up to 5 files');
+      return;
+    }
+    await uploadMultiple(files);
+  };
+}
+
 async function uploadMultiple(files) {
-  const uploadManager = new SimpleUploadManager();
+  const uploader = new SimpleUploadManager();
+  const github = uploader.githubUploader;
   const uploadedIds = [];
 
   for (const file of files) {
-    const result = await uploadManager.uploadFile(file, file.name);
-    uploadedIds.push(result.fileId);
+    const res = await uploader.uploadFile(file, file.name);
+    uploadedIds.push(res.fileId);
   }
 
-  // 🔑 gofile風の短縮ID（6文字）
-  const viewId = Math.random().toString(36).slice(2, 8);
+  const shortId = generateShortId(6);
+  const password = prompt('Set password (optional)');
+  const passwordHash = password ? await sha256(password) : null;
 
-  const github = uploadManager.githubUploader;
-async function loadAndDisplayView(viewId) {
   const json = await github.getGithubJson();
-}
-
   json.views = json.views || [];
   json.views.push({
-    viewId,
+    viewId: shortId,
     files: uploadedIds,
+    password: passwordHash,
     createdAt: new Date().toISOString()
   });
 
+  await github.saveGithubJson(json);
 
-
-  const shareUrl = `${location.origin}/?id=${viewId}`;
-  document.getElementById('shareUrl').value = shareUrl;
+  const shareUrl = `${location.origin}/d/${shortId}`;
+  const input = document.getElementById('shareUrl');
+  if (input) input.value = shareUrl;
   navigator.clipboard.writeText(shareUrl);
 }
 
-async function loadAndDisplayView(viewId) {
-  const uploadManager = new SimpleUploadManager();
-  const github = uploadManager.githubUploader;
-
-  const json = await github.getGithubJson();
-}
-
-  json.views = json.views || [];
-  json.views.push({
-    viewId,
-    files: uploadedFileIds,
-    createdAt: new Date().toISOString()
-  });
-
-async function uploadMultiple(files) {
-  const json = await github.getGithubJson();
-  await github.saveGithubJson(json);
-}
-
-  const shareUrl = `${location.origin}/?id=${viewId}`;
-  const shareUrlInput = document.getElementById('shareUrl');
-if (shareUrlInput) {
-  shareUrlInput.value = shareUrl;
-}
-
-
-
+/* =====================
+   View
+===================== */
 async function loadAndDisplayView(viewId) {
   try {
     const uploader = new SimpleUploadManager();
     const github = uploader.githubUploader;
-
     const json = await github.getGithubJson();
 
-    if (!json.views || !json.files) {
-      showErrorUI('No data');
-      return;
-    }
-
-    const view = json.views.find(v => v.viewId === viewId);
+    const view = (json.views || []).find(v => v.viewId === viewId);
     if (!view) {
       showErrorUI('File not found');
       return;
     }
 
+    if (view.password) {
+      const input = prompt('Enter password');
+      const hash = await sha256(input || '');
+      if (hash !== view.password) {
+        showErrorUI('Invalid password');
+        return;
+      }
+    }
+
     fileViewerUI.innerHTML = '';
-
     for (const fid of view.files) {
-      const file = json.files.find(f => f.fileId === fid);
+      const file = (json.files || []).find(f => f.fileId === fid);
       if (!file) continue;
-
       fileViewerUI.innerHTML += renderFileBlock(file);
     }
 
@@ -904,36 +896,8 @@ async function loadAndDisplayView(viewId) {
 }
 
 /* =====================
-   View (ids URL)
-===================== */
-async function loadAndDisplayFiles(fileIds) {
-  const uploader = new SimpleUploadManager();
-  const github = uploader.githubUploader;
-  const json = await github.getGithubJson();
-
-  await renderFiles(json, fileIds);
-}
-
-/* =====================
    Render
 ===================== */
-async function renderFiles(json, fileIds) {
-  fileViewerUI.innerHTML = '';
-
-  for (const fid of fileIds) {
-    const file = (json.files || []).find(f => f.fileId === fid);
-    if (!file) continue;
-    fileViewerUI.innerHTML += renderFileBlock(file);
-  }
-
-  if (!fileViewerUI.innerHTML.trim()) {
-    showErrorUI('File not found');
-    return;
-  }
-
-  showViewerUI();
-}
-
 function renderFileBlock(file) {
   const url = file.downloadUrl;
   const name = escapeHtml(file.fileName);
@@ -945,8 +909,7 @@ function renderFileBlock(file) {
           <source src="${url}">
         </video>
         <a class="btn" href="${url}" download>Download</a>
-      </div>
-    `;
+      </div>`;
   }
 
   if (/\.(png|jpg|jpeg|gif|webp)$/i.test(url)) {
@@ -954,25 +917,14 @@ function renderFileBlock(file) {
       <div style="margin:2rem;text-align:center">
         <img src="${url}" style="max-width:95%;border-radius:12px">
         <a class="btn" href="${url}" download>Download</a>
-      </div>
-    `;
+      </div>`;
   }
 
   return `
     <div style="margin:2rem;text-align:center">
       <p>${name}</p>
       <a class="btn" href="${url}" download>Download</a>
-    </div>
-  `;
-}
-
-/* =====================
-   Utils
-===================== */
-function escapeHtml(t) {
-  const d = document.createElement('div');
-  d.textContent = t;
-  return d.innerHTML;
+    </div>`;
 }
 
 /* =====================
