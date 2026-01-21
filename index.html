@@ -1479,7 +1479,7 @@ document.getElementById('retryBtn').onclick = () => { showUpload(); document.get
 document.getElementById('backBtn').onclick = () => showUpload();
 
 /**
- * ★ 超高速化版 uploadMultiple
+ * ★ 超高速化版 uploadMultiple（動画圧縮対応）
  */
 async function uploadMultiple(files) {
   showStatus();
@@ -1527,52 +1527,88 @@ async function uploadMultiple(files) {
     const fileDataList = await parallelLimit(fileDataTasks, 5);
     console.log('[UPLOAD] ✓ Phase 1 完了 (' + (Date.now() - startTime) + 'ms)');
 
-// ★ Phase 2: Asset アップロード（並列5個）
-console.log('[UPLOAD] Phase 2: Asset アップロード');
+    // ★ Phase 1.5: 動画圧縮（4.5MB 以上）
+    console.log('[UPLOAD] Phase 1.5: 動画圧縮チェック');
 
-const uploadTasks = fileDataList.map((fileData, idx) => async () => {
-  try {
-    const { file, fileId, fileName, info, release } = fileData;
+    const MAX_SIZE_WITHOUT_COMPRESSION = 4.5 * 1024 * 1024; // 4.5MB
 
-    // プログレス更新
-    const percent = Math.round((idx / valid.length) * 100);
-    document.getElementById('statusMessage').textContent = `${idx + 1} / ${valid.length} (${percent}%)`;
-    document.getElementById('progressPercent').textContent = percent + '%';
-    document.getElementById('progressFill').style.width = percent + '%';
-
-    console.log('[ASSET_' + idx + '] 開始');
-    
-    // ★ FormData でバイナリ直接アップロード（Base64 変換をスキップ）
-    const assetData = await uploader.uploadAssetBinary(
-      release.upload_url,
-      fileName,
-      file, // ★ File オブジェクトを直接渡す
-      fileId,
-      file.size
-    );
-    
-    console.log('[ASSET_' + idx + '] 完了');
-
-    return {
-      fileId,
-      fileName,
-      fileType: info.type,
-      downloadUrl: assetData.download_url,
-      fileSize: file.size,
-      uploadedAt: new Date().toISOString(),
-      metadata: {
-        extension: fileName.split('.').pop(),
-        mimeType: info.mimeType
+    for (let i = 0; i < fileDataList.length; i++) {
+      const fileData = fileDataList[i];
+      const { file, info, fileName } = fileData;
+      
+      // 動画ファイルで 4.5MB 以上なら圧縮
+      if (info.type === 'video' && file.size > MAX_SIZE_WITHOUT_COMPRESSION) {
+        console.log(`[COMPRESS_${i}] ${fileName}: ${(file.size / 1024 / 1024).toFixed(2)} MB - 圧縮開始`);
+        
+        document.getElementById('statusMessage').textContent = 
+          `動画を圧縮中... (${i + 1}/${fileDataList.length})`;
+        
+        const compressor = new VideoCompressionEngineLocal();
+        const compressedFile = await compressor.compress(file, (progress, msg) => {
+          document.getElementById('statusMessage').textContent = 
+            `動画圧縮中 ${i + 1}/${fileDataList.length}: ${progress}%`;
+          document.getElementById('progressPercent').textContent = `${progress}%`;
+          document.getElementById('progressFill').style.width = `${progress}%`;
+        });
+        
+        const originalMB = (file.size / 1024 / 1024).toFixed(2);
+        const compressedMB = (compressedFile.size / 1024 / 1024).toFixed(2);
+        const ratio = ((1 - compressedFile.size / file.size) * 100).toFixed(0);
+        
+        console.log(`[COMPRESS_${i}] 完了: ${originalMB}MB → ${compressedMB}MB (${ratio}% 削減)`);
+        
+        fileDataList[i].file = compressedFile;
       }
-    };
-  } catch (e) {
-    console.error('[PHASE2_' + idx + '] Error:', e.message);
-    throw e;
-  }
-});
+    }
 
-const uploadedFiles = await parallelLimit(uploadTasks, 5);
-console.log('[UPLOAD] ✓ Phase 2 完了 (' + (Date.now() - startTime) + 'ms)');
+    console.log('[UPLOAD] ✓ Phase 1.5 完了 (' + (Date.now() - startTime) + 'ms)');
+
+    // ★ Phase 2: Asset アップロード（並列5個）
+    console.log('[UPLOAD] Phase 2: Asset アップロード');
+
+    const uploadTasks = fileDataList.map((fileData, idx) => async () => {
+      try {
+        const { file, fileId, fileName, info, release } = fileData;
+
+        // プログレス更新
+        const percent = Math.round((idx / valid.length) * 100);
+        document.getElementById('statusMessage').textContent = `${idx + 1} / ${valid.length} (${percent}%)`;
+        document.getElementById('progressPercent').textContent = percent + '%';
+        document.getElementById('progressFill').style.width = percent + '%';
+
+        console.log('[ASSET_' + idx + '] 開始');
+        
+        // ★ Netlify Functions 経由でアップロード
+        const assetData = await uploader.uploadAssetBinary(
+          release.upload_url,
+          fileName,
+          file, // ★ File オブジェクトを渡す（内部で Base64 に変換される）
+          fileId,
+          file.size
+        );
+        
+        console.log('[ASSET_' + idx + '] 完了');
+
+        return {
+          fileId,
+          fileName,
+          fileType: info.type,
+          downloadUrl: assetData.download_url,
+          fileSize: file.size,
+          uploadedAt: new Date().toISOString(),
+          metadata: {
+            extension: fileName.split('.').pop(),
+            mimeType: info.mimeType
+          }
+        };
+      } catch (e) {
+        console.error('[PHASE2_' + idx + '] Error:', e.message);
+        throw e;
+      }
+    });
+
+    const uploadedFiles = await parallelLimit(uploadTasks, 5);
+    console.log('[UPLOAD] ✓ Phase 2 完了 (' + (Date.now() - startTime) + 'ms)');
 
     // ★ Phase 3: github.json 保存（1回だけ）
     console.log('[UPLOAD] Phase 3: github.json 保存');
@@ -1629,6 +1665,35 @@ console.log('[UPLOAD] ✓ Phase 2 完了 (' + (Date.now() - startTime) + 'ms)');
     showError(e.message || 'Upload failed');
   }
 }
+
+const uploadedFiles = await parallelLimit(uploadTasks, 5);
+console.log('[UPLOAD] ✓ Phase 2 完了 (' + (Date.now() - startTime) + 'ms)');
+
+    // ★ Phase 3: github.json 保存（1回だけ）
+    console.log('[UPLOAD] Phase 3: github.json 保存');
+
+    // キャッシュから取得、なければ新規取得
+    let githubJson = getGithubJsonCached();
+    if (!githubJson) {
+      const result = await uploader.getGithubJson();
+      githubJson = result;
+      setCacheGithubJson(githubJson);
+    }
+
+    githubJson.files = githubJson.files || [];
+    githubJson.files.push(...uploadedFiles);
+    githubJson.lastUpdated = new Date().toISOString();
+
+    try {
+      await uploader.saveGithubJson(githubJson);
+
+
+  } catch (e) {
+    console.error('[UPLOAD] ========== FAILED ==========');
+    console.error('[UPLOAD] Error:', e.message);
+    showError(e.message || 'Upload failed');
+  }
+
 
 // ビュー読み込み
 async function loadView(viewId) {
