@@ -63,7 +63,7 @@
         .error-screen.show { display: block; }
         .error-icon { font-size: 4rem; color: #ff6b6b; margin-bottom: 1.5rem; }
         .error-title { font-size: 1.8rem; font-weight: bold; color: #ff6b6b; margin-bottom: 0.5rem; }
-        .error-message { font-size: 1rem; color: #b0b0b0; margin-bottom: 2rem; }
+        .error-message { font-size: 1rem; color: #b0b0b0; margin-bottom: 2rem; word-break: break-word; }
         .error-actions { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
         .error-btn { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%); color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 8px; cursor: pointer; font-weight: 500; transition: all 0.3s; }
         .error-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(255, 107, 107, 0.3); }
@@ -202,11 +202,190 @@
     </footer>
 
 <script>
-// SimpleUploadManager
+// ===== GITHUB UPLOADER =====
+class GitHubUploader {
+  constructor() {
+    this.functionUrl = '/.netlify/functions/github-upload';
+  }
+
+  async createRelease(releaseTag, fileName, description) {
+    try {
+      const response = await fetch(this.functionUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create-release',
+          releaseTag: releaseTag,
+          metadata: {
+            title: fileName,
+            description: description,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Release creation failed: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || 'Release creation failed');
+      }
+
+      console.log('Release created:', data.data.release_id);
+      return data.data;
+    } catch (error) {
+      console.error('Release creation error:', error.message);
+      throw error;
+    }
+  }
+
+  async uploadAsset(uploadUrl, fileName, base64Data) {
+    try {
+      const response = await fetch(this.functionUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'upload-asset',
+          uploadUrl: uploadUrl,
+          fileName: fileName,
+          fileBase64: base64Data,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Asset upload failed: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || 'Asset upload failed');
+      }
+
+      console.log('Asset uploaded:', data.data.asset_id);
+      return data.data;
+    } catch (error) {
+      console.error('Asset upload error:', error.message);
+      throw error;
+    }
+  }
+
+  async getReleaseByTag(releaseTag) {
+    try {
+      const response = await fetch(this.functionUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'get-release-by-tag',
+          releaseTag: releaseTag,
+        }),
+      });
+
+      if (!response.ok) {
+        console.warn('Release not found');
+        return null;
+      }
+
+      const data = await response.json();
+      if (!data.success) {
+        console.warn('Failed to get release');
+        return null;
+      }
+
+      return data.data;
+    } catch (error) {
+      console.error('Error:', error.message);
+      return null;
+    }
+  }
+
+  async createView(fileIds, passwordHash, origin) {
+    const res = await fetch('/.netlify/functions/github-upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'create-view',
+        fileIds,
+        passwordHash: passwordHash || null,
+        origin: origin || window.location.origin
+      })
+    });
+
+    if (!res.ok) {
+      const t = await res.text().catch(() => '');
+      throw new Error(`createView failed: ${res.status} ${t}`);
+    }
+
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || 'createView failed');
+    return json.data;
+  }
+
+  async getGithubJson() {
+    try {
+      const response = await fetch(this.functionUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'get-github-json',
+        }),
+      });
+
+      if (!response.ok) {
+        console.warn('github.json not found - will create new one');
+        return { files: [], views: [], lastUpdated: new Date().toISOString() };
+      }
+
+      const data = await response.json();
+      if (!data.success) {
+        console.warn('github.json retrieval failed');
+        return { files: [], views: [], lastUpdated: new Date().toISOString() };
+      }
+
+      return data.data;
+    } catch (error) {
+      console.warn('Error retrieving github.json:', error.message);
+      return { files: [], views: [], lastUpdated: new Date().toISOString() };
+    }
+  }
+
+  async saveGithubJson(jsonData) {
+    try {
+      const response = await fetch(this.functionUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save-github-json',
+          jsonData: jsonData,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`github.json save failed: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || 'github.json save failed');
+      }
+
+      console.log('github.json saved');
+      return data.data;
+    } catch (error) {
+      console.error('github.json save error:', error.message);
+      throw error;
+    }
+  }
+}
+
+window.GitHubUploader = GitHubUploader;
+
+// ===== SIMPLE UPLOAD MANAGER =====
 class SimpleUploadManager {
   constructor() {
     this.githubUploader = new window.GitHubUploader();
   }
+
   generateUUID() {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
       const r = (Math.random() * 16) | 0;
@@ -214,6 +393,7 @@ class SimpleUploadManager {
       return v.toString(16);
     });
   }
+
   async fileToBase64(blob) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -225,10 +405,12 @@ class SimpleUploadManager {
       reader.readAsDataURL(blob);
     });
   }
+
   isVideoFile(file) {
     const videoMimes = ['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska'];
     return videoMimes.some(mime => file.type.startsWith(mime));
   }
+
   getFileExtension(fileType) {
     const extensionMap = {
       'video/mp4': 'mp4', 'video/webm': 'webm', 'video/ogg': 'ogg', 'image/jpeg': 'jpg',
@@ -237,53 +419,88 @@ class SimpleUploadManager {
     };
     return extensionMap[fileType] || 'bin';
   }
+
   async uploadFile(fileBlob, fileName, onProgress = () => {}) {
     try {
       if (typeof onProgress !== 'function') onProgress = (p, m) => console.log(`[${p}%] ${m}`);
       const fileId = this.generateUUID();
-      onProgress(2, 'Preparing...');
+      onProgress(2);
+
       let processedBlob = fileBlob;
       let wasCompressed = false;
+
       if (this.isVideoFile(fileBlob) && window.VideoCompressionEngine) {
         try {
           const compressor = new window.VideoCompressionEngine();
           processedBlob = await compressor.compress(fileBlob, (progress, message) => {
-            onProgress(2 + (progress * 0.33), message);
+            onProgress(2 + (progress * 0.33));
           });
           wasCompressed = true;
         } catch (error) {
-          console.warn('Compression failed:', error.message);
+          console.warn('Compression failed, using original file');
         }
       }
-      onProgress(40, 'Encoding to Base64...');
+
+      onProgress(40);
       const base64 = await this.fileToBase64(processedBlob);
-      onProgress(45, 'Uploading to GitHub...');
+
+      onProgress(45);
       const releaseTag = `file_${fileId}`;
       const fileExtension = this.getFileExtension(processedBlob.type);
       const assetFileName = `${fileName.substring(0, fileName.lastIndexOf('.') || fileName.length)}.${fileExtension}`;
+
       const releaseData = await this.githubUploader.createRelease(releaseTag, fileName, `File ID: ${fileId}\nOriginal Name: ${fileName}\nType: ${processedBlob.type}\nUploaded: ${new Date().toISOString()}\nCompressed: ${wasCompressed ? 'Yes' : 'No'}`);
-      onProgress(65, 'Uploading file asset...');
+
+      onProgress(65);
       const assetData = await this.githubUploader.uploadAsset(releaseData.upload_url, assetFileName, base64);
-      onProgress(80, 'Recording upload info...');
+
+      onProgress(80);
       const res = await this.githubUploader.getGithubJson();
-      const githubJson = res.data;
+      const githubJson = res;
+
       githubJson.files = Array.isArray(githubJson.files) ? githubJson.files : [];
+
       githubJson.files.push({
-        fileId: fileId, fileName: fileName, downloadUrl: assetData.download_url, fileSize: processedBlob.size,
+        fileId: fileId,
+        fileName: fileName,
+        downloadUrl: assetData.download_url,
+        githubReleaseUrl: releaseData.html_url,
+        fileSize: processedBlob.size,
+        originalSize: fileBlob.size,
+        compressed: wasCompressed,
         uploadedAt: new Date().toISOString(),
+        releaseTag: releaseTag,
+        assetId: assetData.asset_id,
       });
+
       githubJson.lastUpdated = new Date().toISOString();
+
       await this.githubUploader.saveGithubJson(githubJson);
-      onProgress(90, 'Generating share link...');
+
+      onProgress(90);
       const viewUrl = `${window.location.origin}/?id=${fileId}`;
-      onProgress(98, 'Finalizing...');
-      onProgress(100, 'Upload complete!');
-      return { success: true, fileName: fileName, fileId: fileId, viewUrl: viewUrl, downloadUrl: assetData.download_url, fileSize: processedBlob.size, uploadedAt: new Date().toISOString(), wasCompressed: wasCompressed, };
+
+      onProgress(98);
+      onProgress(100);
+
+      return {
+        success: true,
+        fileName: fileName,
+        fileId: fileId,
+        viewUrl: viewUrl,
+        downloadUrl: assetData.download_url,
+        fileSize: processedBlob.size,
+        originalSize: fileBlob.size,
+        githubUrl: releaseData.html_url,
+        uploadedAt: new Date().toISOString(),
+        wasCompressed: wasCompressed,
+      };
     } catch (error) {
       console.error('Upload error:', error.message);
       throw new Error(`Upload failed: ${error.message}`);
     }
   }
+
   async getFileInfo(fileId) {
     try {
       const githubJson = await this.githubUploader.getGithubJson();
@@ -294,18 +511,21 @@ class SimpleUploadManager {
       return null;
     }
   }
+
   async getAllFiles() {
     try {
       const githubJson = await this.githubUploader.getGithubJson();
       return githubJson.files || [];
     } catch (error) {
-      console.error('File list fetch error:', error.message);
+      console.error('File list error:', error.message);
       return [];
     }
   }
 }
+
 window.SimpleUploadManager = SimpleUploadManager;
 
+// ===== APP =====
 const MAX_FILES = 5;
 const pathMatch = location.pathname.match(/^\/d\/([a-zA-Z0-9]+)/);
 const viewId = pathMatch?.[1] || new URLSearchParams(location.search).get('id') || null;
@@ -445,7 +665,8 @@ async function uploadMultiple(files) {
       if (!result || !result.fileId) throw new Error('Upload failed');
       uploadedIds.push(result.fileId);
     }
-    document.getElementById('shareUrl').value = uploadedIds[0] ? `${window.location.origin}/?id=${uploadedIds[0]}` : '';
+    const viewData = await uploadManager.githubUploader.createView(uploadedIds, null, window.location.origin);
+    document.getElementById('shareUrl').value = viewData.shareUrl || `${window.location.origin}/?id=${uploadedIds[0]}`;
     showSuccessScreen();
   } catch (e) {
     console.error('Upload error:', e);
