@@ -25,9 +25,8 @@ const appState = {
 document.addEventListener('DOMContentLoaded', async () => {
   appState.storage = new StorageManager();
   appState.compression = new VideoCompressionEngine();
-  appState.github = new SimpleUploadManager(); // Changed to SimpleUploadManager
+  appState.github = new SimpleUploadManager();
 
-  // FFmpeg 準備は不要（フォールバック対応）
   setupEventListeners();
   console.log('✅ Fast Upload Initialized');
 });
@@ -78,6 +77,30 @@ function setupEventListeners() {
 }
 
 /**
+ * モバイルデバイス判定（iOS対応）
+ */
+function isMobileDevice() {
+  const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+  
+  if (/iPad|iPhone|iPod/.test(userAgent)) {
+    console.log('[MOBILE] iOS detected');
+    return true;
+  }
+  
+  if (/android/i.test(userAgent)) {
+    console.log('[MOBILE] Android detected');
+    return true;
+  }
+  
+  if (/mobile/i.test(userAgent)) {
+    console.log('[MOBILE] Mobile device detected');
+    return true;
+  }
+  
+  return false;
+}
+
+/**
  * Handle file selection - OPTIMIZED FOR SPEED
  */
 async function handleFileSelect(file) {
@@ -100,34 +123,61 @@ async function handleFileSelect(file) {
   else if (isImage) fileType = 'image';
   else if (isDocument) fileType = 'document';
 
-  console.log(` ${fileType}: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB)`);
+  console.log(`📁 ${fileType}: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB)`);
 
   appState.currentFile = file;
   showProcessing();
 
   try {
-    // 1. PREPARE FILE
-    console.log(' Preparing file...');
-    const fileTypeMessage = isVideo ? 'Optimizing video' : 'Preparing file';
-    updateProgress(5, fileTypeMessage + '...');
+    // ★ 修正: モバイルデバイス判定
+    const isMobile = isMobileDevice();
+    console.log('[UPLOAD] isMobile:', isMobile);
 
-    const compressedBlob = await appState.compression.compress(
-      file,
-      (percent, message) => {
-        updateProgress(percent * 0.4, message); // 40% of total
+    // 1. PREPARE FILE
+    console.log('📦 Preparing file...');
+    
+    let compressedBlob = file;
+    let wasCompressed = false;
+
+    // ★ 修正: モバイル以外の場合のみ圧縮
+    if (isVideo && !isMobile) {
+      const fileTypeMessage = 'Optimizing video';
+      updateProgress(5, fileTypeMessage + '...');
+
+      try {
+        compressedBlob = await appState.compression.compress(
+          file,
+          (percent, message) => {
+            updateProgress(percent * 0.4, message); // 40% of total
+          }
+        );
+        wasCompressed = true;
+        console.log('✅ Video optimized');
+      } catch (error) {
+        console.warn('⚠️ Video optimization failed:', error.message);
+        console.warn('📱 Continuing with original file...');
+        compressedBlob = file;
+        wasCompressed = false;
       }
-    );
+    } else if (isVideo && isMobile) {
+      console.log('📱 Mobile device detected - Skipping compression');
+      updateProgress(5, 'Preparing file...');
+      compressedBlob = file;
+      wasCompressed = false;
+    } else {
+      updateProgress(5, 'Preparing file...');
+      compressedBlob = file;
+      wasCompressed = false;
+    }
 
     console.log('✅ File ready');
     updateProgress(40, 'Uploading to cloud...');
 
     // 2. UPLOAD to GitHub via Netlify
-    const fileId = generateUUID();
-    
-    // シンプルなアップロード
-    const uploadResult = await appState.github.uploadToGitHub(
+    // ★ 修正: 正しいメソッド名を使用
+    const uploadResult = await appState.github.uploadFile(
       compressedBlob,
-      `${fileId}-${file.name}`,
+      file.name,
       (percent, message) => {
         updateProgress(40 + percent * 0.6, message); // 60% of total
       }
@@ -135,15 +185,18 @@ async function handleFileSelect(file) {
 
     console.log('✅ Upload complete');
 
-    // localStorage に保存
-    appState.storage.addUpload({
-      file_id: fileId,
-      title: file.name.replace(/\.[^/.]+$/, ''),
-      original_filename: file.name,
-      original_size: file.size,
-      download_url: uploadResult.downloadUrl,
-      uploaded_at: new Date().toISOString(),
-    });
+    // ★ 修正: uploadResult から正しいプロパティを取得
+    if (appState.storage) {
+      appState.storage.addUpload({
+        file_id: uploadResult.fileId,
+        title: file.name.replace(/\.[^/.]+$/, ''),
+        original_filename: file.name,
+        original_size: uploadResult.originalSize || file.size,
+        download_url: uploadResult.downloadUrl,
+        uploaded_at: uploadResult.uploadedAt,
+        was_compressed: wasCompressed,
+      });
+    }
 
     // 成功画面を表示
     updateProgress(100, 'Complete!');
@@ -174,13 +227,26 @@ function updateProgress(percent, message) {
   const progressFill = document.getElementById('progressFill');
   const progressText = document.getElementById('progressText');
 
-  progressFill.style.width = Math.min(percent, 100) + '%';
-  progressText.textContent = Math.round(percent) + '%';
+  if (progressFill) {
+    progressFill.style.width = Math.min(percent, 100) + '%';
+  }
+  
+  if (progressText) {
+    progressText.textContent = Math.round(percent) + '%';
+  }
 
-  document.getElementById('processingMessage').textContent = message;
-  document.getElementById('processingTitle').textContent = message;
+  const processingMessage = document.getElementById('processingMessage');
+  const processingTitle = document.getElementById('processingTitle');
+  
+  if (processingMessage) {
+    processingMessage.textContent = message;
+  }
+  
+  if (processingTitle) {
+    processingTitle.textContent = message;
+  }
 
-  console.log(` ${percent.toFixed(0)}% - ${message}`);
+  console.log(`⏳ ${percent.toFixed(0)}% - ${message}`);
 }
 
 /**
@@ -192,15 +258,31 @@ function showSuccess(uploadResult) {
   document.getElementById('successArea').style.display = 'block';
   document.getElementById('errorArea').style.display = 'none';
 
-  // Generate share URL
-  const shareUrl = uploadResult.downloadUrl || window.location.origin;
-  document.getElementById('shareUrl').value = shareUrl;
+  // ★ 修正: uploadResult から正しいプロパティを取得
+  const shareUrl = uploadResult.downloadUrl || uploadResult.viewUrl || window.location.origin;
+  const shareUrlInput = document.getElementById('shareUrl');
+  
+  if (shareUrlInput) {
+    shareUrlInput.value = shareUrl;
+  }
 
   // Update stats
-  const stats = appState.storage.getStatistics();
-  document.getElementById('totalUploads').textContent = stats.active_uploads;
-  document.getElementById('totalStorage').textContent =
-    (stats.total_storage_used / 1024 / 1024).toFixed(1);
+  if (appState.storage) {
+    const stats = appState.storage.getStatistics();
+    const totalUploads = document.getElementById('totalUploads');
+    const totalStorage = document.getElementById('totalStorage');
+    
+    if (totalUploads) {
+      totalUploads.textContent = stats.active_uploads;
+    }
+    
+    if (totalStorage) {
+      totalStorage.textContent = (stats.total_storage_used / 1024 / 1024).toFixed(1);
+    }
+  }
+
+  console.log('✅ Upload success!');
+  console.log('📥 Download URL:', shareUrl);
 }
 
 /**
@@ -212,7 +294,11 @@ function showError(message) {
   document.getElementById('successArea').style.display = 'none';
   document.getElementById('errorArea').style.display = 'block';
 
-  document.getElementById('errorMessage').textContent = message;
+  const errorMessage = document.getElementById('errorMessage');
+  if (errorMessage) {
+    errorMessage.textContent = message;
+  }
+
   appState.isProcessing = false;
 }
 
@@ -225,8 +311,15 @@ function resetForm() {
   document.getElementById('successArea').style.display = 'none';
   document.getElementById('errorArea').style.display = 'none';
 
-  document.getElementById('fileInput').value = '';
-  document.getElementById('progressFill').style.width = '0%';
+  const fileInput = document.getElementById('fileInput');
+  if (fileInput) {
+    fileInput.value = '';
+  }
+
+  const progressFill = document.getElementById('progressFill');
+  if (progressFill) {
+    progressFill.style.width = '0%';
+  }
 
   appState.currentFile = null;
   appState.isProcessing = false;
@@ -237,16 +330,22 @@ function resetForm() {
  */
 function copyShareUrl() {
   const shareUrl = document.getElementById('shareUrl');
+  if (!shareUrl) return;
+
   shareUrl.select();
 
   navigator.clipboard.writeText(shareUrl.value).then(() => {
     const btn = document.getElementById('copyUrlBtn');
-    const originalText = btn.textContent;
-
-    btn.textContent = '✓ Copied!';
-    setTimeout(() => {
-      btn.textContent = originalText;
-    }, 2000);
+    if (btn) {
+      const originalText = btn.textContent;
+      btn.textContent = '✓ Copied!';
+      
+      setTimeout(() => {
+        btn.textContent = originalText;
+      }, 2000);
+    }
+  }).catch(error => {
+    console.error('Copy failed:', error);
   });
 }
 
