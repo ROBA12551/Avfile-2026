@@ -226,6 +226,66 @@ async function getReleaseByTag(releaseTag) {
 }
 
 /**
+ * github.json を GitHub から取得
+ */
+async function getGithubJson() {
+  try {
+    const path = `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`;
+    const response = await githubRequest('GET', path);
+    
+    if (!response.content) {
+      throw new Error('github.json が見つかりません');
+    }
+    
+    // Base64 デコード
+    const content = Buffer.from(response.content, 'base64').toString('utf-8');
+    const jsonData = JSON.parse(content);
+    
+    return {
+      data: jsonData,
+      sha: response.sha,
+    };
+  } catch (error) {
+    if (error.message.includes('404') || error.message.includes('Not Found')) {
+      console.log('📝 github.json が存在しません - 新規作成対象');
+      return {
+        data: { files: [], lastUpdated: new Date().toISOString() },
+        sha: null,
+      };
+    }
+    throw error;
+  }
+}
+
+/**
+ * github.json を GitHub に保存
+ */
+async function saveGithubJson(jsonData, existingSha = null) {
+  try {
+    const path = `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`;
+    
+    // Base64 エンコード
+    const content = Buffer.from(JSON.stringify(jsonData, null, 2)).toString('base64');
+    
+    const body = {
+      message: `Update github.json - ${new Date().toISOString()}`,
+      content: content,
+      branch: 'main',
+    };
+    
+    // 既存ファイルがあれば sha を含める
+    if (existingSha) {
+      body.sha = existingSha;
+    }
+    
+    const response = await githubRequest('PUT', path, body);
+    return response;
+  } catch (error) {
+    throw new Error(`github.json 保存失敗: ${error.message}`);
+  }
+}
+
+/**
  * Netlify Function メインハンドラー
  */
 exports.handler = async (event, context) => {
@@ -297,6 +357,20 @@ exports.handler = async (event, context) => {
           throw new Error('Missing releaseId');
         }
         response = await deleteRelease(body.releaseId);
+        break;
+
+      case 'get-github-json':
+        const jsonResult = await getGithubJson();
+        response = jsonResult.data;
+        break;
+
+      case 'save-github-json':
+        if (!body.jsonData) {
+          throw new Error('Missing jsonData');
+        }
+        const jsonState = await getGithubJson();
+        await saveGithubJson(body.jsonData, jsonState.sha);
+        response = { success: true, message: 'github.json saved' };
         break;
 
       default:
