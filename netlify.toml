@@ -4,10 +4,11 @@
   functions = "netlify/functions"
   publish = "."
 
-[functions]
+# ★ [[functions]] アレイテーブルで定義
+[[functions]]
+  name = "*"
   node_bundler = "esbuild"
 
-# ★ github-upload 関数の設定
 [[functions]]
   name = "github-upload"
   memory = 3008
@@ -16,7 +17,6 @@
 [build.environment]
   NODE_VERSION = "18"
   NODE_ENV = "production"
-
 
 # Cache settings for JavaScript files
 [[headers]]
