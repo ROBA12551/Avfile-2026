@@ -379,9 +379,14 @@
     {
       "fileId": "f_tpekbk8l0",
       "fileName": "JDRmkbE.mp4",
+      "fileType": "video",
       "downloadUrl": "https://github.com/ROBA12551/Avfile-2026/releases/download/file_f_tpekbk8l0/JDRmkbE.mp4",
       "fileSize": 2503093,
-      "uploadedAt": "2026-01-21T11:41:13.789Z"
+      "uploadedAt": "2026-01-21T11:41:12.470Z",
+      "metadata": {
+        "extension": "mp4",
+        "mimeType": "video/mp4"
+      }
     }
   ],
   "views": [
@@ -611,5 +616,5 @@
       "createdAt": "2026-01-21T11:14:25.142Z"
     }
   ],
-  "lastUpdated": "2026-01-21T11:41:14.339Z"
+  "lastUpdated": "2026-01-21T11:41:13.076Z"
 }
