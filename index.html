@@ -1022,83 +1022,83 @@ class GitHubUploader {
     return data.data;
   }
 
-// ★ Netlify Functions 経由でアップロード（Token 不要）
-async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
-  const sanitizedFileName = this.sanitizeFileName(fileName);
+  // ★ Netlify Functions 経由でアップロード（Token 不要）
+  async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
+    const sanitizedFileName = this.sanitizeFileName(fileName);
 
-  console.log('[UPLOAD_BINARY] Original fileName:', fileName);
-  console.log('[UPLOAD_BINARY] Sanitized fileName:', sanitizedFileName);
-  console.log('[UPLOAD_BINARY] File size:', (fileSize / 1024 / 1024).toFixed(2), 'MB');
+    console.log('[UPLOAD_BINARY] Original fileName:', fileName);
+    console.log('[UPLOAD_BINARY] Sanitized fileName:', sanitizedFileName);
+    console.log('[UPLOAD_BINARY] File size:', (fileSize / 1024 / 1024).toFixed(2), 'MB');
 
-  if (!fileObject) {
-    throw new Error('Invalid file object provided');
-  }
+    if (!fileObject) {
+      throw new Error('Invalid file object provided');
+    }
 
-  if (!uploadUrl || typeof uploadUrl !== 'string') {
-    throw new Error('Invalid uploadUrl provided');
-  }
+    if (!uploadUrl || typeof uploadUrl !== 'string') {
+      throw new Error('Invalid uploadUrl provided');
+    }
 
-  // ★ ファイルを Base64 に変換
-  console.log('[UPLOAD_BINARY] Converting to Base64...');
-  const base64 = await toBase64Fast(fileObject);
-  console.log('[UPLOAD_BINARY] Base64 length:', base64.length, 'chars');
+    // ★ ファイルを Base64 に変換
+    console.log('[UPLOAD_BINARY] Converting to Base64...');
+    const base64 = await toBase64Fast(fileObject);
+    console.log('[UPLOAD_BINARY] Base64 length:', base64.length, 'chars');
 
-  // ★ Netlify Functions に送信
-  console.log('[UPLOAD_BINARY] Sending to Netlify Functions...');
+    // ★ Netlify Functions に送信
+    console.log('[UPLOAD_BINARY] Sending to Netlify Functions...');
 
-  const response = await fetch(this.functionUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: 'upload-asset-binary',
-      uploadUrl: uploadUrl,
-      fileName: sanitizedFileName,
-      fileBase64: base64,
-      fileId,
-      fileSize,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => '');
-    console.error('[UPLOAD_BINARY] Error:', response.status, errorText);
-    throw new Error(`Upload failed: ${response.status} - ${errorText}`);
-  }
-
-  const data = await response.json();
-  if (!data.success) throw new Error(data.error || 'Upload failed');
-  
-  console.log('[UPLOAD_BINARY] Complete - Asset ID:', data.data.asset_id);
-  return data.data;
-}
-
-// ★ github.json を非同期更新
-async updateGithubJsonAsync(fileId, fileName, downloadUrl, fileSize) {
-  try {
-    console.log('[ASYNC] Updating github.json...');
-    
-    // 既存の github.json を取得
-    const currentJson = await this.getGithubJson();
-    
-    // 新しいファイル情報を追加
-    currentJson.files = currentJson.files || [];
-    currentJson.files.push({
-      fileId,
-      fileName,
-      downloadUrl,
-      fileSize,
-      uploadedAt: new Date().toISOString(),
+    const response = await fetch(this.functionUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'upload-asset-binary',
+        uploadUrl: uploadUrl,
+        fileName: sanitizedFileName,
+        fileBase64: base64,
+        fileId,
+        fileSize,
+      }),
     });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      console.error('[UPLOAD_BINARY] Error:', response.status, errorText);
+      throw new Error(`Upload failed: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    if (!data.success) throw new Error(data.error || 'Upload failed');
     
-    // 保存
-    await this.saveGithubJson(currentJson);
-    
-    console.log('[ASYNC] github.json updated successfully');
-  } catch (error) {
-    console.error('[ASYNC] Error:', error.message);
-    throw error;
+    console.log('[UPLOAD_BINARY] Complete - Asset ID:', data.data.asset_id);
+    return data.data;
   }
-}
+
+  // ★ github.json を非同期更新
+  async updateGithubJsonAsync(fileId, fileName, downloadUrl, fileSize) {
+    try {
+      console.log('[ASYNC] Updating github.json...');
+      
+      // 既存の github.json を取得
+      const currentJson = await this.getGithubJson();
+      
+      // 新しいファイル情報を追加
+      currentJson.files = currentJson.files || [];
+      currentJson.files.push({
+        fileId,
+        fileName,
+        downloadUrl,
+        fileSize,
+        uploadedAt: new Date().toISOString(),
+      });
+      
+      // 保存
+      await this.saveGithubJson(currentJson);
+      
+      console.log('[ASYNC] github.json updated successfully');
+    } catch (error) {
+      console.error('[ASYNC] Error:', error.message);
+      throw error;
+    }
+  }
 
   // ★ ファイルを Base64 に変換（チャンク処理でスタック溢れ防止）
   async fileToBase64Chunked(file) {
@@ -1478,8 +1478,11 @@ document.getElementById('openLinkBtn').onclick = () => window.open(document.getE
 document.getElementById('retryBtn').onclick = () => { showUpload(); document.getElementById('fileInput').value = ''; };
 document.getElementById('backBtn').onclick = () => showUpload();
 
+// ★ グローバル定数
+const MAX_SIZE_WITHOUT_COMPRESSION = 4.0 * 1024 * 1024; // ★ 4MB に変更
+
 /**
- * ★ 超高速化版 uploadMultiple（動画圧縮対応）
+ * ★ 超高速化版 uploadMultiple（動画圧縮対応・修正版）
  */
 async function uploadMultiple(files) {
   showStatus();
@@ -1527,16 +1530,16 @@ async function uploadMultiple(files) {
     const fileDataList = await parallelLimit(fileDataTasks, 5);
     console.log('[UPLOAD] ✓ Phase 1 完了 (' + (Date.now() - startTime) + 'ms)');
 
-    // ★ Phase 1.5: 動画圧縮（4.5MB 以上）
+    // ★ Phase 1.5: 動画圧縮（4MB 以上）
     console.log('[UPLOAD] Phase 1.5: 動画圧縮チェック');
-
-    const MAX_SIZE_WITHOUT_COMPRESSION = 4.5 * 1024 * 1024; // 4.5MB
 
     for (let i = 0; i < fileDataList.length; i++) {
       const fileData = fileDataList[i];
       const { file, info, fileName } = fileData;
       
-      // 動画ファイルで 4.5MB 以上なら圧縮
+      console.log(`[COMPRESS_CHECK_${i}] File: ${fileName}, Size: ${(file.size / 1024 / 1024).toFixed(2)} MB, Type: ${info.type}`);
+      
+      // 動画ファイルで 4MB 以上なら圧縮
       if (info.type === 'video' && file.size > MAX_SIZE_WITHOUT_COMPRESSION) {
         console.log(`[COMPRESS_${i}] ${fileName}: ${(file.size / 1024 / 1024).toFixed(2)} MB - 圧縮開始`);
         
@@ -1558,6 +1561,8 @@ async function uploadMultiple(files) {
         console.log(`[COMPRESS_${i}] 完了: ${originalMB}MB → ${compressedMB}MB (${ratio}% 削減)`);
         
         fileDataList[i].file = compressedFile;
+      } else {
+        console.log(`[COMPRESS_${i}] スキップ - Size: ${(file.size / 1024 / 1024).toFixed(2)} MB (閾値: 4.0 MB)`);
       }
     }
 
@@ -1582,7 +1587,7 @@ async function uploadMultiple(files) {
         const assetData = await uploader.uploadAssetBinary(
           release.upload_url,
           fileName,
-          file, // ★ File オブジェクトを渡す（内部で Base64 に変換される）
+          file,
           fileId,
           file.size
         );
@@ -1613,7 +1618,6 @@ async function uploadMultiple(files) {
     // ★ Phase 3: github.json 保存（1回だけ）
     console.log('[UPLOAD] Phase 3: github.json 保存');
 
-    // キャッシュから取得、なければ新規取得
     let githubJson = getGithubJsonCached();
     if (!githubJson) {
       const result = await uploader.getGithubJson();
@@ -1628,7 +1632,6 @@ async function uploadMultiple(files) {
     try {
       await uploader.saveGithubJson(githubJson);
     } catch (e) {
-      // リトライ（キャッシュクリア）
       console.warn('[SAVE] リトライ');
       clearCacheGithubJson();
       const fresh = await uploader.getGithubJson();
@@ -1665,7 +1668,6 @@ async function uploadMultiple(files) {
     showError(e.message || 'Upload failed');
   }
 }
-
 
 // ビュー読み込み
 async function loadView(viewId) {
