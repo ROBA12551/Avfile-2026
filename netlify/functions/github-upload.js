@@ -243,6 +243,8 @@ async function saveGithubJson(jsonData, sha = null) {
 
   const clean = normalizeGithubJson(jsonData);
 
+  logInfo(`Saving: ${clean.files.length} files, ${clean.views.length} views`);
+
   const content = Buffer
     .from(JSON.stringify(clean, null, 2))
     .toString('base64');
@@ -337,11 +339,31 @@ exports.handler = async (event) => {
 
       case 'upload-asset':
         logInfo(`Action: upload-asset fileName=${body.fileName}`);
-        response = await uploadAsset(
+        const assetResponse = await uploadAsset(
           body.uploadUrl,
           Buffer.from(body.fileBase64, 'base64'),
           body.fileName
         );
+
+        // ★★★ 重要: アセットアップロード後、ファイル情報を github.json に保存 ★★★
+        const current = await getGithubJson();
+        const json = current.data;
+        json.files = json.files || [];
+
+        const fileInfo = {
+          fileId: body.fileId,
+          fileName: body.fileName,
+          downloadUrl: assetResponse.download_url,  // ★ URL を保存
+          fileSize: body.fileSize,
+          uploadedAt: new Date().toISOString(),
+        };
+
+        json.files.push(fileInfo);
+        logInfo(`File saved to github.json: ${body.fileName}`);
+
+        await saveGithubJson(json, current.sha);
+
+        response = assetResponse;
         break;
 
       case 'get-github-json':
