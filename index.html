@@ -1088,26 +1088,7 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
     }
   }
 
-  // ★ ファイルを Base64 に変換（チャンク処理でスタック溢れ防止）
-  async fileToBase64Chunked(file) {
-    const CHUNK_SIZE = 256 * 1024;  // 256KB ずつ処理
-    const chunks = [];
-    let offset = 0;
 
-    while (offset < file.size) {
-      const end = Math.min(offset + CHUNK_SIZE, file.size);
-      const chunk = file.slice(offset, end);
-      const arrayBuffer = await chunk.arrayBuffer();
-      const binary = String.fromCharCode.apply(null, new Uint8Array(arrayBuffer));
-      chunks.push(binary);
-      offset = end;
-      console.log('[BASE64_CHUNK] Processed:', offset, '/', file.size, 'bytes');
-    }
-
-    // すべてのチャンクを結合して Base64 エンコード
-    const fullBinary = chunks.join('');
-    return btoa(fullBinary);
-  }
 
   async getGithubJson() {
     try {
