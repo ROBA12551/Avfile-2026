@@ -1,8 +1,3 @@
-/**
- * netlify/functions/github-upload.js
- * Avfile - GitHub Releases Uploader + github.json Registry + View Creator
- */
-
 const https = require('https');
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
@@ -110,58 +105,63 @@ async function githubRequest(method, path, body = null, headers = {}) {
 
 async function githubUploadRequest(method, fullUrl, body, headers = {}) {
   return new Promise((resolve, reject) => {
-    const parsed = new URL(fullUrl);
+    try {
+      const parsed = new URL(fullUrl);
 
-    const options = {
-      hostname: parsed.hostname,
-      port: 443,
-      path: parsed.pathname + parsed.search,
-      method,
-      headers: {
-        'Authorization': `token ${GITHUB_TOKEN}`,
-        'User-Agent': 'Avfile-Netlify',
-        'Content-Type': 'application/octet-stream',
-        ...headers,
-      },
-    };
+      const options = {
+        hostname: parsed.hostname,
+        port: 443,
+        path: parsed.pathname + parsed.search,
+        method,
+        headers: {
+          'Authorization': `token ${GITHUB_TOKEN}`,
+          'User-Agent': 'Avfile-Netlify',
+          'Content-Type': 'application/octet-stream',
+          ...headers,
+        },
+      };
 
-    if (body) {
-      options.headers['Content-Length'] = body.length;
-    }
+      if (body) {
+        options.headers['Content-Length'] = body.length;
+      }
 
-    logInfo(`Upload Request: ${method} ${parsed.hostname}${options.path.substring(0, 100)}`);
-    logInfo(`Upload body size: ${body ? body.length : 0} bytes`);
+      logInfo(`Upload Request: ${method} ${parsed.hostname}${options.path.substring(0, 80)}`);
+      logInfo(`Upload body size: ${body ? body.length : 0} bytes`);
 
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', (c) => (data += c));
-      res.on('end', () => {
-        logInfo(`Upload Response: ${res.statusCode}`);
-        logInfo(`Upload Response Data: ${data.substring(0, 500)}`);
-        
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          try {
-            resolve(data ? JSON.parse(data) : {});
-          } catch {
-            reject(new Error('Failed to parse upload response'));
+      const req = https.request(options, (res) => {
+        let data = '';
+        res.on('data', (c) => (data += c));
+        res.on('end', () => {
+          logInfo(`Upload Response: ${res.statusCode}`);
+          
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            try {
+              resolve(data ? JSON.parse(data) : {});
+            } catch {
+              logError('Upload response not JSON - retrying');
+              resolve({});
+            }
+          } else {
+            reject(
+              new Error(
+                `Upload Error ${res.statusCode}: ${data || 'Unknown'}`
+              )
+            );
           }
-        } else {
-          reject(
-            new Error(
-              `Upload Error ${res.statusCode}: ${data || 'Unknown'}`
-            )
-          );
-        }
+        });
       });
-    });
 
-    req.on('error', (err) => {
-      logError(`Upload Request Error: ${err.message}`);
-      reject(err);
-    });
-    
-    if (body) req.write(body);
-    req.end();
+      req.on('error', (err) => {
+        logError(`Upload Request Error: ${err.message}`);
+        reject(err);
+      });
+      
+      if (body) req.write(body);
+      req.end();
+    } catch (e) {
+      logError(`URL Parse Error: ${e.message}`);
+      reject(e);
+    }
   });
 }
 
@@ -189,29 +189,34 @@ async function createRelease(tag, metadata) {
 }
 
 async function uploadAsset(uploadUrl, fileData, fileName) {
-  logInfo(`Preparing asset upload: ${fileName}`);
-  logInfo(`File size: ${fileData.length} bytes`);
+  try {
+    logInfo(`Preparing asset upload: ${fileName}`);
+    logInfo(`File size: ${fileData.length} bytes`);
 
-  const clean = uploadUrl.replace('{?name,label}', '');
-  const assetUrl = `${clean}?name=${encodeURIComponent(fileName)}`;
+    const clean = uploadUrl.replace('{?name,label}', '');
+    const assetUrl = `${clean}?name=${encodeURIComponent(fileName)}`;
 
-  logInfo(`Asset URL: ${assetUrl.substring(0, 100)}`);
+    logInfo(`Asset URL: ${assetUrl.substring(0, 100)}`);
 
-  const data = await githubUploadRequest(
-    'POST',
-    assetUrl,
-    fileData,
-    { 'Content-Type': 'application/octet-stream' }
-  );
+    const data = await githubUploadRequest(
+      'POST',
+      assetUrl,
+      fileData,
+      { 'Content-Type': 'application/octet-stream' }
+    );
 
-  logInfo(`Asset uploaded: ${data.id || 'unknown'}`);
+    logInfo(`Asset uploaded: ${data.id || 'unknown'}`);
 
-  return {
-    asset_id: data.id,
-    name: data.name,
-    size: data.size,
-    download_url: data.browser_download_url,
-  };
+    return {
+      asset_id: data.id,
+      name: data.name,
+      size: data.size,
+      download_url: data.browser_download_url,
+    };
+  } catch (e) {
+    logError(`Asset upload failed: ${e.message}`);
+    throw e;
+  }
 }
 
 async function getGithubJson() {
