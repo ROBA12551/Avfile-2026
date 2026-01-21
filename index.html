@@ -12,7 +12,7 @@
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #0f0f1e 0%, #1a1a2e 100%); color: #e0e0e0; min-height: 100vh; }
         .navbar { background: rgba(15, 15, 30, 0.95); backdrop-filter: blur(10px); padding: 1rem 2rem; border-bottom: 1px solid rgba(102, 126, 234, 0.2); position: sticky; top: 0; z-index: 100; }
         .navbar-content { max-width: 1400px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
-        .logo { font-size: 1.5rem; font-weight: bold; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; display: flex; align-items: center; gap: 0.5rem; }
+        .logo { font-size: 1.5rem; font-weight: bold; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
         .container { max-width: 1400px; margin: 0 auto; padding: 0 1rem; }
         .hero { padding: 4rem 0; text-align: center; }
         .hero h1 { font-size: 2.5rem; margin-bottom: 1rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
@@ -74,40 +74,29 @@
         .file-preview video, .file-preview img { max-width: 100%; max-height: 600px; border-radius: 8px; }
         .file-preview p { color: #ff6b6b; }
         .footer { margin-top: 4rem; padding: 2rem; border-top: 1px solid rgba(102, 126, 234, 0.2); text-align: center; color: #707070; font-size: 0.9rem; }
-        .footer a { color: #667eea; text-decoration: none; }
-        .footer a:hover { text-decoration: underline; }
-        @media (max-width: 768px) { .hero h1 { font-size: 1.8rem; } .upload-status-title { font-size: 1.3rem; } .success-title { font-size: 1.3rem; } .error-title { font-size: 1.3rem; } .file-viewer-header { flex-direction: column; align-items: flex-start; } }
+        @media (max-width: 768px) { .hero h1 { font-size: 1.8rem; } }
     </style>
 </head>
 <body>
     <nav class="navbar">
         <div class="navbar-content">
-            <div class="logo">
-                <img src="/images/folder.png" alt="Avfile Logo" width="30" height="30" style="margin-right: 0.5rem;">
-                <span>Avfile</span>
-            </div>
+            <div class="logo">Avfile</div>
         </div>
     </nav>
 
     <main class="container">
         <section class="hero">
             <h1>Fast & Simple File Sharing</h1>
-            <p class="hero-desc">Upload your files instantly and get a shareable link. No login required, no limits.</p>
+            <p class="hero-desc">Upload your files and get a shareable link instantly.</p>
         </section>
 
         <div id="mainContainer">
             <section class="upload-section" id="uploadUI">
                 <div class="upload-area" id="uploadArea">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 60px; height: 60px; color: #667eea; margin-bottom: 1rem;">
-                        <polyline points="16 16 12 12 8 16"></polyline>
-                        <line x1="12" y1="12" x2="12" y2="21"></line>
-                        <path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"></path>
-                    </svg>
                     <h2>Drop Files or Click to Upload</h2>
-                    <p>Upload up to 5 files • Fast upload • Unlimited downloads</p>
+                    <p>Upload up to 5 files at once</p>
                     <input type="file" id="fileInput" multiple accept="*/*" />
                     <button class="btn" id="selectFileBtn">Select Files</button>
-                    <p style="font-size: 0.85rem; color: #707070; margin-top: 1rem;">Max 100MB per file</p>
                 </div>
             </section>
 
@@ -129,7 +118,7 @@
                 <div class="share-url-box">
                     <div class="share-url-label">Share this link:</div>
                     <div class="share-url-input-group">
-                        <input type="text" id="shareUrl" readonly class="share-url-input" placeholder="Share URL..." />
+                        <input type="text" id="shareUrl" readonly class="share-url-input" />
                         <button class="copy-btn" id="copyUrlBtn">Copy Link</button>
                     </div>
                 </div>
@@ -143,10 +132,7 @@
                 <div class="error-icon">✗</div>
                 <div class="error-title">Upload Failed</div>
                 <div class="error-message" id="errorMsg"></div>
-                <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
-                    <button class="error-btn" id="retryBtn">Try Again</button>
-                    <button class="action-button" id="backBtn">Back</button>
-                </div>
+                <button class="error-btn" id="retryBtn">Try Again</button>
             </div>
 
             <div class="file-viewer-container" id="fileViewerContainer">
@@ -268,43 +254,47 @@ class SimpleUploadManager {
   }
 
   async uploadFile(fileBlob, fileName, onProgress = () => {}) {
-    const fileId = this.generateUUID();
-    const base64 = await this.fileToBase64(fileBlob);
-    const releaseTag = `file_${fileId}`;
+    try {
+      const fileId = this.generateUUID();
+      const base64 = await this.fileToBase64(fileBlob);
+      const releaseTag = `file_${fileId}`;
 
-    onProgress(20);
-    const releaseData = await this.githubUploader.createRelease(releaseTag, fileName, `File: ${fileName}`);
+      onProgress(20);
+      const releaseData = await this.githubUploader.createRelease(releaseTag, fileName, `File: ${fileName}`);
 
-    onProgress(60);
-    const assetData = await this.githubUploader.uploadAsset(
-      releaseData.upload_url,
-      fileName,
-      base64,
-      fileId,
-      fileBlob.size
-    );
+      onProgress(60);
+      const assetData = await this.githubUploader.uploadAsset(
+        releaseData.upload_url,
+        fileName,
+        base64,
+        fileId,
+        fileBlob.size
+      );
 
-    onProgress(80);
-    const res = await this.githubUploader.getGithubJson();
-    const githubJson = res;
-    githubJson.files = Array.isArray(githubJson.files) ? githubJson.files : [];
+      onProgress(80);
+      const res = await this.githubUploader.getGithubJson();
+      const githubJson = res;
+      githubJson.files = Array.isArray(githubJson.files) ? githubJson.files : [];
 
-    // ★ URL を作成
-    const shareUrl = `${window.location.origin}/d/${fileId}`;
+      const shareUrl = `${window.location.origin}/d/${fileId}`;
 
-    githubJson.files.push({
-      fileId: fileId,
-      fileName: fileName,
-      downloadUrl: assetData.download_url,
-      shareUrl: shareUrl,  // ★ 共有URL を保存
-      fileSize: fileBlob.size,
-      uploadedAt: new Date().toISOString(),
-    });
+      githubJson.files.push({
+        fileId: fileId,
+        fileName: fileName,
+        downloadUrl: assetData.download_url,
+        shareUrl: shareUrl,
+        fileSize: fileBlob.size,
+        uploadedAt: new Date().toISOString(),
+      });
 
-    await this.githubUploader.saveGithubJson(githubJson);
+      await this.githubUploader.saveGithubJson(githubJson);
 
-    onProgress(95);
-    return { fileId, fileName, downloadUrl: assetData.download_url, shareUrl: shareUrl };
+      onProgress(100);
+      return { fileId, fileName, downloadUrl: assetData.download_url, shareUrl: shareUrl };
+    } catch (error) {
+      console.error('Upload error:', error);
+      throw error;
+    }
   }
 
   async uploadMultiple(files) {
@@ -322,31 +312,7 @@ const MAX_FILES = 5;
 const pathMatch = location.pathname.match(/^\/d\/([a-zA-Z0-9]+)/);
 const viewId = pathMatch?.[1] || null;
 
-console.log('App loaded. ViewId:', viewId);
-
-function escapeHtml(t) {
-  const d = document.createElement('div');
-  d.textContent = t;
-  return d.innerHTML;
-}
-
-function getFileIcon(filename) {
-  if (/\.(mp4|webm|ogg|mkv|avi|mov)$/i.test(filename)) return '🎬';
-  if (/\.(mp3|wav|flac|aac|m4a)$/i.test(filename)) return '🎵';
-  if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(filename)) return '🖼️';
-  if (/\.(pdf)$/i.test(filename)) return '📄';
-  if (/\.(zip|rar|7z|tar|gz)$/i.test(filename)) return '📦';
-  if (/\.(txt|doc|docx|xlsx|ppt)$/i.test(filename)) return '📃';
-  return '📁';
-}
-
-function formatFileSize(bytes) {
-  if (bytes === 0) return '0 Bytes';
-  const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
-}
+console.log('[APP] Initialized - viewId:', viewId);
 
 function hideAllScreens() {
   document.getElementById('uploadUI').style.display = 'none';
@@ -360,125 +326,191 @@ function hideAllScreens() {
 function showUploadUI() { hideAllScreens(); document.getElementById('uploadUI').style.display = 'block'; }
 function showUploadStatus() { hideAllScreens(); document.getElementById('uploadStatusScreen').classList.add('show'); }
 function showSuccessScreen() { hideAllScreens(); document.getElementById('successScreen').classList.add('show'); }
-function showErrorScreen(msg) { hideAllScreens(); document.getElementById('errorMsg').textContent = msg; document.getElementById('errorScreen').classList.add('show'); }
+function showErrorScreen(msg) { 
+  hideAllScreens(); 
+  document.getElementById('errorMsg').textContent = msg; 
+  document.getElementById('errorScreen').classList.add('show'); 
+}
 function showLoadingUI() { hideAllScreens(); document.getElementById('loadingUI').style.display = 'block'; }
 
+// ===== FILE INPUT HANDLERS =====
 document.getElementById('selectFileBtn').onclick = () => {
+  console.log('[UI] Select button clicked');
   document.getElementById('fileInput').click();
 };
 
+const fileInput = document.getElementById('fileInput');
 const uploadArea = document.getElementById('uploadArea');
+
+// ★ ファイル選択時のハンドラ
+fileInput.addEventListener('change', async (e) => {
+  console.log('[FILE] Changed - files count:', e.target.files.length);
+  
+  try {
+    // ★ Array.from() を使用してファイルをコピー
+    const files = Array.from(e.target.files);
+    
+    if (!files.length) {
+      console.log('[FILE] No files selected');
+      return;
+    }
+
+    console.log('[FILE] Selected files:', files.map(f => f.name).join(', '));
+
+    if (files.length > MAX_FILES) {
+      alert(`Max ${MAX_FILES} files allowed`);
+      fileInput.value = '';  // ★ リセット
+      return;
+    }
+
+    await uploadMultiple(files);
+  } catch (error) {
+    console.error('[ERROR] File input handler:', error);
+    showErrorScreen(error.message || 'Failed to process files');
+  }
+}, false);
+
+// ===== DRAG & DROP =====
 uploadArea.addEventListener('dragover', (e) => {
   e.preventDefault();
+  e.stopPropagation();
   uploadArea.classList.add('drag-over');
-});
+}, false);
 
-uploadArea.addEventListener('dragleave', () => {
+uploadArea.addEventListener('dragleave', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
   uploadArea.classList.remove('drag-over');
-});
+}, false);
 
 uploadArea.addEventListener('drop', async (e) => {
   e.preventDefault();
+  e.stopPropagation();
   uploadArea.classList.remove('drag-over');
-  const files = [...e.dataTransfer.files];
-  if (files.length > MAX_FILES) {
-    alert(`Max ${MAX_FILES} files`);
-    return;
-  }
-  await uploadMultiple(files);
-});
+  
+  console.log('[DROP] Dropped - files count:', e.dataTransfer.files.length);
+  
+  try {
+    // ★ Array.from() を使用してファイルをコピー
+    const files = Array.from(e.dataTransfer.files);
+    
+    if (files.length > MAX_FILES) {
+      alert(`Max ${MAX_FILES} files allowed`);
+      return;
+    }
 
-document.getElementById('fileInput').onchange = async (e) => {
-  const files = [...e.target.files];
-  if (!files.length) return;
-  if (files.length > MAX_FILES) {
-    alert(`Max ${MAX_FILES} files`);
-    return;
+    await uploadMultiple(files);
+  } catch (error) {
+    console.error('[ERROR] Drop handler:', error);
+    showErrorScreen(error.message || 'Drop failed');
   }
-  await uploadMultiple(files);
-};
+}, false);
 
+// ===== BUTTONS =====
 document.getElementById('copyUrlBtn').onclick = async () => {
   const url = document.getElementById('shareUrl').value;
-  await navigator.clipboard.writeText(url);
-  document.getElementById('copyUrlBtn').textContent = 'Copied!';
-  setTimeout(() => { document.getElementById('copyUrlBtn').textContent = 'Copy Link'; }, 2000);
+  try {
+    await navigator.clipboard.writeText(url);
+    document.getElementById('copyUrlBtn').textContent = 'Copied!';
+    setTimeout(() => { document.getElementById('copyUrlBtn').textContent = 'Copy Link'; }, 2000);
+  } catch (error) {
+    console.error('[ERROR] Copy failed:', error);
+    alert('Copy failed');
+  }
 };
 
 document.getElementById('uploadMoreBtn').onclick = () => {
+  console.log('[UI] Upload more clicked');
   showUploadUI();
-  document.getElementById('fileInput').value = '';
+  fileInput.value = '';
 };
 
 document.getElementById('openLinkBtn').onclick = () => {
   const url = document.getElementById('shareUrl').value;
+  console.log('[UI] Opening link:', url);
   window.open(url, '_blank');
 };
 
 document.getElementById('retryBtn').onclick = () => {
+  console.log('[UI] Retry clicked');
   showUploadUI();
-  document.getElementById('fileInput').value = '';
+  fileInput.value = '';
 };
 
-document.getElementById('backBtn').onclick = () => {
-  showUploadUI();
-};
-
+// ===== UPLOAD FUNCTION =====
 async function uploadMultiple(files) {
+  console.log('[UPLOAD] Starting - files count:', files.length);
+  
   showUploadStatus();
   const uploadManager = new SimpleUploadManager();
   const uploadedIds = [];
+  
   try {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
+      
+      console.log(`[UPLOAD] Processing file ${i + 1}/${files.length}:`, file.name);
+      
       document.getElementById('statusMessage').textContent = `${i + 1} / ${files.length}`;
       document.getElementById('statusFileName').textContent = file.name;
+
       const result = await uploadManager.uploadFile(file, file.name, (progress) => {
         document.getElementById('progressFill').style.width = progress + '%';
         document.getElementById('progressPercent').textContent = Math.round(progress) + '%';
       });
+
+      console.log(`[UPLOAD] File uploaded:`, result.fileId);
       uploadedIds.push(result.fileId);
     }
+
+    console.log('[UPLOAD] All files uploaded - creating view');
+    
     const view = await uploadManager.githubUploader.createView(uploadedIds, window.location.origin);
+    
+    console.log('[UPLOAD] View created:', view.viewId);
+    
     document.getElementById('shareUrl').value = view.shareUrl;
     showSuccessScreen();
-  } catch (e) {
-    console.error('Upload error:', e);
-    showErrorScreen(e.message || 'Upload failed');
+    
+  } catch (error) {
+    console.error('[ERROR] Upload failed:', error);
+    showErrorScreen(error.message || 'Upload failed');
   }
 }
 
+// ===== VIEW LOADING =====
 async function loadAndDisplayView(viewId) {
+  console.log('[VIEW] Loading view:', viewId);
+  
   try {
-    console.log('Fetching view:', viewId);
     const res = await fetch(`/.netlify/functions/view?id=${viewId}`);
+    
     if (!res.ok) throw new Error(`Server error: ${res.status}`);
+    
     const data = await res.json();
-
-    console.log('View data:', data);
+    console.log('[VIEW] Data received:', data);
 
     let html = '';
+    
     for (const file of data.files || []) {
-      const icon = getFileIcon(file.fileName);
-      const size = formatFileSize(file.fileSize || 0);
       const url = file.downloadUrl;
-
       let preview = '';
+
       if (/\.(mp4|webm|ogg)$/i.test(file.fileName)) {
         preview = `<div class="file-preview"><video controls style="max-width: 100%; max-height: 500px;"><source src="${url}"></video></div>`;
       } else if (/\.(jpg|jpeg|png|gif|webp)$/i.test(file.fileName)) {
         preview = `<div class="file-preview"><img src="${url}" style="max-width: 100%; max-height: 500px;" /></div>`;
       } else if (/\.(pdf)$/i.test(file.fileName)) {
-        preview = `<div class="file-preview"><iframe src="${url}" style="width: 100%; height: 500px; border: none;"></iframe></div>`;
+        preview = `<div class="file-preview"><iframe src="${url}" style="width: 100%; height: 500px;"></iframe></div>`;
       }
 
       html += `<div class="file-viewer">
         <div class="file-viewer-header">
           <div class="file-info">
-            <div class="file-icon">${icon}</div>
+            <div class="file-icon">📄</div>
             <div class="file-details">
-              <h3>${escapeHtml(file.fileName)}</h3>
-              <p>${size}</p>
+              <h3>${file.fileName}</h3>
+              <p>${(file.fileSize / 1024 / 1024).toFixed(2)} MB</p>
             </div>
           </div>
           <div class="file-actions">
@@ -493,16 +525,20 @@ async function loadAndDisplayView(viewId) {
     document.getElementById('fileViewer').innerHTML = html;
     hideAllScreens();
     document.getElementById('fileViewerContainer').classList.add('show');
-  } catch (e) {
-    console.error('Error:', e);
-    showErrorScreen('File not found: ' + e.message);
+    
+  } catch (error) {
+    console.error('[ERROR] View error:', error);
+    showErrorScreen('File not found: ' + error.message);
   }
 }
 
+// ===== INIT =====
 if (viewId) {
+  console.log('[INIT] View mode - loading view:', viewId);
   showLoadingUI();
   loadAndDisplayView(viewId);
 } else {
+  console.log('[INIT] Upload mode');
   showUploadUI();
 }
 </script>
