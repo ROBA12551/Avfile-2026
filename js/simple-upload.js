@@ -1,11 +1,3 @@
-/**
- * js/simple-upload.js
- * 
- * Gofile 風ファイル共有サービス
- * - github.json で永続的に記録
- * - アップロード情報を GitHub に保存
- * - 過去のファイルに永遠にアクセス可能
- */
 
 class SimpleUploadManager {
   constructor(config = {}) {
