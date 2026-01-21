@@ -534,7 +534,6 @@
                 </div>
             </section>
 
-            <!-- Features Section -->
             <div class="features-section">
                 <h2 class="features-title">Why Choose Avfile?</h2>
                 <div class="features-grid">
@@ -952,9 +951,21 @@ async function uploadMultiple(files) {
 
 async function loadView(viewId) {
   try {
+    console.log('[MAIN] Loading view:', viewId);
     const res = await fetch(`/.netlify/functions/view?id=${viewId}`);
-    if (!res.ok) throw new Error('404');
+    console.log('[MAIN] Response status:', res.status);
+    
+    if (!res.ok) {
+      console.error('[MAIN] Failed to load view:', res.status);
+      throw new Error(`404: View not found`);
+    }
+    
     const data = await res.json();
+    console.log('[MAIN] View data received:', data);
+
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to load view');
+    }
 
     const carousel = new Carousel(
       document.getElementById('carouselTrack'),
@@ -965,6 +976,8 @@ async function loadView(viewId) {
     );
 
     for (const file of data.files || []) {
+      console.log('[MAIN] Processing file:', file.fileName, file.downloadUrl);
+      
       const item = document.createElement('div');
       item.className = 'carousel-item';
 
@@ -974,9 +987,9 @@ async function loadView(viewId) {
 
       let preview = '';
       if (videoRegex.test(file.fileName)) {
-        preview = `<div class="file-preview-area" id="p-${file.fileId}"><div style="display: flex; align-items: center;"><div class="spinner" style="margin: 0 auto;"></div><div>Loading...</div></div></div>`;
+        preview = `<div class="file-preview-area" id="p-${file.fileId}"><div style="display: flex; align-items: center; color: rgba(255, 255, 255, 0.7);"><div class="spinner" style="margin: 0 auto;"></div><div>Loading...</div></div></div>`;
       } else if (imageRegex.test(file.fileName)) {
-        preview = `<div class="file-preview-area" id="p-${file.fileId}"><div style="display: flex; align-items: center;"><div class="spinner" style="margin: 0 auto;"></div><div>Loading...</div></div></div>`;
+        preview = `<div class="file-preview-area" id="p-${file.fileId}"><div style="display: flex; align-items: center; color: rgba(255, 255, 255, 0.7);"><div class="spinner" style="margin: 0 auto;"></div><div>Loading...</div></div></div>`;
       } else if (pdfRegex.test(file.fileName)) {
         preview = `<div class="file-preview-area"><iframe src="${file.downloadUrl}" style="width: 100%; height: 100%; border: none;"></iframe></div>`;
       } else {
@@ -1007,9 +1020,15 @@ async function loadView(viewId) {
       if (videoRegex.test(file.fileName) || imageRegex.test(file.fileName)) {
         (async () => {
           try {
+            console.log('[MAIN] Loading preview for:', file.fileId, file.downloadUrl);
+            
             let dataUrl = Cache.getFromCache(file.fileId);
             if (!dataUrl) {
+              console.log('[MAIN] Downloading from:', file.downloadUrl);
               dataUrl = await Cache.downloadDirect(file.downloadUrl, file.fileId);
+              console.log('[MAIN] Downloaded successfully');
+            } else {
+              console.log('[MAIN] Retrieved from cache');
             }
 
             const container = document.getElementById(`p-${file.fileId}`);
@@ -1023,17 +1042,20 @@ async function loadView(viewId) {
               container.querySelector('img').src = dataUrl;
             }
           } catch (e) {
+            console.error('[MAIN] Preview load error:', e.message);
             const c = document.getElementById(`p-${file.fileId}`);
-            if (c) c.innerHTML = '<p style="color: rgba(255, 255, 255, 0.7);">Failed to load preview</p>';
+            if (c) c.innerHTML = '<p style="color: rgba(255, 255, 255, 0.7);">Failed to load preview - <a href="' + file.downloadUrl + '" download style="color: #ffffff;">Download instead</a></p>';
           }
         })();
       }
     }
 
+    console.log('[MAIN] View loaded successfully');
     hideAll();
     document.getElementById('fileViewerContainer').classList.add('show');
   } catch (e) {
-    showError('File not found');
+    console.error('[MAIN] Error:', e.message);
+    showError('File not found: ' + e.message);
   }
 }
 
