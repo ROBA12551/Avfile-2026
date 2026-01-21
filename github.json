@@ -6,6 +6,15 @@
       "uploadedAt": "2026-01-21T06:28:46.203Z"
     }
   ],
-  "views": [],
-  "lastUpdated": "2026-01-21T06:28:46.203Z"
+  "views": [
+    {
+      "viewId": "Igngb4",
+      "files": [
+        "da3a5c2c-086a-4722-a966-33dcce0b938d"
+      ],
+      "password": null,
+      "createdAt": "2026-01-21T06:28:48.528Z"
+    }
+  ],
+  "lastUpdated": "2026-01-21T06:28:48.528Z"
 }
