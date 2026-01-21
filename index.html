@@ -726,16 +726,155 @@
 
 <!-- ★ 修正: ローカル圧縮対応のスクリプトを読み込む（順序重要） -->
 <!-- ローカル圧縮エンジン -->
-<script src="/js/video-compression.js"></script>
+<script src="/js/video-compression-local.js"></script>
 
-<!-- クライアント側のアップロード処理（ローカル圧縮対応） -->
-<script src="/js/client-upload.js"></script>
+<!-- ファイルアップロード強化版 -->
+<script src="/js/universal-file-uploader-enhanced.js"></script>
 
 <script>
 // ★ グローバル変数定義（最初）
 const MAX_FILES = 10;
 const MAX_FILE_SIZE = 500 * 1024 * 1024;
 const VIDEO_COMPRESSION_THRESHOLD = 200 * 1024 * 1024;
+
+// ★ 超高速化版のグローバルキャッシュ
+let githubJsonCache = null;
+let githubJsonCacheTime = 0;
+const CACHE_TTL = 10000; // 10秒キャッシュ
+
+/**
+ * キャッシュから github.json を取得（同期的）
+ */
+function getGithubJsonCached() {
+  const now = Date.now();
+  if (githubJsonCache && (now - githubJsonCacheTime) < CACHE_TTL) {
+    console.log('[CACHE] ✓ キャッシュ使用 (' + (now - githubJsonCacheTime) + 'ms)');
+    return githubJsonCache;
+  }
+  return null;
+}
+
+/**
+ * キャッシュに保存
+ */
+function setCacheGithubJson(data) {
+  githubJsonCache = data;
+  githubJsonCacheTime = Date.now();
+  console.log('[CACHE] ✓ キャッシュ保存');
+}
+
+/**
+ * キャッシュをクリア
+ */
+function clearCacheGithubJson() {
+  githubJsonCache = null;
+  githubJsonCacheTime = 0;
+}
+
+/**
+ * 制御付き並列処理（最大N個同時）
+ */
+async function parallelLimit(tasks, limit) {
+  const results = [];
+  const executing = [];
+
+  for (let i = 0; i < tasks.length; i++) {
+    const task = tasks[i];
+    
+    const promise = Promise.resolve()
+      .then(() => task())
+      .then(result => {
+        results[i] = result;
+        const idx = executing.indexOf(promise);
+        if (idx !== -1) executing.splice(idx, 1);
+      })
+      .catch(error => {
+        results[i] = { error };
+        const idx = executing.indexOf(promise);
+        if (idx !== -1) executing.splice(idx, 1);
+        throw error;
+      });
+
+    executing.push(promise);
+
+    if (executing.length >= limit) {
+      await Promise.race(executing);
+    }
+  }
+
+  await Promise.all(executing);
+  return results;
+}
+
+/**
+ * 統一 Base64 変換（ファイル選択 ≈ フォトライブラリ）
+ */
+async function toBase64Fast(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    
+    reader.onload = () => {
+      try {
+        const result = reader.result;
+        const parts = result.split(',');
+        if (parts.length < 2) throw new Error('Invalid data URL');
+        
+        const base64 = parts[1];
+        if (!base64) throw new Error('Empty Base64');
+        
+        resolve(base64);
+      } catch (e) {
+        reject(e);
+      }
+    };
+    
+    reader.onerror = () => reject(new Error('FileReader error'));
+    reader.readAsDataURL(file);
+
+    // 30秒タイムアウト
+    setTimeout(() => {
+      reader.abort();
+      reject(new Error('Base64 timeout'));
+    }, 30000);
+  });
+}
+
+/**
+ * 統一 ファイル情報取得（ファイル選択 ≈ フォトライブラリ）
+ */
+async function getUnifiedFileInfo(file, fileUploader) {
+  try {
+    // ファイル名を推測
+    let fileName = file.name || '';
+    
+    if (!fileName || !fileName.includes('.')) {
+      const mimeType = file.type || 'application/octet-stream';
+      const mimeToExt = {
+        'video/mp4': 'mp4', 'video/quicktime': 'mov',
+        'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/heic': 'heic',
+        'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'application/pdf': 'pdf'
+      };
+      const ext = mimeToExt[mimeType] || 'bin';
+      fileName = `file_${Date.now()}.${ext}`;
+    }
+
+    const fileType = fileUploader.getFileType(fileName);
+    return {
+      name: fileName,
+      type: fileType,
+      size: file.size,
+      mimeType: file.type || 'application/octet-stream'
+    };
+  } catch (e) {
+    console.error('[FILE_INFO] Error:', e.message);
+    return {
+      name: `file_${Date.now()}`,
+      type: 'file',
+      size: file.size,
+      mimeType: 'application/octet-stream'
+    };
+  }
+}
 
 // キャッシュ管理
 class Cache {
@@ -871,7 +1010,7 @@ class GitHubUploader {
         fileBase64: base64Data,
         fileId,
         fileSize,
-        isPreCompressed: true  // ★ ローカル圧縮済みを示すフラグ
+        isPreCompressed: true
       }),
     });
 
@@ -1235,224 +1374,175 @@ document.getElementById('openLinkBtn').onclick = () => window.open(document.getE
 document.getElementById('retryBtn').onclick = () => { showUpload(); document.getElementById('fileInput').value = ''; };
 document.getElementById('backBtn').onclick = () => showUpload();
 
+/**
+ * ★ 超高速化版 uploadMultiple
+ */
 async function uploadMultiple(files) {
   showStatus();
   const uploader = new GitHubUploader();
-  const fileUploader = new UniversalFileUploaderEnhanced();  // ★ 強化版を使用
+  const fileUploader = new UniversalFileUploaderEnhanced();
   const deviceInfo = fileUploader.getDeviceInfo();
-  const ids = [];
   const isMobile = deviceInfo.isMobile;
+  const startTime = Date.now();
 
   try {
-    console.log('[UPLOAD_MAIN] ========== UPLOAD START ==========');
-    console.log('[UPLOAD_MAIN] Device Info:', deviceInfo);
-    console.log('[UPLOAD_MAIN] Files count:', files.length);
+    console.log('[UPLOAD] ========== START ==========');
+    console.log('[UPLOAD] Files: ' + files.length);
 
-    // ★ 各ファイルの詳細情報をログ
-    for (let i = 0; i < files.length; i++) {
-      fileUploader.logFileDetails(files[i], i);
-    }
-
-    // ★ ファイルをバリデーション（詳細ログ付き）
+    // ★ バリデーション
     const { valid, errors } = await fileUploader.validateFiles(files);
     
     if (errors.length > 0) {
-      const errorMsg = 'Invalid files:\n' + errors.join('\n');
-      console.error('[UPLOAD_MAIN] Validation errors:', errors);
-      showError(errorMsg);
+      showError('Invalid files:\n' + errors.join('\n'));
       return;
     }
 
     if (valid.length === 0) {
-      showError('No valid files to upload');
+      showError('No valid files');
       return;
     }
 
-    console.log('[UPLOAD_MAIN] Validation passed:', valid.length, 'files');
-    console.log('[UPLOAD_MAIN] isMobile:', isMobile);
-
-    // ★ 修正: valid を使用
-    const promises = valid.map((file, i) => (async () => {
+    // ★ Phase 1: ファイル情報取得 + Release 作成（並列5個）
+    console.log('[UPLOAD] Phase 1: ファイル情報 + Release 作成');
+    
+    const fileDataTasks = valid.map((file, i) => async () => {
       try {
-        document.getElementById('statusMessage').textContent = `${i + 1} / ${valid.length}`;
-        
+        const info = await getUnifiedFileInfo(file, fileUploader);
         const fileId = 'f_' + Math.random().toString(36).substr(2, 9);
-        
-        // ★ 強化版で ファイル情報を取得
-        const metadata = await fileUploader.getFileInfo(file);
-        console.log(`[FILE_${i}] File metadata:`, {
-          name: metadata.name,
-          type: metadata.type,
-          size: metadata.sizeStr,
-        });
-        
-        // ★ ファイル名のサニタイゼーション
-        let fileName = metadata.name;
-        fileName = sanitizeFileName(fileName);
-        console.log(`[FILE_${i}] Sanitized fileName:`, fileName);
-        
-        let uploadFile = file;
-        
-        // ★ 動画のみ圧縮
-        const isVideoType = metadata.type === 'video';
-        const isLargeVideo = file.size > 100 * 1024 * 1024;
-        
-        if (isVideoType && isLargeVideo && !isMobile && window.VideoCompressionEngineLocal) {
-          try {
-            console.log(`[FILE_${i}] Video compression starting...`);
-            const engine = new VideoCompressionEngineLocal();
-            uploadFile = await engine.compress(file, (percent, message) => {
-              document.getElementById('statusMessage').textContent = 
-                `${i + 1} / ${valid.length} - ${message}`;
-            });
-            console.log(`[FILE_${i}] Video compression successful`);
-          } catch (err) {
-            console.warn(`[FILE_${i}] Compression failed, using original:`, err.message);
-            uploadFile = file;
-          }
-        } else if (isVideoType) {
-          console.log(`[FILE_${i}] Video compression skipped - isMobile: ${isMobile}, size: ${fileUploader.formatSize(file.size)}`);
-        }
-        
-        // ★ Base64変換（タイムアウト付き）
-        console.log(`[FILE_${i}] Converting to Base64...`);
-        let base64 = '';
-        try {
-          base64 = await fileUploader.toBase64(uploadFile, (progress) => {
-            document.getElementById('statusMessage').textContent = 
-              `${i + 1} / ${valid.length} - Base64 ${progress}%`;
-          });
+        const fileName = sanitizeFileName(info.name);
 
-          if (!base64 || base64.length === 0) {
-            throw new Error('Base64 conversion resulted in empty string');
-          }
+        const release = await uploader.createRelease(`file_${fileId}`, fileName);
 
-          console.log(`[FILE_${i}] Base64 conversion successful, length: ${base64.length}`);
-        } catch (err) {
-          console.error(`[FILE_${i}] Base64 conversion failed:`, err);
-          throw new Error(`Failed to convert file to Base64: ${err.message}`);
-        }
-
-        // ★ Release作成
-        console.log(`[FILE_${i}] Creating release...`);
-        let releaseData;
-        try {
-          releaseData = await uploader.createRelease(`file_${fileId}`, fileName);
-          console.log(`[FILE_${i}] Release created:`, releaseData.release_id);
-        } catch (err) {
-          console.error(`[FILE_${i}] Release creation failed:`, err.message);
-          throw new Error(`Release creation failed: ${err.message}`);
-        }
-
-        // ★ Asset アップロード
-        console.log(`[FILE_${i}] Uploading asset...`);
-        let assetData;
-        try {
-          assetData = await uploader.uploadAsset(
-            releaseData.upload_url,
-            fileName,
-            base64,
-            fileId,
-            uploadFile.size
-          );
-          console.log(`[FILE_${i}] Asset uploaded successfully:`, assetData.download_url);
-        } catch (err) {
-          console.error(`[FILE_${i}] Asset upload failed:`, err.message);
-          throw new Error(`Asset upload failed: ${err.message}`);
-        }
-
-        // ★ github.json取得
-        console.log(`[FILE_${i}] Getting github.json...`);
-        let githubJson;
-        try {
-          githubJson = await uploader.getGithubJson();
-          
-          if (!githubJson || typeof githubJson !== 'object') {
-            throw new Error('Invalid githubJson response');
-          }
-
-          if (!Array.isArray(githubJson.files)) {
-            githubJson.files = [];
-          }
-          
-          console.log(`[FILE_${i}] github.json retrieved`);
-        } catch (err) {
-          console.error(`[FILE_${i}] Failed to get github.json:`, err.message);
-          throw new Error(`Failed to get github.json: ${err.message}`);
-        }
-
-        // ★ ファイル情報を保存
-        console.log(`[FILE_${i}] Saving file info...`);
-        try {
-          const fileInfo = {
-            fileId: fileId,
-            fileName: fileName,
-            fileType: metadata.type,
-            downloadUrl: assetData.download_url,
-            fileSize: uploadFile.size,
-            uploadedAt: new Date().toISOString(),
-            metadata: {
-              extension: metadata.name.split('.').pop(),
-              originalName: metadata.originalName,
-              mimeType: metadata.mimeType
-            }
-          };
-
-          console.log(`[FILE_${i}] File info:`, fileInfo);
-          githubJson.files.push(fileInfo);
-          githubJson.lastUpdated = new Date().toISOString();
-
-          await uploader.saveGithubJson(githubJson);
-          console.log(`[FILE_${i}] github.json saved successfully`);
-        } catch (err) {
-          console.error(`[FILE_${i}] Failed to save file info:`, err.message);
-          throw new Error(`Failed to save file info: ${err.message}`);
-        }
-
-        console.log(`[FILE_${i}] ========== FILE COMPLETED ==========`);
-        return fileId;
-      } catch (fileError) {
-        console.error(`[FILE_${i}] ========== FILE FAILED ==========`);
-        console.error(`[FILE_${i}] Error:`, fileError);
-        throw fileError;
+        return { index: i, file, fileId, fileName, info, release };
+      } catch (e) {
+        console.error('[PHASE1_' + i + '] Error:', e.message);
+        throw e;
       }
-    })());
+    });
 
-    console.log('[UPLOAD_MAIN] Waiting for all files to upload...');
-    const results = await Promise.all(promises);
-    
-    console.log('[UPLOAD_MAIN] All files uploaded, creating view...');
-    console.log('[UPLOAD_MAIN] File IDs:', results);
-    
-    ids.push(...results);
+    const fileDataList = await parallelLimit(fileDataTasks, 5);
+    console.log('[UPLOAD] ✓ Phase 1 完了 (' + (Date.now() - startTime) + 'ms)');
 
-    // ★ View作成
-    console.log('[UPLOAD_MAIN] Creating view with', ids.length, 'files...');
-    let view;
-    try {
-      view = await uploader.createView(ids);
-      console.log('[UPLOAD_MAIN] View created:', view.shareUrl);
-    } catch (err) {
-      console.error('[UPLOAD_MAIN] View creation failed:', err.message);
-      throw new Error(`View creation failed: ${err.message}`);
+    // ★ Phase 2: Base64 変換 + Asset アップロード（並列5個）
+    console.log('[UPLOAD] Phase 2: Base64 + Asset アップロード');
+
+    const uploadTasks = fileDataList.map((fileData, idx) => async () => {
+      try {
+        const { file, fileId, fileName, info, release } = fileData;
+
+        // プログレス更新
+        const percent = Math.round((idx / valid.length) * 100);
+        document.getElementById('statusMessage').textContent = `${idx + 1} / ${valid.length} (${percent}%)`;
+        document.getElementById('progressPercent').textContent = percent + '%';
+        document.getElementById('progressFill').style.width = percent + '%';
+
+        let uploadFile = file;
+
+        // 動画圧縮（100MB以上のみ、モバイル除外）
+        if (info.type === 'video' && file.size > 100 * 1024 * 1024 && !isMobile && window.VideoCompressionEngineLocal) {
+          try {
+            console.log('[COMPRESS_' + idx + '] 圧縮開始');
+            const engine = new VideoCompressionEngineLocal();
+            uploadFile = await engine.compress(file, () => {});
+            console.log('[COMPRESS_' + idx + '] 圧縮完了');
+          } catch (err) {
+            console.warn('[COMPRESS_' + idx + '] スキップ');
+          }
+        }
+
+        // Base64 変換
+        console.log('[BASE64_' + idx + '] 開始');
+        const base64 = await toBase64Fast(uploadFile);
+        console.log('[BASE64_' + idx + '] 完了');
+
+        // Asset アップロード
+        console.log('[ASSET_' + idx + '] 開始');
+        const assetData = await uploader.uploadAsset(
+          release.upload_url,
+          fileName,
+          base64,
+          fileId,
+          uploadFile.size
+        );
+        console.log('[ASSET_' + idx + '] 完了');
+
+        return {
+          fileId,
+          fileName,
+          fileType: info.type,
+          downloadUrl: assetData.download_url,
+          fileSize: uploadFile.size,
+          uploadedAt: new Date().toISOString(),
+          metadata: {
+            extension: fileName.split('.').pop(),
+            mimeType: info.mimeType
+          }
+        };
+      } catch (e) {
+        console.error('[PHASE2_' + idx + '] Error:', e.message);
+        throw e;
+      }
+    });
+
+    const uploadedFiles = await parallelLimit(uploadTasks, 5);
+    console.log('[UPLOAD] ✓ Phase 2 完了 (' + (Date.now() - startTime) + 'ms)');
+
+    // ★ Phase 3: github.json 保存（1回だけ）
+    console.log('[UPLOAD] Phase 3: github.json 保存');
+
+    // キャッシュから取得、なければ新規取得
+    let githubJson = getGithubJsonCached();
+    if (!githubJson) {
+      const result = await uploader.getGithubJson();
+      githubJson = result;
+      setCacheGithubJson(githubJson);
     }
 
-    console.log('[UPLOAD_MAIN] Setting share URL...');
+    githubJson.files = githubJson.files || [];
+    githubJson.files.push(...uploadedFiles);
+    githubJson.lastUpdated = new Date().toISOString();
+
+    try {
+      await uploader.saveGithubJson(githubJson);
+    } catch (e) {
+      // リトライ（キャッシュクリア）
+      console.warn('[SAVE] リトライ');
+      clearCacheGithubJson();
+      const fresh = await uploader.getGithubJson();
+      fresh.files = fresh.files || [];
+      fresh.files.push(...uploadedFiles);
+      fresh.lastUpdated = new Date().toISOString();
+      await uploader.saveGithubJson(fresh);
+    }
+
+    console.log('[UPLOAD] ✓ Phase 3 完了 (' + (Date.now() - startTime) + 'ms)');
+
+    // ★ Phase 4: View 作成
+    console.log('[UPLOAD] Phase 4: View 作成');
+
+    const fileIds = uploadedFiles.map(f => f.fileId);
+    const view = await uploader.createView(fileIds);
+
+    console.log('[UPLOAD] ✓ Phase 4 完了 (' + (Date.now() - startTime) + 'ms)');
+
+    // ★ 完了
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log('[UPLOAD] ========== SUCCESS (' + totalTime + 's) ==========');
+
     document.getElementById('shareUrl').value = view.shareUrl;
-    
-    console.log('[UPLOAD_MAIN] ========== UPLOAD SUCCESS ==========');
+    document.getElementById('statusMessage').textContent = '完了 ✓ ' + totalTime + 's';
+    document.getElementById('progressPercent').textContent = '100%';
+    document.getElementById('progressFill').style.width = '100%';
+
     showSuccess();
+
   } catch (e) {
-    console.error('[UPLOAD_MAIN] ========== UPLOAD FAILED ==========');
-    console.error('[UPLOAD_MAIN] Fatal error:', e);
-    console.error('[UPLOAD_MAIN] Stack:', e.stack);
-    
-    const errorMsg = e.message || 'Upload failed. Please try again.';
-    console.error('[UPLOAD_MAIN] Showing error:', errorMsg);
-    
-    showError(errorMsg);
+    console.error('[UPLOAD] ========== FAILED ==========');
+    console.error('[UPLOAD] Error:', e.message);
+    showError(e.message || 'Upload failed');
   }
 }
+
 // ビュー読み込み
 async function loadView(viewId) {
   try {
