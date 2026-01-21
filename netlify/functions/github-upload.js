@@ -416,6 +416,7 @@ function parseFormData(buffer, boundary) {
   return { fields, files };
 }
 
+
 exports.handler = async (event) => {
   try {
     logInfo(`=== REQUEST START ===`);
@@ -492,7 +493,6 @@ exports.handler = async (event) => {
         };
       }
     }
-
     logInfo(`Action: ${body.action}`);
     
     let response;

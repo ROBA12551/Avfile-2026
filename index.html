@@ -986,7 +986,7 @@ class GitHubUploader {
     if (!data.success) throw new Error(data.error);
     return data.data;
   }
-  // ★ FormData不要、ArrayBufferをそのまま送信
+  // ★ バイナリを直接Netlify Functions経由でGitHubへ送信
 async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   const sanitizedFileName = this.sanitizeFileName(fileName);
 
@@ -1004,7 +1004,7 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
 
   let processedFile = fileObject;
   
-  // ★ 動画ファイルで2.5MB以上なら圧縮（オプション）
+  // ★ 動画ファイルで2.5MB以上なら圧縮
   const MAX_SIZE = 2.5 * 1024 * 1024;
   const isVideo = fileObject.type && fileObject.type.startsWith('video/');
   
@@ -1036,33 +1036,31 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   // ★ ArrayBufferに変換
   console.log('[UPLOAD_BINARY] Converting to ArrayBuffer...');
   const arrayBuffer = await processedFile.arrayBuffer();
-  
-  // ★ ArrayBufferをBase64に変換
-  console.log('[UPLOAD_BINARY] Converting to Base64...');
-  const uint8Array = new Uint8Array(arrayBuffer);
-  let binary = '';
-  const chunkSize = 8192;
-  for (let i = 0; i < uint8Array.length; i += chunkSize) {
-    const chunk = uint8Array.subarray(i, i + chunkSize);
-    binary += String.fromCharCode.apply(null, chunk);
-  }
-  const base64 = btoa(binary);
-  
-  console.log('[UPLOAD_BINARY] Base64 length:', base64.length, 'chars');
-  console.log('[UPLOAD_BINARY] Sending to Netlify Functions...');
+  console.log('[UPLOAD_BINARY] ArrayBuffer size:', (arrayBuffer.byteLength / 1024 / 1024).toFixed(2), 'MB');
 
-  // ★ Netlify FunctionsにJSON形式で送信
-  const response = await fetch(this.functionUrl, {
+  // ★ メタデータを準備
+  const metadata = {
+    action: 'upload-asset-binary',
+    uploadUrl: uploadUrl,
+    fileName: sanitizedFileName,
+    fileId: fileId,
+    fileSize: processedFile.size
+  };
+
+  // ★ メタデータをクエリパラメータに、バイナリをbodyに
+  const metadataParam = encodeURIComponent(JSON.stringify(metadata));
+  const finalUrl = `${this.functionUrl}?metadata=${metadataParam}`;
+
+  console.log('[UPLOAD_BINARY] Sending binary to Netlify Functions...');
+
+  // ★ バイナリを直接送信
+  const response = await fetch(finalUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: 'upload-asset-binary',
-      uploadUrl: uploadUrl,
-      fileName: sanitizedFileName,
-      fileBase64: base64,
-      fileId: fileId,
-      fileSize: processedFile.size
-    })
+    headers: { 
+      'Content-Type': 'application/octet-stream',
+      'Content-Length': arrayBuffer.byteLength.toString()
+    },
+    body: arrayBuffer
   });
 
   if (!response.ok) {
@@ -1077,145 +1075,6 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   console.log('[UPLOAD_BINARY] Complete - Asset ID:', data.data.asset_id);
   return data.data;
 }
-  // ★ github.json を非同期更新
-  async updateGithubJsonAsync(fileId, fileName, downloadUrl, fileSize) {
-    try {
-      console.log('[ASYNC] Updating github.json...');
-      
-      // 既存の github.json を取得
-      const currentJson = await this.getGithubJson();
-      
-      // 新しいファイル情報を追加
-      currentJson.files = currentJson.files || [];
-      currentJson.files.push({
-        fileId,
-        fileName,
-        downloadUrl,
-        fileSize,
-        uploadedAt: new Date().toISOString(),
-      });
-      
-      // 保存
-      await this.saveGithubJson(currentJson);
-      
-      console.log('[ASYNC] github.json updated successfully');
-    } catch (error) {
-      console.error('[ASYNC] Error:', error.message);
-      throw error;
-    }
-  }
-
-
-
-  async getGithubJson() {
-    try {
-      const response = await fetch(this.functionUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'get-github-json' }),
-      });
-
-      if (!response.ok) {
-        console.warn('⚠️ github.json not found');
-        return { files: [], views: [], lastUpdated: new Date().toISOString() };
-      }
-
-      const data = await response.json();
-      
-      if (data && data.data) {
-        console.log('[GET_JSON] Success response received');
-        return data.data;
-      } else if (data && data.files !== undefined) {
-        console.log('[GET_JSON] Legacy response format');
-        return data;
-      } else {
-        console.warn('⚠️ Unknown response format');
-        return { files: [], views: [], lastUpdated: new Date().toISOString() };
-      }
-    } catch (error) {
-      console.warn('⚠️ Error retrieving github.json:', error.message);
-      return { files: [], views: [], lastUpdated: new Date().toISOString() };
-    }
-  }
-
-  async saveGithubJson(jsonData) {
-    try {
-      if (!jsonData || typeof jsonData !== 'object') {
-        throw new Error('Invalid jsonData: must be an object');
-      }
-
-      if (!jsonData.files) {
-        jsonData.files = [];
-      }
-      if (!jsonData.views) {
-        jsonData.views = [];
-      }
-      jsonData.lastUpdated = new Date().toISOString();
-
-      console.log('[SAVE_JSON] Saving:', {
-        files: jsonData.files.length,
-        views: jsonData.views.length
-      });
-
-      const response = await fetch(this.functionUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'save-github-json',
-          jsonData: jsonData,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => '');
-        throw new Error(`github.json save failed: ${response.statusText} - ${errorText}`);
-      }
-
-      const data = await response.json();
-      if (!data.success) throw new Error(data.error || 'github.json save failed');
-
-      console.log('✅ github.json saved');
-      return data.data;
-    } catch (error) {
-      console.error('❌ github.json save error:', error.message);
-      throw error;
-    }
-  }
-
-  async createView(fileIds) {
-    try {
-      if (!Array.isArray(fileIds) || fileIds.length === 0) {
-        throw new Error('fileIds must be a non-empty array');
-      }
-
-      console.log('[CREATE_VIEW] fileIds:', fileIds);
-
-      const response = await fetch(this.functionUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'create-view',
-          fileIds: fileIds,
-          passwordHash: null,
-          origin: window.location.origin
-        })
-      });
-
-      if (!response.ok) {
-        const t = await response.text().catch(() => '');
-        throw new Error(`createView failed: ${response.status} ${t}`);
-      }
-
-      const json = await response.json();
-      if (!json.success) throw new Error(json.error || 'createView failed');
-
-      console.log('✅ View created:', json.data.viewId);
-      return json.data;
-    } catch (error) {
-      console.error('❌ createView error:', error.message);
-      throw error;
-    }
-  }
 }
 
 // カルーセル管理
