@@ -11,38 +11,6 @@ function logError(msg) {
   console.error(`[ERROR] ${new Date().toISOString()} ${msg}`);
 }
 
-const requestCache = new Map();
-function checkRateLimit(clientId) {
-  const now = Date.now();
-  const windowMs = 3600 * 1000;
-
-  if (!requestCache.has(clientId)) {
-    requestCache.set(clientId, { count: 0, reset: now + windowMs });
-  }
-
-  const record = requestCache.get(clientId);
-  if (now > record.reset) {
-    record.count = 0;
-    record.reset = now + windowMs;
-  }
-
-  record.count++;
-  return record.count <= 60;
-}
-
-function unwrapData(x) {
-  while (x && typeof x === 'object' && x.data) x = x.data;
-  return x;
-}
-
-function normalizeGithubJson(obj) {
-  const out = unwrapData(obj) || {};
-  out.files = Array.isArray(out.files) ? out.files : [];
-  out.views = Array.isArray(out.views) ? out.views : [];
-  out.lastUpdated = typeof out.lastUpdated === 'string' ? out.lastUpdated : new Date().toISOString();
-  return out;
-}
-
 function generateShortId(len = 6) {
   const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let out = '';
@@ -69,8 +37,7 @@ async function githubRequest(method, path, body = null, headers = {}) {
       body = JSON.stringify(body);
     }
     if (body) {
-      options.headers['Content-Type'] =
-        options.headers['Content-Type'] || 'application/json';
+      options.headers['Content-Type'] = options.headers['Content-Type'] || 'application/json';
       options.headers['Content-Length'] = Buffer.byteLength(body);
     }
 
@@ -88,11 +55,7 @@ async function githubRequest(method, path, body = null, headers = {}) {
             resolve({});
           }
         } else {
-          reject(
-            new Error(
-              `GitHub API Error ${res.statusCode}: ${data || 'Unknown'}`
-            )
-          );
+          reject(new Error(`GitHub API Error ${res.statusCode}: ${data || 'Unknown'}`));
         }
       });
     });
@@ -125,8 +88,7 @@ async function githubUploadRequest(method, fullUrl, body, headers = {}) {
         options.headers['Content-Length'] = body.length;
       }
 
-      logInfo(`Upload Request: ${method} ${parsed.hostname}${options.path.substring(0, 80)}`);
-      logInfo(`Upload body size: ${body ? body.length : 0} bytes`);
+      logInfo(`Upload Request: ${method} ${parsed.hostname}`);
 
       const req = https.request(options, (res) => {
         let data = '';
@@ -138,28 +100,18 @@ async function githubUploadRequest(method, fullUrl, body, headers = {}) {
             try {
               resolve(data ? JSON.parse(data) : {});
             } catch {
-              logError('Upload response not JSON - retrying');
               resolve({});
             }
           } else {
-            reject(
-              new Error(
-                `Upload Error ${res.statusCode}: ${data || 'Unknown'}`
-              )
-            );
+            reject(new Error(`Upload Error ${res.statusCode}: ${data || 'Unknown'}`));
           }
         });
       });
 
-      req.on('error', (err) => {
-        logError(`Upload Request Error: ${err.message}`);
-        reject(err);
-      });
-      
+      req.on('error', reject);
       if (body) req.write(body);
       req.end();
     } catch (e) {
-      logError(`URL Parse Error: ${e.message}`);
       reject(e);
     }
   });
@@ -167,7 +119,6 @@ async function githubUploadRequest(method, fullUrl, body, headers = {}) {
 
 async function createRelease(tag, metadata) {
   const path = `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases`;
-
   const body = {
     tag_name: tag,
     name: metadata?.title || 'Uploaded File',
@@ -177,7 +128,6 @@ async function createRelease(tag, metadata) {
   };
 
   const data = await githubRequest('POST', path, body);
-
   logInfo(`Release created: ${data.id}`);
 
   return {
@@ -191,19 +141,11 @@ async function createRelease(tag, metadata) {
 async function uploadAsset(uploadUrl, fileData, fileName) {
   try {
     logInfo(`Preparing asset upload: ${fileName}`);
-    logInfo(`File size: ${fileData.length} bytes`);
 
     const clean = uploadUrl.replace('{?name,label}', '');
     const assetUrl = `${clean}?name=${encodeURIComponent(fileName)}`;
 
-    logInfo(`Asset URL: ${assetUrl.substring(0, 100)}`);
-
-    const data = await githubUploadRequest(
-      'POST',
-      assetUrl,
-      fileData,
-      { 'Content-Type': 'application/octet-stream' }
-    );
+    const data = await githubUploadRequest('POST', assetUrl, fileData, { 'Content-Type': 'application/octet-stream' });
 
     logInfo(`Asset uploaded: ${data.id || 'unknown'}`);
 
@@ -227,7 +169,8 @@ async function getGithubJson() {
     const decoded = Buffer.from(res.content, 'base64').toString('utf-8');
     let parsed = JSON.parse(decoded);
 
-    parsed = normalizeGithubJson(parsed);
+    parsed.files = Array.isArray(parsed.files) ? parsed.files : [];
+    parsed.views = Array.isArray(parsed.views) ? parsed.views : [];
 
     return { data: parsed, sha: res.sha };
   } catch {
@@ -241,13 +184,9 @@ async function getGithubJson() {
 async function saveGithubJson(jsonData, sha = null) {
   const path = `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`;
 
-  const clean = normalizeGithubJson(jsonData);
+  logInfo(`Saving: ${jsonData.files.length} files, ${jsonData.views.length} views`);
 
-  logInfo(`Saving: ${clean.files.length} files, ${clean.views.length} views`);
-
-  const content = Buffer
-    .from(JSON.stringify(clean, null, 2))
-    .toString('base64');
+  const content = Buffer.from(JSON.stringify(jsonData, null, 2)).toString('base64');
 
   const payload = {
     message: `Update github.json ${new Date().toISOString()}`,
@@ -274,10 +213,15 @@ async function createViewOnServer(fileIds, passwordHash, origin) {
   if (!viewId) throw new Error('Failed to generate viewId');
 
   json.views = json.views || [];
+  
+  // ★ 共有URL を作成
+  const shareUrl = `${(origin || '').replace(/\/$/, '')}/d/${viewId}`;
+
   json.views.push({
     viewId,
     files: fileIds,
     password: passwordHash || null,
+    shareUrl: shareUrl,  // ★ URL を保存
     createdAt: new Date().toISOString(),
   });
 
@@ -285,11 +229,10 @@ async function createViewOnServer(fileIds, passwordHash, origin) {
 
   await saveGithubJson(json, current.sha);
 
-  const base = (origin || '').replace(/\/$/, '');
   return {
     viewId,
     viewPath: `/d/${viewId}`,
-    shareUrl: base ? `${base}/d/${viewId}` : `/d/${viewId}`,
+    shareUrl: shareUrl,
   };
 }
 
@@ -314,19 +257,6 @@ exports.handler = async (event) => {
     };
   }
 
-  const clientIp =
-    event.headers['client-ip'] ||
-    event.headers['x-forwarded-for'] ||
-    'unknown';
-
-  if (!checkRateLimit(clientIp)) {
-    return {
-      statusCode: 429,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ success: false, error: 'Rate limit exceeded' }),
-    };
-  }
-
   try {
     const body = JSON.parse(event.body || '{}');
     let response;
@@ -345,7 +275,7 @@ exports.handler = async (event) => {
           body.fileName
         );
 
-        // ★★★ 重要: アセットアップロード後、ファイル情報を github.json に保存 ★★★
+        // ★ ファイル情報を github.json に保存
         const current = await getGithubJson();
         const json = current.data;
         json.files = json.files || [];
@@ -360,7 +290,6 @@ exports.handler = async (event) => {
 
         json.files.push(fileInfo);
         logInfo(`File saved to github.json: ${body.fileName}`);
-
         await saveGithubJson(json, current.sha);
 
         response = assetResponse;
@@ -374,9 +303,7 @@ exports.handler = async (event) => {
       case 'save-github-json': {
         logInfo('Action: save-github-json');
         const current = await getGithubJson();
-        let cleanData = body.jsonData;
-        cleanData = normalizeGithubJson(cleanData);
-        await saveGithubJson(cleanData, current.sha);
+        await saveGithubJson(body.jsonData, current.sha);
         response = { success: true };
         break;
       }
@@ -402,7 +329,6 @@ exports.handler = async (event) => {
     };
   } catch (e) {
     logError(`Error: ${e.message}`);
-    logError(`Stack: ${e.stack}`);
     return {
       statusCode: 400,
       headers: { 'Content-Type': 'application/json' },

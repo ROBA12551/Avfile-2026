@@ -81,10 +81,7 @@ exports.handler = async (event) => {
       return {
         statusCode: 500,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          error: 'Server not configured',
-          details: 'Missing GITHUB_TOKEN, GITHUB_OWNER, or GITHUB_REPO'
-        })
+        body: JSON.stringify({ error: 'Server not configured' })
       };
     }
 
@@ -106,7 +103,7 @@ exports.handler = async (event) => {
     }
 
     if (!jsonRes || !jsonRes.content) {
-      logError('Invalid github.json response - no content field');
+      logError('Invalid github.json response');
       return {
         statusCode: 404,
         headers: { 'Content-Type': 'application/json' },
@@ -147,7 +144,6 @@ exports.handler = async (event) => {
     
     if (!view) {
       logError(`View not found: ${viewId}`);
-      logInfo(`Available views: ${(data.views || []).map(v => v?.viewId).filter(Boolean).join(', ')}`);
       return {
         statusCode: 404,
         headers: { 'Content-Type': 'application/json' },
@@ -156,9 +152,8 @@ exports.handler = async (event) => {
     }
 
     logInfo(`View found: ${view.viewId}`);
-    logInfo(`View files array: ${JSON.stringify(view.files)}`);
 
-    // ★★★ 修正: github.json から downloadUrl を取得 ★★★
+    // ★ github.json から downloadUrl を取得
     const files = (view.files || [])
       .map(fid => {
         logInfo(`Looking for file: ${fid}`);
@@ -190,13 +185,13 @@ exports.handler = async (event) => {
       body: JSON.stringify({
         success: true,
         password: view.password || null,
+        shareUrl: view.shareUrl || null,  // ★ 共有URL も返す
         files: files
       })
     };
 
   } catch (e) {
     logError(`Unhandled error: ${e.message}`);
-    logError(`Stack: ${e.stack}`);
     
     return {
       statusCode: 500,
