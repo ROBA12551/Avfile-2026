@@ -643,52 +643,15 @@ exports.handler = async (event) => {
         
         let fileName, uploadUrl, fileData;
 
-        // ★ FormData をパース
-        if (event.isBase64Encoded && event.body) {
-          logInfo(`[ASSET] Parsing FormData...`);
-          
-          const decodedBody = Buffer.from(event.body, 'base64');
-          const contentType = event.headers['content-type'] || '';
-          const boundaryMatch = contentType.match(/boundary=([^\s;]+)/);
-          
-          if (!boundaryMatch) {
-            throw new Error('No boundary found in FormData');
-          }
-
-          const boundary = boundaryMatch[1];
-          const parts = decodedBody.toString('binary').split(`--${boundary}`);
-          
-          for (const part of parts) {
-            if (!part || part.includes('--')) continue;
-
-            const [headerPart, ...bodyParts] = part.split('\r\n\r\n');
-            if (!headerPart) continue;
-
-            const body = bodyParts.join('\r\n\r\n').replace(/\r\n--$/, '');
-            const nameMatch = headerPart.match(/name="([^"]+)"/);
-            const filenameMatch = headerPart.match(/filename="([^"]+)"/);
-            
-            if (nameMatch) {
-              const fieldName = nameMatch[1];
-              
-              if (filenameMatch && fieldName === 'file') {
-                fileData = Buffer.from(body, 'binary');
-                logInfo(`[ASSET] File found: ${fileData.length} bytes`);
-              } else {
-                const value = body.trim();
-                if (fieldName === 'fileName') fileName = value;
-                if (fieldName === 'uploadUrl') uploadUrl = value;
-              }
-            }
-          }
-        } else if (body && body.fileName) {
-          // JSON の場合（互換性のため）
+        // ★ JSON body から直接取得
+        if (body && body.action === 'upload-asset') {
           logInfo(`[ASSET] Using JSON body`);
           fileName = body.fileName;
           uploadUrl = body.uploadUrl;
           
-          if (body.fileBase64) {
+          if (body.fileBase64 && typeof body.fileBase64 === 'string') {
             fileData = Buffer.from(body.fileBase64, 'base64');
+            logInfo(`[ASSET] fileBase64 found: ${body.fileBase64.length} chars → ${fileData.length} bytes`);
           }
         }
 
