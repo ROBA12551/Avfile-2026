@@ -76,7 +76,6 @@ exports.handler = async (event) => {
 
     logInfo(`Looking for viewId: ${viewId}`);
 
-    // Check env vars
     if (!GITHUB_TOKEN || !GITHUB_OWNER || !GITHUB_REPO) {
       logError('Missing env vars');
       return {
@@ -91,7 +90,6 @@ exports.handler = async (event) => {
 
     logInfo(`Fetching github.json from ${GITHUB_OWNER}/${GITHUB_REPO}`);
 
-    // Fetch github.json
     let jsonRes;
     try {
       jsonRes = await githubRequest(
@@ -109,7 +107,6 @@ exports.handler = async (event) => {
 
     if (!jsonRes || !jsonRes.content) {
       logError('Invalid github.json response - no content field');
-      logError(`Response keys: ${Object.keys(jsonRes || {})}`);
       return {
         statusCode: 404,
         headers: { 'Content-Type': 'application/json' },
@@ -117,12 +114,10 @@ exports.handler = async (event) => {
       };
     }
 
-    // Decode base64
     let decoded;
     try {
       decoded = Buffer.from(jsonRes.content, 'base64').toString('utf-8');
       logInfo(`Decoded github.json: ${decoded.length} bytes`);
-      logInfo(`Content preview: ${decoded.substring(0, 200)}`);
     } catch (e) {
       logError(`Decode error: ${e.message}`);
       return {
@@ -132,15 +127,12 @@ exports.handler = async (event) => {
       };
     }
 
-    // Parse JSON
     let data;
     try {
       data = JSON.parse(decoded);
       logInfo(`Parsed successfully`);
-      logInfo(`Root keys: ${Object.keys(data).join(', ')}`);
       logInfo(`Views count: ${(data.views || []).length}`);
       logInfo(`Files count: ${(data.files || []).length}`);
-      logInfo(`Views: ${JSON.stringify(data.views || [])}`);
     } catch (e) {
       logError(`Parse error: ${e.message}`);
       return {
@@ -166,7 +158,7 @@ exports.handler = async (event) => {
     logInfo(`View found: ${view.viewId}`);
     logInfo(`View files array: ${JSON.stringify(view.files)}`);
 
-    // Map files
+    // ★★★ 修正: github.json から downloadUrl を取得 ★★★
     const files = (view.files || [])
       .map(fid => {
         logInfo(`Looking for file: ${fid}`);
@@ -180,13 +172,12 @@ exports.handler = async (event) => {
           fileId: file.fileId,
           fileName: file.fileName,
           fileSize: file.fileSize,
-          downloadUrl: `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main/uploads/${file.fileId}-${encodeURIComponent(file.fileName)}`
+          downloadUrl: file.downloadUrl  // ★ github.json に保存されている URL をそのまま使用
         };
       })
       .filter(Boolean);
 
     logInfo(`Returning ${files.length} files`);
-    logInfo(`Files: ${JSON.stringify(files)}`);
 
     return {
       statusCode: 200,
