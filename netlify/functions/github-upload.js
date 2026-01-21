@@ -1,3 +1,15 @@
+/**
+ * netlify/functions/github-upload.js
+ * Avfile - GitHub Releases Uploader + github.json Registry + View Creator
+ *
+ * Actions:
+ * - create-release
+ * - upload-asset
+ * - get-github-json
+ * - save-github-json
+ * - create-view   ← views を Functions 側で一本化（shortId発行 + views追記）
+ */
+
 const https = require('https');
 
 /* =========================
@@ -18,7 +30,8 @@ function logError(msg) {
 }
 
 /* =========================
-   Rate Limit (simple)
+   Rate Limit (simple, best-effort)
+   Note: Netlify Functions can be stateless; this is a soft limiter.
 ========================= */
 const requestCache = new Map();
 function checkRateLimit(clientId) {
@@ -37,6 +50,30 @@ function checkRateLimit(clientId) {
 
   record.count++;
   return record.count <= 60;
+}
+
+/* =========================
+   Helpers
+========================= */
+function unwrapData(x) {
+  // Protect against accidental nesting {data:{data:{...}}}
+  while (x && typeof x === 'object' && x.data) x = x.data;
+  return x;
+}
+
+function normalizeGithubJson(obj) {
+  const out = unwrapData(obj) || {};
+  out.files = Array.isArray(out.files) ? out.files : [];
+  out.views = Array.isArray(out.views) ? out.views : [];
+  out.lastUpdated = typeof out.lastUpdated === 'string' ? out.lastUpdated : new Date().toISOString();
+  return out;
+}
+
+function generateShortId(len = 6) {
+  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let out = '';
+  for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
 }
 
 /* =========================
@@ -73,7 +110,12 @@ async function githubRequest(method, path, body = null, headers = {}) {
       res.on('data', (c) => (data += c));
       res.on('end', () => {
         if (res.statusCode >= 200 && res.statusCode < 300) {
-          resolve(data ? JSON.parse(data) : {});
+          try {
+            resolve(data ? JSON.parse(data) : {});
+          } catch {
+            // Some endpoints can return empty or non-json
+            resolve({});
+          }
         } else {
           reject(
             new Error(
@@ -120,7 +162,11 @@ async function githubUploadRequest(method, fullUrl, body, headers = {}) {
       res.on('data', (c) => (data += c));
       res.on('end', () => {
         if (res.statusCode >= 200 && res.statusCode < 300) {
-          resolve(data ? JSON.parse(data) : {});
+          try {
+            resolve(data ? JSON.parse(data) : {});
+          } catch {
+            resolve({});
+          }
         } else {
           reject(
             new Error(
@@ -184,7 +230,7 @@ async function uploadAsset(uploadUrl, fileData, fileName) {
 }
 
 /* =========================
-   github.json
+   github.json (repo contents)
 ========================= */
 async function getGithubJson() {
   const path = `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`;
@@ -194,16 +240,13 @@ async function getGithubJson() {
     const decoded = Buffer.from(res.content, 'base64').toString('utf-8');
     let parsed = JSON.parse(decoded);
 
-// 🔥 data.data.data... を全部剥がす
-while (parsed && parsed.data) {
-  parsed = parsed.data;
-}
+    // 🔥 data.data.data... を全部剥がす + 正規化
+    parsed = normalizeGithubJson(parsed);
 
-return { data: parsed, sha: res.sha };
-
+    return { data: parsed, sha: res.sha };
   } catch {
     return {
-      data: { files: [], lastUpdated: new Date().toISOString() },
+      data: { files: [], views: [], lastUpdated: new Date().toISOString() },
       sha: null,
     };
   }
@@ -212,8 +255,10 @@ return { data: parsed, sha: res.sha };
 async function saveGithubJson(jsonData, sha = null) {
   const path = `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`;
 
+  const clean = normalizeGithubJson(jsonData);
+
   const content = Buffer
-    .from(JSON.stringify(jsonData, null, 2))
+    .from(JSON.stringify(clean, null, 2))
     .toString('base64');
 
   const payload = {
@@ -228,9 +273,46 @@ async function saveGithubJson(jsonData, sha = null) {
 }
 
 /* =========================
+   Create View (Functions side, unified)
+========================= */
+async function createViewOnServer(fileIds, passwordHash, origin) {
+  const current = await getGithubJson();
+  const json = current.data;
+
+  // collision-safe viewId generation
+  let viewId = null;
+  for (let i = 0; i < 12; i++) {
+    const cand = generateShortId(6);
+    const exists = (json.views || []).some(v => v && v.viewId === cand);
+    if (!exists) { viewId = cand; break; }
+  }
+  if (!viewId) throw new Error('Failed to generate viewId');
+
+  json.views = json.views || [];
+  json.views.push({
+    viewId,
+    files: fileIds,
+    password: passwordHash || null,
+    createdAt: new Date().toISOString(),
+  });
+
+  json.lastUpdated = new Date().toISOString();
+
+  await saveGithubJson(json, current.sha);
+
+  const base = (origin || '').replace(/\/$/, '');
+  return {
+    viewId,
+    viewPath: `/d/${viewId}`,
+    shareUrl: base ? `${base}/d/${viewId}` : `/d/${viewId}`,
+  };
+}
+
+/* =========================
    Handler
 ========================= */
 exports.handler = async (event) => {
+  // CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
       statusCode: 200,
@@ -239,6 +321,7 @@ exports.handler = async (event) => {
         'Access-Control-Allow-Methods': 'POST,OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type',
       },
+      body: '',
     };
   }
 
@@ -255,7 +338,11 @@ exports.handler = async (event) => {
     'unknown';
 
   if (!checkRateLimit(clientIp)) {
-    return { statusCode: 429, body: 'Rate limit exceeded' };
+    return {
+      statusCode: 429,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ success: false, error: 'Rate limit exceeded' }),
+    };
   }
 
   try {
@@ -279,22 +366,29 @@ exports.handler = async (event) => {
         response = await getGithubJson();
         break;
 
-case 'save-github-json': {
-  const current = await getGithubJson();
+      case 'save-github-json': {
+        const current = await getGithubJson();
 
-  // 🔥 ここで必ず "data" だけを取り出す
-  let cleanData = body.jsonData;
+        // 🔥 unwrap + normalize to prevent nested data/data/data
+        let cleanData = body.jsonData;
+        cleanData = normalizeGithubJson(cleanData);
 
-  // 保険：data.data.data... を剥がす
-  while (cleanData && cleanData.data) {
-    cleanData = cleanData.data;
-  }
+        await saveGithubJson(cleanData, current.sha);
+        response = { success: true };
+        break;
+      }
 
-  await saveGithubJson(cleanData, current.sha);
-  response = { success: true };
-  break;
-}
+      case 'create-view': {
+        const fileIds = Array.isArray(body.fileIds) ? body.fileIds : [];
+        if (fileIds.length === 0) throw new Error('fileIds required');
 
+        // passwordHash is already sha256 from client (or null)
+        const passwordHash = body.passwordHash || null;
+        const origin = body.origin || '';
+
+        response = await createViewOnServer(fileIds, passwordHash, origin);
+        break;
+      }
 
       default:
         throw new Error(`Unknown action: ${body.action}`);
@@ -306,10 +400,11 @@ case 'save-github-json': {
       body: JSON.stringify({ success: true, data: response }),
     };
   } catch (e) {
-    logError(e.message);
+    logError(e.stack || e.message || String(e));
     return {
       statusCode: 400,
-      body: JSON.stringify({ success: false, error: e.message }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ success: false, error: e.message || 'Bad Request' }),
     };
   }
 };

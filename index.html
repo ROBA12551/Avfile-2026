@@ -921,131 +921,138 @@ function setupUploadHandlers() {
     }
   };
 }
+// ✅ view作成を Functions 側に一本化した最終版 uploadMultiple(files)
+// 前提:
+// - uploadManager.githubUploader.createView(fileIds, passwordHash, origin) が実装済み
+// - Copy は copyUrlBtn.onclick 側で行う（この関数では自動コピーしない）
 
-/* =====================
-   Upload Multiple Files - WITH DEBUG LOGS
-===================== */
 async function uploadMultiple(files) {
   console.log('=== UPLOAD START ===');
-  console.log('Files to upload:', files);
-  
+
+  // ===== DOM取得（必須）=====
   const uploadUI = document.getElementById('uploadUI');
   const processingArea = document.getElementById('processingArea');
   const successArea = document.getElementById('successArea');
   const errorArea = document.getElementById('errorArea');
+
   const progressFill = document.getElementById('progressFill');
   const progressText = document.getElementById('progressText');
   const processingTitle = document.getElementById('processingTitle');
   const processingMessage = document.getElementById('processingMessage');
-  const shareUrl = document.getElementById('shareUrl');
+
+  const shareUrlInput = document.getElementById('shareUrl');
   const errorMessage = document.getElementById('errorMessage');
 
-  console.log('DOM Elements Found:', {
-    uploadUI: !!uploadUI,
-    processingArea: !!processingArea,
-    successArea: !!successArea,
-    errorArea: !!errorArea,
-    progressFill: !!progressFill,
-    progressText: !!progressText
-  });
-
-  // UI切り替え - 確実に非表示
-  if (uploadUI) {
-    uploadUI.style.display = 'none';
-    console.log('✓ uploadUI hidden');
-  }
-  if (successArea) successArea.style.display = 'none';
-  if (errorArea) errorArea.style.display = 'none';
-
-  // processingAreaを表示
-  if (processingArea) {
-    processingArea.style.display = 'block';
-    console.log('✓ processingArea DISPLAYED');
-  } else {
-    console.error('ERROR: processingArea not found!');
+  // ===== 安全ガード =====
+  if (!processingArea || !uploadUI || !successArea || !errorArea) {
+    console.error('Missing required UI elements');
+    alert('UI elements missing. Check HTML IDs.');
     return;
   }
 
-  if (processingTitle) processingTitle.textContent = 'Uploading New...';
+  // ===== UI: Uploading表示 =====
+  uploadUI.style.display = 'none';
+  successArea.style.display = 'none';
+  errorArea.style.display = 'none';
+
+  processingArea.style.display = 'block';
+
+  if (processingTitle) processingTitle.textContent = 'Uploading now';
+  if (processingMessage) processingMessage.textContent = 'Preparing upload...';
   if (progressFill) progressFill.style.width = '0%';
   if (progressText) progressText.textContent = '0%';
 
-  // 再描画強制
-  await new Promise(r => setTimeout(r, 150));
-  
-  console.log('Processing area should be visible now');
+  // ★★ これがないと表示されないことがある（超重要）★★
+  await new Promise(requestAnimationFrame);
+  await new Promise(r => setTimeout(r, 250));
 
+  // ===== Upload開始 =====
   const uploadManager = new SimpleUploadManager();
   const uploadedIds = [];
 
+  // パスワード（任意）
+  const pwEnabled = document.getElementById('pwSwitch')?.checked;
+  let passwordHash = null;
+
   try {
+    // ===== passwordHash 作成（任意）=====
+    if (pwEnabled) {
+      const pw = prompt('Set password');
+      if (!pw) throw new Error('Password required');
+      passwordHash = await sha256(pw);
+    }
+
+    // ===== ファイルアップロード（順番に）=====
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      const fileNumber = i + 1;
-      const totalFiles = files.length;
+      const total = files.length;
 
-      const msgText = `Uploading ${fileNumber} / ${totalFiles}: ${escapeHtml(file.name)}`;
-      console.log(msgText);
-      
       if (processingMessage) {
-        processingMessage.textContent = msgText;
+        processingMessage.textContent = `Uploading ${i + 1} / ${total}: ${file.name}`;
       }
 
-      // 進捗コールバック付きでアップロード
       const result = await uploadManager.uploadFile(
         file,
         file.name,
         (progress) => {
-          const overallProgress = ((i + progress / 100) / totalFiles) * 100;
-          const p = Math.min(100, Math.max(0, overallProgress));
-          
+          // progress は 0-100（uploadFileから）
+          // 複数ファイルを1本のゲージに合成
+          const overall = ((i + Math.max(0, Math.min(100, progress)) / 100) / total) * 100;
+          const p = Math.max(0, Math.min(100, overall));
+
           if (progressFill) progressFill.style.width = p + '%';
           if (progressText) progressText.textContent = Math.round(p) + '%';
-          
-          console.log(`Progress: ${Math.round(p)}%`);
+
+          // 進捗タイトル
+          if (processingTitle) {
+            if (p < 40) processingTitle.textContent = 'Uploading now';
+            else if (p < 80) processingTitle.textContent = 'Processing';
+            else processingTitle.textContent = 'Finalizing';
+          }
         }
       );
 
-      console.log('Upload result:', result);
+      if (!result || !result.fileId) {
+        throw new Error('Upload result missing fileId');
+      }
 
-      // resultの構造をチェック
-      const fileId = result?.fileId || result?.id || generateShortId();
-      console.log('Generated fileId:', fileId);
-      uploadedIds.push(fileId);
+      uploadedIds.push(result.fileId);
     }
 
-    console.log('All files uploaded. IDs:', uploadedIds);
+    // ===== view作成（Functionsに一本化）=====
+    if (processingMessage) processingMessage.textContent = 'Creating share link...';
+    if (processingTitle) processingTitle.textContent = 'Finalizing';
 
-    // 完了 - 共有URLを生成
-    if (processingArea) processingArea.style.display = 'none';
-    
-    const firstFileId = uploadedIds[0];
-    const shareLink = `${window.location.origin}/d/${firstFileId}`;
-    console.log('Share link generated:', shareLink);
-    
-    if (shareUrl) {
-      shareUrl.value = shareLink;
-      console.log('✓ Share URL set in input');
-    }
-    
-    if (successArea) {
-      successArea.style.display = 'block';
-      console.log('✓ Success area DISPLAYED');
-    }
-    
+    const viewData = await uploadManager.githubUploader.createView(
+      uploadedIds,                 // fileId配列
+      passwordHash,                // null or sha256 hash
+      window.location.origin       // shareUrl生成用
+    );
+
+    // viewData: { viewId, viewPath, shareUrl }
+    const shareLink = viewData.shareUrl || `${window.location.origin}${viewData.viewPath}`;
+
+    // ===== 成功UI =====
+    processingArea.style.display = 'none';
+    successArea.style.display = 'block';
+
+    if (shareUrlInput) shareUrlInput.value = shareLink;
+
     if (progressFill) progressFill.style.width = '100%';
     if (progressText) progressText.textContent = '100%';
 
+    console.log('✓ Share link:', shareLink);
+
   } catch (e) {
     console.error('Upload error:', e);
-    console.error('Error stack:', e.stack);
-    
-    if (processingArea) processingArea.style.display = 'none';
-    if (errorArea) {
-      errorArea.style.display = 'block';
-      if (errorMessage) {
-        errorMessage.textContent = e.message || 'Upload failed. Please try again.';
-      }
+
+    processingArea.style.display = 'none';
+    errorArea.style.display = 'block';
+
+    if (errorMessage) {
+      errorMessage.textContent = e.message || 'Upload failed. Please try again.';
+    } else {
+      alert(e.message || 'Upload failed');
     }
   }
 }

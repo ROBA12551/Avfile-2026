@@ -104,6 +104,27 @@ class GitHubUploader {
       return null;
     }
   }
+async createView(fileIds, passwordHash, origin) {
+  const res = await fetch('/.netlify/functions/github-upload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'create-view',
+      fileIds,
+      passwordHash: passwordHash || null,
+      origin: origin || window.location.origin
+    })
+  });
+
+  if (!res.ok) {
+    const t = await res.text().catch(() => '');
+    throw new Error(`createView failed: ${res.status} ${t}`);
+  }
+
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error || 'createView failed');
+  return json.data;
+}
 
   /**
    * github.json を取得
