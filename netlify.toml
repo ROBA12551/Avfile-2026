@@ -9,11 +9,6 @@
   NODE_VERSION = "18"
   NODE_ENV = "production"
 
-# Production environment variables
-[context.production.environment]
-  GITHUB_TOKEN = "REMOVED"
-  GITHUB_OWNER = "ROBA12551"
-  GITHUB_REPO = "Avfile"
 
 # Cache settings for JavaScript files
 [[headers]]
