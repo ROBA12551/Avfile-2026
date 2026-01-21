@@ -1,8 +1,4 @@
-/**
- * js/github-api.js
- * 
- * Netlify Function 経由で GitHub Releases にアップロード
- */
+
 
 class GitHubUploader {
   constructor() {
