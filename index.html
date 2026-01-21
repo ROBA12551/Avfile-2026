@@ -1032,28 +1032,47 @@ class GitHubUploader {
       throw new Error('Invalid uploadUrl provided');
     }
 
-    const response = await fetch(this.functionUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'upload-asset',
-        uploadUrl: uploadUrl,
-        fileName: sanitizedFileName,
-        fileBase64: base64Data,
-        fileId,
-        fileSize,
-        isPreCompressed: true
-      }),
-    });
+    // ★ FormData で送信（JSON ではなく）
+    console.log('[UPLOAD_ASSET] Creating FormData...');
+    
+    try {
+      // Base64 を Blob に変換
+      const binaryString = atob(base64Data);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const blob = new Blob([bytes.buffer], { type: 'video/mp4' });
 
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '');
-      throw new Error(`Asset upload failed: ${response.statusText} - ${errorText}`);
+      const formData = new FormData();
+      formData.append('action', 'upload-asset');
+      formData.append('uploadUrl', uploadUrl);
+      formData.append('fileName', sanitizedFileName);
+      formData.append('fileId', fileId);
+      formData.append('fileSize', fileSize);
+      formData.append('file', blob, sanitizedFileName);
+
+      console.log('[UPLOAD_ASSET] Sending FormData to Netlify Function...');
+
+      const response = await fetch(this.functionUrl, {
+        method: 'POST',
+        body: formData  // ★ FormData で送信（JSON ではなく）
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        throw new Error(`Asset upload failed: ${response.status} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'Asset upload failed');
+      
+      console.log('[UPLOAD_ASSET] Complete - Asset ID:', data.data.asset_id);
+      return data.data;
+    } catch (e) {
+      console.error('[UPLOAD_ASSET] Error:', e.message);
+      throw e;
     }
-
-    const data = await response.json();
-    if (!data.success) throw new Error(data.error || 'Asset upload failed');
-    return data.data;
   }
 
   // ★ バイナリ直接アップロード（Base64 チャンク分割）

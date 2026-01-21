@@ -549,37 +549,100 @@ exports.handler = async (event) => {
       }
 
       case 'upload-asset': {
-        logInfo(`Uploading asset: ${body.fileName}`);
+        logInfo(`[ASSET] Uploading asset`);
         
-        if (!body.fileBase64 || typeof body.fileBase64 !== 'string') {
-          throw new Error('Invalid fileBase64: must be a non-empty string');
+        let fileName, uploadUrl, fileData;
+
+        // ★ FormData をパース
+        if (event.isBase64Encoded && event.body) {
+          logInfo(`[ASSET] Parsing FormData...`);
+          
+          const decodedBody = Buffer.from(event.body, 'base64');
+          const contentType = event.headers['content-type'] || '';
+          const boundaryMatch = contentType.match(/boundary=([^\s;]+)/);
+          
+          if (!boundaryMatch) {
+            throw new Error('No boundary found in FormData');
+          }
+
+          const boundary = boundaryMatch[1];
+          const parts = decodedBody.toString('binary').split(`--${boundary}`);
+          
+          for (const part of parts) {
+            if (!part || part.includes('--')) continue;
+
+            const [headerPart, ...bodyParts] = part.split('\r\n\r\n');
+            if (!headerPart) continue;
+
+            const body = bodyParts.join('\r\n\r\n').replace(/\r\n--$/, '');
+            const nameMatch = headerPart.match(/name="([^"]+)"/);
+            const filenameMatch = headerPart.match(/filename="([^"]+)"/);
+            
+            if (nameMatch) {
+              const fieldName = nameMatch[1];
+              
+              if (filenameMatch && fieldName === 'file') {
+                fileData = Buffer.from(body, 'binary');
+                logInfo(`[ASSET] File found: ${fileData.length} bytes`);
+              } else {
+                const value = body.trim();
+                if (fieldName === 'fileName') fileName = value;
+                if (fieldName === 'uploadUrl') uploadUrl = value;
+              }
+            }
+          }
+        } else if (body && body.fileName) {
+          // JSON の場合（互換性のため）
+          logInfo(`[ASSET] Using JSON body`);
+          fileName = body.fileName;
+          uploadUrl = body.uploadUrl;
+          
+          if (body.fileBase64) {
+            fileData = Buffer.from(body.fileBase64, 'base64');
+          }
         }
 
-        if (!body.fileName || typeof body.fileName !== 'string') {
-          throw new Error('Invalid fileName: must be a non-empty string');
+        if (!fileName) throw new Error('fileName not found');
+        if (!uploadUrl) throw new Error('uploadUrl not found');
+        if (!fileData || fileData.length === 0) throw new Error('File data not found');
+
+        logInfo(`[ASSET] File: ${fileName}, Size: ${fileData.length} bytes`);
+
+        // ★ ファイルを GitHub にアップロード
+        let cleanUrl = String(uploadUrl).trim();
+        cleanUrl = cleanUrl.replace('{?name,label}', '');
+        cleanUrl = cleanUrl.replace('{?name}', '');
+        cleanUrl = cleanUrl.replace(/\{[?&].*?\}/g, '');
+
+        const encodedFileName = encodeURIComponent(fileName);
+        const assetUrl = `${cleanUrl}?name=${encodedFileName}`;
+
+        logInfo(`[ASSET] Asset URL: ${assetUrl.substring(0, 100)}...`);
+
+        const assetResponse = await githubUploadRequest('POST', assetUrl, fileData);
+
+        if (!assetResponse || !assetResponse.id) {
+          throw new Error('Asset upload response missing id field');
         }
 
-        if (!body.uploadUrl || typeof body.uploadUrl !== 'string') {
-          throw new Error('Invalid uploadUrl: must be a non-empty string');
-        }
+        logInfo(`[ASSET] Asset uploaded successfully: ${assetResponse.id}`);
 
-        logInfo(`File: ${body.fileName}, Base64 length: ${body.fileBase64.length}`);
-
-        const assetResponse = await uploadAsset(
-          body.uploadUrl,
-          body.fileName,
-          body.fileBase64
-        );
+        const result = {
+          asset_id: assetResponse.id,
+          name: assetResponse.name,
+          size: assetResponse.size,
+          download_url: assetResponse.browser_download_url,
+        };
 
         // ★ 非同期で github.json を更新
         updateGithubJsonAsync(
           body.fileId,
-          body.fileName,
-          assetResponse.download_url,
+          fileName,
+          result.download_url,
           body.fileSize
-        ).catch(err => logError(`Async update error: ${err.message}`));
+        ).catch(err => logError(`[ASSET] Async update error: ${err.message}`));
 
-        response = assetResponse;
+        response = result;
         break;
       }
 
