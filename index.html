@@ -422,7 +422,7 @@
             </div>
             <div class="nav-links">
                 <a href="/">Home</a>
-                <a href="/policy">Terms</a>
+                <a href="policy.html">Terms</a>
             </div>
         </div>
     </nav>
@@ -545,7 +545,7 @@
     </main>
 
     <footer class="footer">
-        <p>&copy; 2025 Avfile. <a href="/policy">Privacy & Terms</a> • Fast File Sharing</p>
+        <p>&copy; 2026 Avfile. <a href="policy.html">Privacy & Terms</a> • Fast File Sharing</p>
     </footer>
 
     <!-- Bottom Banner -->
@@ -555,37 +555,6 @@
 
     <!-- FFmpeg.wasm Library - Must load synchronously -->
     <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.10.1/dist/ffmpeg.min.js"></script>
-
-    <!-- FFmpeg.wasm verification -->
-    <script>
-        console.log('🔍 FFmpeg.wasm チェック:');
-        console.log('  - window.FFmpeg:', typeof window.FFmpeg);
-        console.log('  - window.FFmpeg.createFFmpeg:', typeof window.FFmpeg?.createFFmpeg);
-        console.log('  - window.FFmpeg.fetchFile:', typeof window.FFmpeg?.fetchFile);
-        
-        if (window.FFmpeg && window.FFmpeg.createFFmpeg) {
-            console.log('✅ FFmpeg.wasm ロード完了！');
-            initApp();
-        } else {
-            console.error('❌ FFmpeg.wasm がロードされていません');
-            // フォールバック: 少し待機してから再度チェック
-            setTimeout(() => {
-                if (window.FFmpeg && window.FFmpeg.createFFmpeg) {
-                    console.log('✅ FFmpeg.wasm ロード完了（遅延ロード）');
-                    initApp();
-                } else {
-                    console.error('❌ FFmpeg.wasm ロード失敗');
-                    document.body.innerHTML = `
-                        <div style="padding: 20px; text-align: center; font-family: Arial;">
-                            <h2>❌ エラー: FFmpeg.wasm ロード失敗</h2>
-                            <p>ネットワーク接続を確認してください。</p>
-                            <button onclick="location.reload()">再試行</button>
-                        </div>
-                    `;
-                }
-            }, 2000);
-        }
-    </script>
 
     <!-- App Scripts -->
     <script src="js/storage.js?v=14"></script>
@@ -764,6 +733,19 @@
             return div.innerHTML;
         }
 
+        // FFmpeg.wasm 確認
+        console.log('🔍 FFmpeg.wasm チェック:');
+        console.log('  - window.FFmpeg:', typeof window.FFmpeg);
+        console.log('  - window.FFmpeg.createFFmpeg:', typeof window.FFmpeg?.createFFmpeg);
+        console.log('  - window.FFmpeg.fetchFile:', typeof window.FFmpeg?.fetchFile);
+        
+        if (window.FFmpeg && window.FFmpeg.createFFmpeg) {
+            console.log('✅ FFmpeg.wasm ロード完了！');
+        } else {
+            console.error('❌ FFmpeg.wasm がロードされていません');
+        }
+
+        // アプリを初期化
         initApp();
     </script>
 </body>
