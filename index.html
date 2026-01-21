@@ -875,6 +875,32 @@ class GitHubUploader {
     return data.data;
   }
 
+  // 動画用: Blobでバイナリ送信
+  async uploadAssetBinary(uploadUrl, fileName, blobData, fileId, fileSize) {
+    console.log('[GITHUB] uploadAssetBinary:', fileName, 'Size:', (fileSize / 1024 / 1024).toFixed(2) + 'MB');
+    
+    const formData = new FormData();
+    formData.append('file', blobData, fileName);
+    
+    const response = await fetch(uploadUrl, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'Authorization': `token ${this.token}`,
+      }
+    });
+    
+    if (!response.ok) {
+      const err = await response.text();
+      console.error('[GITHUB] Upload error:', response.status, err);
+      throw new Error(`Upload failed: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    console.log('[GITHUB] Upload success:', data.name, data.size);
+    return data;
+  }
+
   async getGithubJson() {
     const response = await fetch(this.functionUrl, {
       method: 'POST',
@@ -1179,42 +1205,60 @@ async function uploadMultiple(files) {
       }
       
       let base64 = '';
-      try {
-        base64 = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            try {
-              const result = reader.result;
-              const b64 = result.split(',')[1];
-              if (!b64) {
-                console.error('[UPLOAD] No base64 data');
-                reject(new Error('Failed to convert file to base64'));
+      let uploadBlob = null;
+      
+      // 動画の場合はBlobで直接アップロード
+      if (isVideo) {
+        console.log('[UPLOAD] Video file - using binary upload');
+        uploadBlob = new Blob([await uploadFile.arrayBuffer()], { type: uploadFile.type });
+        console.log('[UPLOAD] Blob created:', fileName, 'Size:', (uploadBlob.size / 1024 / 1024).toFixed(2) + 'MB');
+      } else {
+        // 画像などはBase64変換
+        try {
+          base64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              try {
+                const result = reader.result;
+                const b64 = result.split(',')[1];
+                if (!b64) {
+                  console.error('[UPLOAD] No base64 data');
+                  reject(new Error('Failed to convert file to base64'));
+                }
+                console.log('[UPLOAD] Base64 created:', uploadFile.name, 'length:', b64.length);
+                resolve(b64);
+              } catch (e) {
+                console.error('[UPLOAD] Base64 error:', e);
+                reject(e);
               }
-              console.log('[UPLOAD] Base64 created:', uploadFile.name, 'length:', b64.length);
-              resolve(b64);
-            } catch (e) {
-              console.error('[UPLOAD] Base64 error:', e);
-              reject(e);
-            }
-          };
-          reader.onerror = () => {
-            console.error('[UPLOAD] FileReader error:', reader.error);
-            reject(reader.error);
-          };
-          reader.onprogress = (e) => {
-            if (e.lengthComputable) {
-              console.log('[UPLOAD] Reading:', Math.round((e.loaded / e.total) * 100) + '%');
-            }
-          };
-          reader.readAsDataURL(uploadFile);
-        });
-      } catch (err) {
-        console.error('[UPLOAD] Failed to read file:', err, 'file:', uploadFile.name);
-        throw new Error(`Failed to read file: ${uploadFile.name}. Please try again.`);
+            };
+            reader.onerror = () => {
+              console.error('[UPLOAD] FileReader error:', reader.error);
+              reject(reader.error);
+            };
+            reader.onprogress = (e) => {
+              if (e.lengthComputable) {
+                console.log('[UPLOAD] Reading:', Math.round((e.loaded / e.total) * 100) + '%');
+              }
+            };
+            reader.readAsDataURL(uploadFile);
+          });
+        } catch (err) {
+          console.error('[UPLOAD] Failed to read file:', err, 'file:', uploadFile.name);
+          throw new Error(`Failed to read file: ${uploadFile.name}. Please try again.`);
+        }
       }
 
       const releaseData = await uploader.createRelease(`file_${fileId}`, fileName);
-      await uploader.uploadAsset(releaseData.upload_url, fileName, base64, fileId, uploadFile.size);
+      
+      // 動画と画像で異なるアップロード方法
+      if (uploadBlob) {
+        console.log('[UPLOAD] Using binary upload for video');
+        await uploader.uploadAssetBinary(releaseData.upload_url, fileName, uploadBlob, fileId, uploadFile.size);
+      } else {
+        console.log('[UPLOAD] Using base64 upload for image');
+        await uploader.uploadAsset(releaseData.upload_url, fileName, base64, fileId, uploadFile.size);
+      }
 
       const githubJson = await uploader.getGithubJson();
       githubJson.files = githubJson.files || [];
