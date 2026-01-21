@@ -561,36 +561,6 @@
             .upload-area { padding: 2rem 1rem; min-height: 250px; }
             .upload-icon { font-size: 2.5rem; }
         }
-        
-        /* Ad Container Styles */
-        .ad-container {
-            margin: 2rem auto;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            width: 100%;
-        }
-        
-        #container-16ac9477bac66fd273f07f78988634a7 {
-            display: flex;
-            justify-content: center;
-            margin: 1rem 0;
-        }
-        
-        /* Banner Ad Container */
-        .banner-ad-container {
-            display: flex;
-            justify-content: center;
-            margin: 2rem 0;
-            width: 100%;
-        }
-        
-        @media (max-width: 768px) {
-            .ad-container,
-            .banner-ad-container {
-                margin: 1rem auto;
-            }
-        }
     </style>
 
 </head>
@@ -628,7 +598,6 @@
                     <p class="upload-hint">You can upload up to 10 files at once • All file types supported</p>
                 </div>
             </section>
-
 
             <!-- Features Section -->
             <div class="features-section">
@@ -755,31 +724,31 @@
         <p>&copy; 2026 Avfile • Fast & Simple File Sharing</p>
     </footer>
 
+<!-- ★ 修正: 外部スクリプトを読み込む（順序重要） -->
+<script src="/js/video-compression.js"></script>
+
 <script>
-// キャッシュ管理 (修正版)
+// ★ グローバル変数定義（最初）
+const MAX_FILES = 10;
+const MAX_FILE_SIZE = 500 * 1024 * 1024;
+const VIDEO_COMPRESSION_THRESHOLD = 200 * 1024 * 1024;
+
+// キャッシュ管理
 class Cache {
   static async downloadDirect(url, fileId) {
     try {
       console.log('[CACHE] Downloading:', fileId);
-      console.log('[CACHE] Original URL:', url);
-      
       const proxyUrl = `/.netlify/functions/download?url=${encodeURIComponent(url)}`;
-      console.log('[CACHE] Proxy URL:', proxyUrl);
       
       const response = await fetch(proxyUrl);
-      console.log('[CACHE] Response status:', response.status);
-      
       if (!response.ok) throw new Error(`${response.status}`);
       
       const blob = await response.blob();
-      console.log('[CACHE] Blob size:', blob.size);
       
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
           const dataUrl = e.target.result;
-          console.log('[CACHE] Created data URL');
-          
           try {
             localStorage.setItem(fileId, dataUrl);
             console.log('[CACHE] Cached to localStorage');
@@ -812,20 +781,60 @@ class Cache {
   }
 }
 
-// GitHub アップローダー
+// ★ 修正: GitHubUploader（ファイル名サニタイゼーション付き）
 class GitHubUploader {
   constructor() {
     this.functionUrl = '/.netlify/functions/github-upload';
   }
 
+  sanitizeFileName(fileName) {
+    try {
+      if (!fileName || typeof fileName !== 'string') {
+        return 'file';
+      }
+
+      let sanitized = String(fileName)
+        .trim()
+        .replace(/^\.+/, '')
+        .replace(/[\x00-\x1f<>:"\\/|?*]/g, '_')
+        .replace(/\s+/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_+|_+$/g, '');
+
+      const parts = sanitized.split('.');
+      if (parts.length > 1) {
+        const ext = parts[parts.length - 1].toLowerCase();
+        if (ext.length > 10 || ext.length === 0) {
+          sanitized = parts.slice(0, -1).join('.');
+        }
+      }
+
+      if (sanitized.length > 200) {
+        sanitized = sanitized.substring(0, 200);
+      }
+
+      if (!sanitized || sanitized === '.' || sanitized === '_') {
+        sanitized = 'file';
+      }
+
+      console.log('[SANITIZE] Original:', fileName, '→ Sanitized:', sanitized);
+      return sanitized;
+    } catch (e) {
+      console.error('[SANITIZE] Error:', e.message);
+      return 'file';
+    }
+  }
+
   async createRelease(releaseTag, fileName) {
+    const sanitizedFileName = this.sanitizeFileName(fileName);
+
     const response = await fetch(this.functionUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'create-release',
         releaseTag: releaseTag,
-        metadata: { title: fileName, description: `File: ${fileName}` },
+        metadata: { title: sanitizedFileName, description: `File: ${sanitizedFileName}` },
       }),
     });
     const data = await response.json();
@@ -834,59 +843,151 @@ class GitHubUploader {
   }
 
   async uploadAsset(uploadUrl, fileName, base64Data, fileId, fileSize) {
+    const sanitizedFileName = this.sanitizeFileName(fileName);
+
+    console.log('[UPLOAD_ASSET] Original fileName:', fileName);
+    console.log('[UPLOAD_ASSET] Sanitized fileName:', sanitizedFileName);
+    console.log('[UPLOAD_ASSET] Base64 length:', base64Data ? base64Data.length : 0);
+
+    if (!base64Data || typeof base64Data !== 'string') {
+      throw new Error('Invalid base64 data provided');
+    }
+
+    if (!uploadUrl || typeof uploadUrl !== 'string') {
+      throw new Error('Invalid uploadUrl provided');
+    }
+
     const response = await fetch(this.functionUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'upload-asset',
         uploadUrl: uploadUrl,
-        fileName: fileName,
+        fileName: sanitizedFileName,
         fileBase64: base64Data,
         fileId,
         fileSize,
       }),
     });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      throw new Error(`Asset upload failed: ${response.statusText} - ${errorText}`);
+    }
+
     const data = await response.json();
-    if (!data.success) throw new Error(data.error);
+    if (!data.success) throw new Error(data.error || 'Asset upload failed');
     return data.data;
   }
 
   async getGithubJson() {
-    const response = await fetch(this.functionUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'get-github-json' }),
-    });
-    if (!response.ok) return { files: [], views: [] };
-    const data = await response.json();
-    return data.success ? data.data : { files: [], views: [] };
+    try {
+      const response = await fetch(this.functionUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get-github-json' }),
+      });
+
+      if (!response.ok) {
+        console.warn('⚠️ github.json not found');
+        return { files: [], views: [], lastUpdated: new Date().toISOString() };
+      }
+
+      const data = await response.json();
+      
+      if (data && data.data) {
+        console.log('[GET_JSON] Success response received');
+        return data.data;
+      } else if (data && data.files !== undefined) {
+        console.log('[GET_JSON] Legacy response format');
+        return data;
+      } else {
+        console.warn('⚠️ Unknown response format');
+        return { files: [], views: [], lastUpdated: new Date().toISOString() };
+      }
+    } catch (error) {
+      console.warn('⚠️ Error retrieving github.json:', error.message);
+      return { files: [], views: [], lastUpdated: new Date().toISOString() };
+    }
   }
 
   async saveGithubJson(jsonData) {
-    const response = await fetch(this.functionUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'save-github-json', jsonData: jsonData }),
-    });
-    const data = await response.json();
-    if (!data.success) throw new Error(data.error);
-    return data.data;
+    try {
+      if (!jsonData || typeof jsonData !== 'object') {
+        throw new Error('Invalid jsonData: must be an object');
+      }
+
+      if (!jsonData.files) {
+        jsonData.files = [];
+      }
+      if (!jsonData.views) {
+        jsonData.views = [];
+      }
+      jsonData.lastUpdated = new Date().toISOString();
+
+      console.log('[SAVE_JSON] Saving:', {
+        files: jsonData.files.length,
+        views: jsonData.views.length
+      });
+
+      const response = await fetch(this.functionUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save-github-json',
+          jsonData: jsonData,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        throw new Error(`github.json save failed: ${response.statusText} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'github.json save failed');
+
+      console.log('✅ github.json saved');
+      return data.data;
+    } catch (error) {
+      console.error('❌ github.json save error:', error.message);
+      throw error;
+    }
   }
 
   async createView(fileIds) {
-    const response = await fetch(this.functionUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'create-view',
-        fileIds,
-        passwordHash: null,
-        origin: window.location.origin
-      })
-    });
-    const data = await response.json();
-    if (!data.success) throw new Error(data.error);
-    return data.data;
+    try {
+      if (!Array.isArray(fileIds) || fileIds.length === 0) {
+        throw new Error('fileIds must be a non-empty array');
+      }
+
+      console.log('[CREATE_VIEW] fileIds:', fileIds);
+
+      const response = await fetch(this.functionUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create-view',
+          fileIds: fileIds,
+          passwordHash: null,
+          origin: window.location.origin
+        })
+      });
+
+      if (!response.ok) {
+        const t = await response.text().catch(() => '');
+        throw new Error(`createView failed: ${response.status} ${t}`);
+      }
+
+      const json = await response.json();
+      if (!json.success) throw new Error(json.error || 'createView failed');
+
+      console.log('✅ View created:', json.data.viewId);
+      return json.data;
+    } catch (error) {
+      console.error('❌ createView error:', error.message);
+      throw error;
+    }
   }
 }
 
@@ -947,32 +1048,44 @@ class Carousel {
   }
 }
 
-// グローバル変数
-const MAX_FILES = 10;
-const MAX_FILE_SIZE = 500 * 1024 * 1024;
-const VIDEO_COMPRESSION_THRESHOLD = 200 * 1024 * 1024;
-
-// 修正後：iOS対応
+// ★ 修正: iOS対応URLパス取得
 function getViewIdFromPath() {
   const pathname = location.pathname || '';
-  console.log('[DEBUG] pathname:', pathname);
+  console.log('[PATH] pathname:', pathname);
   
   // パターン1: /d/xxxxx
   let match = pathname.match(/\/d\/([a-zA-Z0-9_-]+)/i);
-  if (match) return match[1];
+  if (match) {
+    console.log('[PATH] Matched /d/ pattern:', match[1]);
+    return match[1];
+  }
   
-  // パターン2: クエリパラメータから取得
+  // パターン2: ?id=xxxxx
   const params = new URLSearchParams(location.search);
-  if (params.has('id')) return params.get('id');
+  if (params.has('id')) {
+    const id = params.get('id');
+    console.log('[PATH] Matched ?id= parameter:', id);
+    return id;
+  }
+  if (params.has('view')) {
+    const view = params.get('view');
+    console.log('[PATH] Matched ?view= parameter:', view);
+    return view;
+  }
   
-  // パターン3: ハッシュから取得
-  const hash = location.hash.replace('#', '');
-  if (hash) return hash;
+  // パターン3: #xxxxx
+  const hash = location.hash.replace('#', '').split('?')[0];
+  if (hash && hash.length > 0) {
+    console.log('[PATH] Matched hash pattern:', hash);
+    return hash;
+  }
   
+  console.log('[PATH] No valid viewId found');
   return null;
 }
 
 const viewId = getViewIdFromPath();
+
 // ユーティリティ関数
 function escapeHtml(t) {
   const d = document.createElement('div');
@@ -980,7 +1093,6 @@ function escapeHtml(t) {
   return d.innerHTML;
 }
 
-// ファイルタイプの判定を修正 (正規表現の安全性向上)
 function getIcon(name) {
   if (!name || typeof name !== 'string') return 'F';
   
@@ -988,7 +1100,6 @@ function getIcon(name) {
     const nameLower = String(name).toLowerCase().trim();
     if (!nameLower || nameLower.length === 0) return 'F';
     
-    // 正規表現は安全にエスケープされた形式で定義
     const videoExtensions = ['mp4', 'webm', 'ogg', 'mkv', 'avi', 'mov', 'flv', 'wmv', 'm4v', 'ts', 'm2ts', 'mts', '3gp', '3g2', 'asf', 'f4v', 'm3u8', 'mxf'];
     const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'ico', 'tiff', 'tif'];
     const pdfExtensions = ['pdf'];
@@ -999,12 +1110,11 @@ function getIcon(name) {
     if (imageExtensions.includes(ext)) return 'I';
     if (pdfExtensions.includes(ext)) return 'P';
   } catch (e) {
-    console.error('[ICON] Error:', e.message, 'name:', name);
+    console.error('[ICON] Error:', e.message);
   }
   return 'F';
 }
 
-// ファイルサイズのフォーマット
 function formatSize(bytes) {
   const sizes = ['B', 'KB', 'MB', 'GB'];
   if (bytes === 0) return '0 B';
@@ -1012,7 +1122,6 @@ function formatSize(bytes) {
   return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
 }
 
-// UI表示関数
 function hideAll() {
   document.getElementById('uploadUI').style.display = 'none';
   document.getElementById('uploadStatusScreen').classList.remove('show');
@@ -1027,6 +1136,66 @@ function showStatus() { hideAll(); document.getElementById('uploadStatusScreen')
 function showSuccess() { hideAll(); document.getElementById('successScreen').classList.add('show'); }
 function showError(msg) { hideAll(); document.getElementById('errorMsg').textContent = msg; document.getElementById('errorScreen').classList.add('show'); }
 function showLoading() { hideAll(); document.getElementById('loadingUI').classList.add('show'); }
+
+// ★ 修正: ファイル名のサニタイゼーション
+function sanitizeFileName(fileName) {
+  try {
+    if (!fileName || typeof fileName !== 'string') {
+      return 'file';
+    }
+    
+    let sanitized = String(fileName)
+      .trim()
+      .replace(/^\.+/, '')
+      .replace(/[\x00-\x1f<>:"\\/|?*]/g, '_')
+      .replace(/\s+/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_+|_+$/g, '');
+
+    const parts = sanitized.split('.');
+    if (parts.length > 1) {
+      const ext = parts[parts.length - 1].toLowerCase();
+      if (ext.length > 10 || ext.length === 0) {
+        sanitized = parts.slice(0, -1).join('.');
+      }
+    }
+
+    if (sanitized.length > 200) {
+      sanitized = sanitized.substring(0, 200);
+    }
+
+    if (!sanitized || sanitized === '.' || sanitized === '_') {
+      sanitized = 'file';
+    }
+
+    console.log('[SANITIZE] Original:', fileName, '→ Sanitized:', sanitized);
+    return sanitized;
+  } catch (e) {
+    console.error('[SANITIZE] Error:', e);
+    return 'file';
+  }
+}
+
+function isVideoFile(file) {
+  if (!file) return false;
+  
+  if (file.type && file.type.startsWith('video/')) {
+    return true;
+  }
+  
+  if (file.name && typeof file.name === 'string') {
+    const videoExtensions = ['mp4', 'webm', 'ogg', 'mkv', 'avi', 'mov', 'flv', 'wmv', 'm4v', 'ts', 'm2ts', 'mts', '3gp', '3g2', 'asf', 'f4v', 'm3u8', 'mxf'];
+    const ext = file.name.toLowerCase().split('.').pop();
+    return videoExtensions.includes(ext);
+  }
+  
+  return false;
+}
+
+function isMobileDevice() {
+  const ua = navigator.userAgent || '';
+  return /iPad|iPhone|iPod|Android/.test(ua);
+}
 
 // イベントリスナー設定
 document.getElementById('selectFileBtn').onclick = () => document.getElementById('fileInput').click();
@@ -1061,11 +1230,12 @@ document.getElementById('openLinkBtn').onclick = () => window.open(document.getE
 document.getElementById('retryBtn').onclick = () => { showUpload(); document.getElementById('fileInput').value = ''; };
 document.getElementById('backBtn').onclick = () => showUpload();
 
-// ファイルアップロード処理（iOS対応版）
+// ★ 修正: ファイルアップロード処理（iOS対応）
 async function uploadMultiple(files) {
   showStatus();
   const uploader = new GitHubUploader();
   const ids = [];
+  const isMobile = isMobileDevice();
 
   try {
     const promises = files.map((file, i) => (async () => {
@@ -1074,8 +1244,8 @@ async function uploadMultiple(files) {
       const fileId = 'f_' + Math.random().toString(36).substr(2, 9);
       
       console.log('[UPLOAD] Starting file:', file.name, 'Size:', file.size, 'Type:', file.type);
+      console.log('[UPLOAD] isMobile:', isMobile);
       
-      // ファイル名のサニタイゼーション（iOS対応）
       let fileName = file.name || 'file';
       fileName = sanitizeFileName(fileName);
       
@@ -1085,37 +1255,23 @@ async function uploadMultiple(files) {
       
       let uploadFile = file;
       
-      // 安全なビデオ形式判定
-      const isVideo = isVideoFile(file);
-      
-      if (isVideo) {
-        const isMov = file.type === 'video/quicktime' || file.name.toLowerCase().endsWith('.mov');
-        const needsCompression = file.size > VIDEO_COMPRESSION_THRESHOLD;
-        
-        if (isMov || needsCompression) {
-          console.log('[UPLOAD] Video optimization needed:', file.name);
-          document.getElementById('statusMessage').textContent = `${i + 1} / ${files.length} - Optimizing video...`;
-          try {
-            uploadFile = await convertAndCompressVideo(file);
-            const savedMB = ((file.size - uploadFile.size) / 1024 / 1024).toFixed(2);
-            console.log('[UPLOAD] Video optimization successful');
-          } catch (err) {
-            console.warn('[UPLOAD] Video optimization failed:', err.message);
-            uploadFile = file;
-          }
-        } else if (!file.type.includes('mp4') && !file.name.toLowerCase().endsWith('.mp4')) {
-          console.log('[UPLOAD] Converting to MP4:', file.name);
-          document.getElementById('statusMessage').textContent = `${i + 1} / ${files.length} - Converting to MP4...`;
-          try {
-            uploadFile = await convertMovToMp4(file);
-          } catch (err) {
-            console.warn('[UPLOAD] Video conversion failed:', err.message);
-            uploadFile = file;
-          }
+      // ★ 修正: VideoCompressionEngine を使用（モバイル以外）
+      if (isVideoFile(file) && !isMobile && window.VideoCompressionEngine) {
+        try {
+          console.log('[UPLOAD] Video detected - compressing...');
+          const engine = new VideoCompressionEngine();
+          uploadFile = await engine.compress(file, (percent, message) => {
+            document.getElementById('statusMessage').textContent = `${i + 1} / ${files.length} - ${message}`;
+          });
+          console.log('[UPLOAD] Compression successful');
+        } catch (err) {
+          console.warn('[UPLOAD] Compression failed:', err.message);
+          uploadFile = file;
         }
+      } else if (isVideoFile(file) && isMobile) {
+        console.log('[UPLOAD] Mobile device - skipping compression');
       }
       
-      // Base64変換
       let base64 = '';
       try {
         base64 = await new Promise((resolve, reject) => {
@@ -1143,17 +1299,42 @@ async function uploadMultiple(files) {
       const releaseData = await uploader.createRelease(`file_${fileId}`, fileName);
       await uploader.uploadAsset(releaseData.upload_url, fileName, base64, fileId, uploadFile.size);
 
-      const githubJson = await uploader.getGithubJson();
-      githubJson.files = githubJson.files || [];
-      githubJson.files.push({
-        fileId, 
-        fileName: fileName,
-        downloadUrl: releaseData.assets_url || releaseData.upload_url,
-        fileSize: uploadFile.size, 
-        uploadedAt: new Date().toISOString(),
-      });
+      let githubJson = null;
+      try {
+        githubJson = await uploader.getGithubJson();
+        
+        if (!githubJson || typeof githubJson !== 'object') {
+          throw new Error('Invalid githubJson response');
+        }
 
-      await uploader.saveGithubJson(githubJson);
+        if (!Array.isArray(githubJson.files)) {
+          console.warn('[UPLOAD] files is not an array, reinitializing');
+          githubJson.files = [];
+        }
+      } catch (error) {
+        console.error('[UPLOAD] Error fetching github.json:', error.message);
+        throw new Error(`Failed to fetch github.json: ${error.message}`);
+      }
+
+      try {
+        const fileInfo = {
+          fileId: fileId,
+          fileName: fileName,
+          downloadUrl: releaseData.assets_url || releaseData.upload_url,
+          fileSize: uploadFile.size,
+          uploadedAt: new Date().toISOString(),
+        };
+
+        console.log('[UPLOAD] Adding file info:', fileInfo);
+        githubJson.files.push(fileInfo);
+        githubJson.lastUpdated = new Date().toISOString();
+
+        await uploader.saveGithubJson(githubJson);
+        console.log('[UPLOAD] github.json saved successfully');
+      } catch (error) {
+        console.error('[UPLOAD] Error saving file info:', error.message);
+        throw new Error(`Failed to save file info: ${error.message}`);
+      }
 
       const progress = Math.round(((ids.length + 1) / files.length) * 100);
       document.getElementById('progressFill').style.width = progress + '%';
@@ -1175,72 +1356,11 @@ async function uploadMultiple(files) {
   }
 }
 
-// ファイル名のサニタイゼーション関数（新規追加）
-function sanitizeFileName(fileName) {
-  try {
-    if (!fileName || typeof fileName !== 'string') {
-      return 'file';
-    }
-    
-    // iOS特有の問題：ファイル名に特殊文字が含まれる可能性
-    // 安全な文字のみを保持
-    let sanitized = fileName
-      .replace(/[<>:"\\/|?*\x00-\x1f]/g, '_') // 危険な文字を削除
-      .replace(/\s+/g, '_') // スペースをアンダースコアに変換
-      .replace(/_+/g, '_') // 連続したアンダースコアを1つに
-      .trim();
-    
-    // 拡張子を取得
-    const parts = sanitized.split('.');
-    const ext = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : '';
-    
-    // 拡張子が不正な場合は削除
-    if (ext && ext.length > 10) {
-      sanitized = parts.slice(0, -1).join('.');
-    }
-    
-    // ファイル名が空になった場合のフォールバック
-    if (!sanitized || sanitized === '.' || sanitized === '_') {
-      sanitized = 'file';
-    }
-    
-    // 長さ制限
-    if (sanitized.length > 200) {
-      sanitized = sanitized.substring(0, 200);
-    }
-    
-    console.log('[SANITIZE] Original:', fileName, '→ Sanitized:', sanitized);
-    return sanitized;
-  } catch (e) {
-    console.error('[SANITIZE] Error:', e);
-    return 'file';
-  }
-}
-// ビデオファイルの判定を安全に
-function isVideoFile(file) {
-  if (!file) return false;
-  
-  // MIME typeで判定
-  if (file.type && file.type.startsWith('video/')) {
-    return true;
-  }
-  
-  // ファイル名の拡張子で判定
-  if (file.name && typeof file.name === 'string') {
-    const videoExtensions = ['mp4', 'webm', 'ogg', 'mkv', 'avi', 'mov', 'flv', 'wmv', 'm4v', 'ts', 'm2ts', 'mts', '3gp', '3g2', 'asf', 'f4v', 'm3u8', 'mxf'];
-    const ext = file.name.toLowerCase().split('.').pop();
-    return videoExtensions.includes(ext);
-  }
-  
-  return false;
-}
-
-// ビュー読み込み (修正版)
+// ビュー読み込み
 async function loadView(viewId) {
   try {
     console.log('[MAIN] Loading view:', viewId);
     const res = await fetch(`/.netlify/functions/view?id=${viewId}`);
-    console.log('[MAIN] Response status:', res.status);
     
     if (!res.ok) {
       console.error('[MAIN] Failed to load view:', res.status);
@@ -1248,7 +1368,6 @@ async function loadView(viewId) {
     }
     
     const data = await res.json();
-    console.log('[MAIN] View data received:', data);
 
     if (!data.success) {
       throw new Error(data.error || 'Failed to load view');
@@ -1263,8 +1382,6 @@ async function loadView(viewId) {
     );
 
     for (const file of data.files || []) {
-      console.log('[MAIN] Processing file:', file.fileName, file.downloadUrl);
-      
       const item = document.createElement('div');
       item.className = 'carousel-item';
 
@@ -1272,31 +1389,22 @@ async function loadView(viewId) {
       const fileName = String(file.fileName || '').toLowerCase();
       
       try {
-        console.log('[FILE] Processing:', file.fileName, 'lowered:', fileName);
-        if (!fileName || fileName.length === 0) {
-          throw new Error('Empty filename');
-        }
-        
         const ext = fileName.split('.').pop();
         const videoExtensions = ['mp4', 'webm', 'ogg', 'mkv', 'avi', 'mov', 'flv', 'wmv', 'm4v', 'ts', 'm2ts', 'mts', '3gp', '3g2', 'asf', 'f4v', 'm3u8'];
         const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'ico', 'tiff', 'tif'];
         const pdfExtensions = ['pdf'];
         
         if (videoExtensions.includes(ext)) {
-          console.log('[FILE] Video detected:', fileName);
           preview = `<div class="file-preview-area"><video controls style="max-width: 100%; max-height: 400px; border-radius: 8px;"><source src="/.netlify/functions/download?url=${encodeURIComponent(file.downloadUrl)}" type="video/mp4"></video></div>`;
         } else if (imageExtensions.includes(ext)) {
-          console.log('[FILE] Image detected:', fileName);
           preview = `<div class="file-preview-area"><img src="/.netlify/functions/download?url=${encodeURIComponent(file.downloadUrl)}" style="max-width: 100%; max-height: 400px; border-radius: 8px;" /></div>`;
         } else if (pdfExtensions.includes(ext)) {
-          console.log('[FILE] PDF detected:', fileName);
           preview = `<div class="file-preview-area"><iframe src="/.netlify/functions/download?url=${encodeURIComponent(file.downloadUrl)}" style="width: 100%; height: 100%; border: none;"></iframe></div>`;
         } else {
-          console.log('[FILE] Other file:', fileName);
           preview = `<div class="file-preview-area"><p style="color: rgba(255, 255, 255, 0.7);"><a href="${escapeHtml(file.downloadUrl)}" download style="color: #ffffff;">Download file</a></p></div>`;
         }
       } catch (e) {
-        console.error('[FILE] Preview error:', e, 'fileName:', fileName, 'file:', file);
+        console.error('[FILE] Preview error:', e);
         preview = `<div class="file-preview-area"><p style="color: rgba(255, 255, 255, 0.7);"><a href="${escapeHtml(file.downloadUrl)}" download style="color: #ffffff;">Download file</a></p></div>`;
       }
 
@@ -1333,187 +1441,7 @@ async function loadView(viewId) {
 
 window.addEventListener('beforeunload', () => Cache.clearAll());
 
-// MOV → MP4 変換
-async function convertMovToMp4(movFile) {
-  try {
-    console.log('[CONVERT] Video conversion starting...', 'File:', movFile.name, 'Type:', movFile.type, 'Size:', movFile.size);
-    
-    if (!window.FFmpeg || !window.FFmpeg.FFmpeg) {
-      console.warn('[CONVERT] FFmpeg not available, returning original file');
-      return movFile;
-    }
-
-    const FFmpeg = window.FFmpeg.FFmpeg;
-    const ffmpeg = new FFmpeg.FFmpeg();
-    const timeout = 30000;
-    let timeoutId;
-    
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = setTimeout(() => {
-        console.warn('[CONVERT] Conversion timeout');
-        reject(new Error('Conversion timeout after 30 seconds'));
-      }, timeout);
-    });
-
-    try {
-      console.log('[CONVERT] Loading FFmpeg core...');
-      ffmpeg.load({
-        coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js',
-      });
-
-      if (!ffmpeg.isLoaded()) {
-        console.log('[CONVERT] Waiting for FFmpeg to load...');
-        await Promise.race([ffmpeg.load(), timeoutPromise]);
-      }
-
-      const inputFileName = 'input_video';
-      const outputFileName = 'output.mp4';
-      const inputExt = movFile.name.split('.').pop().toLowerCase();
-      const inputFullName = `${inputFileName}.${inputExt}`;
-
-      console.log('[CONVERT] Reading file data...');
-      const buffer = await movFile.arrayBuffer();
-      
-      ffmpeg.FS('writeFile', inputFullName, new Uint8Array(buffer));
-      console.log('[CONVERT] File written to FFmpeg FS');
-
-      console.log('[CONVERT] Running conversion...');
-      await Promise.race([
-        ffmpeg.run(
-          '-i', inputFullName,
-          '-c:v', 'libx264',
-          '-preset', 'ultrafast',
-          '-crf', '28',
-          '-c:a', 'aac',
-          '-b:a', '128k',
-          '-movflags', '+faststart',
-          outputFileName
-        ),
-        timeoutPromise
-      ]);
-
-      clearTimeout(timeoutId);
-
-      console.log('[CONVERT] Conversion completed, reading output...');
-      const outputData = ffmpeg.FS('readFile', outputFileName);
-      
-      ffmpeg.FS('unlink', inputFullName);
-      ffmpeg.FS('unlink', outputFileName);
-
-      const mp4Blob = new Blob([outputData.buffer], { type: 'video/mp4' });
-      const originalName = movFile.name.replace(/\.[^.]+$/i, '.mp4');
-      const mp4File = new File([mp4Blob], originalName, { type: 'video/mp4' });
-      
-      const originalMB = (movFile.size / 1024 / 1024).toFixed(2);
-      const convertedMB = (mp4File.size / 1024 / 1024).toFixed(2);
-      const ratio = ((1 - mp4File.size / movFile.size) * 100).toFixed(0);
-      
-      console.log(`[CONVERT] Success: ${originalMB}MB ${inputExt.toUpperCase()} → ${convertedMB}MB MP4 (${ratio}% reduction)`);
-      
-      return mp4File;
-    } catch (error) {
-      clearTimeout(timeoutId);
-      console.error('[CONVERT] Conversion error:', error.message);
-      console.error('[CONVERT] Stack:', error.stack);
-      return movFile;
-    }
-  } catch (error) {
-    console.error('[CONVERT] Outer error:', error);
-    return movFile;
-  }
-}
-
-// 動画圧縮処理
-async function convertAndCompressVideo(videoFile) {
-  try {
-    console.log('[COMPRESS] Video compression starting...');
-    
-    if (!window.FFmpeg || !window.FFmpeg.FFmpeg) {
-      console.warn('[COMPRESS] FFmpeg not available, returning original file');
-      return videoFile;
-    }
-
-    const FFmpeg = window.FFmpeg.FFmpeg;
-    const ffmpeg = new FFmpeg.FFmpeg();
-    const timeout = 60000;
-    let timeoutId;
-    
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = setTimeout(() => {
-        console.warn('[COMPRESS] Compression timeout');
-        reject(new Error('Compression timeout after 60 seconds'));
-      }, timeout);
-    });
-
-    try {
-      console.log('[COMPRESS] Loading FFmpeg core...');
-      ffmpeg.load({
-        coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js',
-      });
-
-      if (!ffmpeg.isLoaded()) {
-        console.log('[COMPRESS] Waiting for FFmpeg to load...');
-        await Promise.race([ffmpeg.load(), timeoutPromise]);
-      }
-
-      const inputExt = videoFile.name.split('.').pop().toLowerCase();
-      const inputFileName = `input.${inputExt}`;
-      const outputFileName = 'output.mp4';
-
-      console.log('[COMPRESS] Reading file data...');
-      const buffer = await videoFile.arrayBuffer();
-      
-      ffmpeg.FS('writeFile', inputFileName, new Uint8Array(buffer));
-      console.log('[COMPRESS] File written to FFmpeg FS');
-
-      console.log('[COMPRESS] Running compression (720p 30fps)...');
-      await Promise.race([
-        ffmpeg.run(
-          '-i', inputFileName,
-          '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2',
-          '-r', '30',
-          '-c:v', 'libx264',
-          '-preset', 'medium',
-          '-crf', '23',
-          '-c:a', 'aac',
-          '-b:a', '128k',
-          '-movflags', '+faststart',
-          outputFileName
-        ),
-        timeoutPromise
-      ]);
-
-      clearTimeout(timeoutId);
-
-      console.log('[COMPRESS] Compression completed, reading output...');
-      const outputData = ffmpeg.FS('readFile', outputFileName);
-      
-      ffmpeg.FS('unlink', inputFileName);
-      ffmpeg.FS('unlink', outputFileName);
-
-      const mp4Blob = new Blob([outputData.buffer], { type: 'video/mp4' });
-      const originalName = videoFile.name.replace(/\.[^.]+$/i, '.mp4');
-      const mp4File = new File([mp4Blob], originalName, { type: 'video/mp4' });
-      
-      const originalMB = (videoFile.size / 1024 / 1024).toFixed(2);
-      const compressedMB = (mp4File.size / 1024 / 1024).toFixed(2);
-      const ratio = ((1 - mp4File.size / videoFile.size) * 100).toFixed(0);
-      
-      console.log(`[COMPRESS] Success: ${originalMB}MB → ${compressedMB}MB (${ratio}% reduction)`);
-      
-      return mp4File;
-    } catch (error) {
-      clearTimeout(timeoutId);
-      console.error('[COMPRESS] Error:', error.message);
-      console.error('[COMPRESS] Stack:', error.stack);
-      return videoFile;
-    }
-  } catch (error) {
-    console.error('[COMPRESS] Outer error:', error);
-    return videoFile;
-  }
-}
-
+// ★ 初期化
 if (viewId) {
   showLoading();
   loadView(viewId);

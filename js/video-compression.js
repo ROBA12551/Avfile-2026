@@ -1,13 +1,6 @@
 /**
  * js/video-compression.js - iOS完全対応版
- * 
- * FFmpeg.wasm v0.10.1 による動画圧縮
- * 
- * ★ 修正点:
- * - iOS/Safari 判定を完全に修正
- * - モバイルデバイスではFFmpeg処理を完全にスキップ
- * - FFmpegコマンド引数を安全に処理
- * - エラーハンドリング強化
+ * FFmpeg.wasm による動画圧縮
  */
 
 class VideoCompressionEngine {
@@ -17,33 +10,17 @@ class VideoCompressionEngine {
     this.setupDeviceDetection();
   }
 
-  /**
-   * ★ 修正: デバイス判定を完全に実装
-   */
   setupDeviceDetection() {
     const ua = navigator.userAgent || '';
     
     console.log('[DEVICE] User-Agent:', ua.substring(0, 100));
 
-    // iOS判定（最初に判定）
     this.IS_IOS = /iPad|iPhone|iPod/.test(ua);
-    
-    // Android判定
     this.IS_ANDROID = /Android/.test(ua);
-    
-    // Safari判定（Chrome を除外）
     this.IS_SAFARI = /Safari/.test(ua) && !/Chrome|CriOS|Edg/.test(ua);
-    
-    // Opera判定
     this.IS_OPERA = /Opera|OPR/.test(ua);
-    
-    // Firefox判定
     this.IS_FIREFOX = /Firefox/.test(ua);
-
-    // モバイルデバイス判定
     this.IS_MOBILE = this.IS_IOS || this.IS_ANDROID || /Mobile|Tablet|Kindle/.test(ua);
-
-    // FFmpeg をスキップすべきか判定
     this.SHOULD_SKIP = this.IS_MOBILE || this.IS_SAFARI || this.IS_OPERA;
 
     console.log('[DEVICE] Detection result:', {
@@ -56,18 +33,13 @@ class VideoCompressionEngine {
 
     if (this.SHOULD_SKIP) {
       console.log('⏭️ このデバイスではFFmpeg処理をスキップします');
-      console.log('   iOS:', this.IS_IOS, 'Android:', this.IS_ANDROID, 'Safari:', this.IS_SAFARI);
     }
   }
 
-  /**
-   * FFmpeg を初期化
-   */
   async initFFmpeg() {
-    // ★ 修正: スキップデバイスではここで終了
     if (this.SHOULD_SKIP) {
       console.log('⏭️ モバイル/Safari - FFmpeg処理をスキップ');
-      this.ffmpegReady = true; // フラグを立てて進行
+      this.ffmpegReady = true;
       return;
     }
 
@@ -79,7 +51,6 @@ class VideoCompressionEngine {
     try {
       console.log('⏳ FFmpeg 初期化開始...');
       
-      // window.FFmpeg が存在するか確認
       if (!window.FFmpeg || !window.FFmpeg.FFmpeg) {
         console.error('❌ window.FFmpeg が見つかりません');
         throw new Error('FFmpeg ライブラリが読み込まれていません');
@@ -87,9 +58,6 @@ class VideoCompressionEngine {
 
       const { FFmpeg } = window.FFmpeg;
       
-      console.log('✅ FFmpeg API を確認');
-      
-      // FFmpeg インスタンスを作成
       this.ffmpeg = new FFmpeg({ log: false });
 
       if (this.ffmpeg.isLoaded()) {
@@ -99,24 +67,17 @@ class VideoCompressionEngine {
       }
 
       console.log('⏳ FFmpeg コア（WASM）をロード中...');
-      
-      // FFmpeg コアをロード
       await this.ffmpeg.load();
 
       this.ffmpegReady = true;
       console.log('✅ FFmpeg 初期化完了');
     } catch (error) {
       console.error('❌ FFmpeg 初期化失敗:', error.message);
-      console.error('Stack:', error.stack);
-      // 初期化失敗時は動画返却時に元ファイルを返す
       this.ffmpegReady = false;
       throw new Error(`FFmpeg 初期化失敗: ${error.message}`);
     }
   }
 
-  /**
-   * ★ 修正: Blob を ArrayBuffer に変換
-   */
   async blobToArrayBuffer(blob) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -132,9 +93,6 @@ class VideoCompressionEngine {
     });
   }
 
-  /**
-   * 動画を圧縮 - iOS完全対応版
-   */
   async compress(videoFile, onProgress = () => {}) {
     try {
       console.log('[COMPRESS] Starting compression:', {
@@ -143,7 +101,6 @@ class VideoCompressionEngine {
         type: videoFile.type,
       });
 
-      // ★ 修正: モバイル・Safari ではスキップ
       if (this.SHOULD_SKIP) {
         console.log('⏭️ モバイル/Safari デバイス - 圧縮をスキップ');
         
@@ -155,11 +112,9 @@ class VideoCompressionEngine {
         
         onProgress(100, '✅ 準備完了');
         
-        console.log('✅ 元のファイルを返却');
         return videoFile;
       }
 
-      // FFmpeg を初期化
       try {
         await this.initFFmpeg();
       } catch (error) {
@@ -174,7 +129,6 @@ class VideoCompressionEngine {
       onProgress(10, '📥 ファイルを読み込み中...');
       console.log('[COMPRESS] Reading file...');
 
-      // ★ 修正: ArrayBuffer に変換
       let inputData;
       try {
         inputData = await this.blobToArrayBuffer(videoFile);
@@ -186,7 +140,6 @@ class VideoCompressionEngine {
         return videoFile;
       }
 
-      // ★ 修正: FFmpeg FS に書き込む
       try {
         console.log('[COMPRESS] Writing to FFmpeg FS...');
         await this.ffmpeg.FS('writeFile', inputFileName, new Uint8Array(inputData));
@@ -204,7 +157,6 @@ class VideoCompressionEngine {
       onProgress(30, '⚙️ 圧縮設定中...');
       console.log('[COMPRESS] Building FFmpeg command...');
 
-      // ★ 修正: FFmpeg コマンドを配列で安全に指定
       const command = [
         '-i', inputFileName,
         '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2',
@@ -223,7 +175,6 @@ class VideoCompressionEngine {
       onProgress(40, '🎬 動画を圧縮中...');
       console.log('[COMPRESS] Running FFmpeg...');
 
-      // ★ 修正: ffmpeg.run() のエラーハンドリング
       try {
         await this.ffmpeg.run(...command);
         console.log('✅ FFmpeg 実行完了');
@@ -237,7 +188,6 @@ class VideoCompressionEngine {
       onProgress(80, '📤 圧縮ファイルを取得中...');
       console.log('[COMPRESS] Reading output file...');
 
-      // ★ 修正: readFile() のエラーハンドリング
       let outputData;
       try {
         outputData = await this.ffmpeg.FS('readFile', outputFileName);
@@ -251,7 +201,6 @@ class VideoCompressionEngine {
 
       const compressedBlob = new Blob([outputData.buffer], { type: 'video/mp4' });
 
-      // ★ 修正: クリーンアップ
       try {
         await this.ffmpeg.FS('unlink', inputFileName);
         await this.ffmpeg.FS('unlink', outputFileName);
@@ -272,16 +221,12 @@ class VideoCompressionEngine {
       console.error('❌ 圧縮エラー:', error.message);
       console.error('Stack:', error.stack);
       
-      // エラー時は元のファイルを返す
       console.warn('⚠️ 圧縮失敗 - 元のファイルを返却します');
       onProgress(100, '⚠️ ファイルをそのままアップロード');
       return videoFile;
     }
   }
 
-  /**
-   * メモリを解放
-   */
   async cleanup() {
     try {
       if (this.ffmpeg && this.ffmpeg.isLoaded()) {
@@ -296,5 +241,4 @@ class VideoCompressionEngine {
   }
 }
 
-// グローバルエクスポート
 window.VideoCompressionEngine = VideoCompressionEngine;
