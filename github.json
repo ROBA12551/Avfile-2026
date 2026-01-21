@@ -97,7 +97,7 @@
       "assetId": 343638787
     }
   ],
-  "lastUpdated": "2026-01-21T05:54:14.129Z",
+  "lastUpdated": "2026-01-21T05:58:21.690Z",
   "views": [
     {
       "viewId": "INdQzi",
@@ -162,6 +162,14 @@
       ],
       "password": null,
       "createdAt": "2026-01-21T05:54:14.129Z"
+    },
+    {
+      "viewId": "o3wsUV",
+      "files": [
+        "9153a61a-3e49-4bf8-93e1-42a4d3d80a65"
+      ],
+      "password": null,
+      "createdAt": "2026-01-21T05:58:21.690Z"
     }
   ]
 }
