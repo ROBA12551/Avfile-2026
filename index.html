@@ -115,10 +115,10 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            margin: 2rem auto;
-            min-height: 80px;
+            margin: 2rem auto !important;
             padding: 1rem;
             width: 100%;
+            flex-direction: column;
         }
 
         .banner-slot {
@@ -127,7 +127,7 @@
             align-items: center;
             width: 100%;
             max-width: 320px;
-            margin: 0 auto;
+            margin: 0 auto !important;
         }
 
         .hero {
@@ -380,6 +380,13 @@
             text-decoration: underline;
         }
 
+        /* Bottom Banner - After Footer */
+        .footer + .banner-container {
+            margin-top: 2rem;
+            margin-bottom: 2rem;
+            padding: 1rem 0;
+        }
+
         #viewerControls {
             display: flex;
             gap: 1rem;
@@ -415,7 +422,7 @@
             </div>
             <div class="nav-links">
                 <a href="/">Home</a>
-                <a href="/policy">Terms</a>
+                <a href="/policy.html">Terms</a>
             </div>
         </div>
     </nav>
@@ -540,6 +547,11 @@
     <footer class="footer">
         <p>&copy; 2025 Avfile. <a href="/policy">Privacy & Terms</a> • Fast File Sharing</p>
     </footer>
+
+    <!-- Bottom Banner -->
+    <div class="banner-container">
+        <div class="banner-slot" id="banner3"></div>
+    </div>
 
     <!-- Ad Script -->
     <script>
