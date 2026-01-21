@@ -62,7 +62,6 @@
   status = 200
 
 [[redirects]]
-  from = "/"
+  from = "/d/*"
   to = "/index.html"
   status = 200
-  force = true
