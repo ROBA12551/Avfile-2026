@@ -2,7 +2,7 @@
  * js/video-compression-local.js
  * ローカル（クライアント側）で完全に圧縮処理を行う
  * ★ すべてのデバイス・ブラウザで FFmpeg 圧縮を実行
- * ★ Safari/Opera でも圧縮実行（スキップなし）
+ * ★ High Profile H.264 対応（.mov ファイル対応）
  * ★ すべての動画を MP4 に統一
  */
 
@@ -173,6 +173,7 @@ class VideoCompressionEngineLocal {
       onProgress(30, '⚙️ 圧縮設定中...');
       console.log('[COMPRESS] Building FFmpeg command...');
 
+      // ★ High Profile H.264 対応のコマンド設定
       const command = [
         '-i', inputFileName,
         '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2',
@@ -180,6 +181,8 @@ class VideoCompressionEngineLocal {
         '-c:v', 'libx264',
         '-preset', 'ultrafast',
         '-crf', '32',
+        '-profile:v', 'high',      // ★ High Profile に統一
+        '-level', '3.1',            // ★ Level 3.1 に統一
         '-c:a', 'aac',
         '-b:a', '96k',
         '-movflags', '+faststart',
