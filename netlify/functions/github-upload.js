@@ -79,6 +79,7 @@ async function githubRequest(method, path, body = null, headers = {}) {
 
 /**
  * GitHub アセットアップロード用リクエスト
+ * FIX: タイムアウトとエラーハンドリングを改善
  */
 async function githubUploadRequest(method, fullUrl, body, headers = {}) {
   return new Promise((resolve, reject) => {
@@ -104,26 +105,27 @@ async function githubUploadRequest(method, fullUrl, body, headers = {}) {
         throw new Error(`Invalid URL format: ${e.message}`);
       }
 
+      // Buffer 検証
+      if (!Buffer.isBuffer(body)) {
+        throw new Error('Body must be a Buffer');
+      }
+
+      logInfo(`Upload body size: ${body.length} bytes`);
+
       const options = {
         hostname: parsed.hostname,
         port: 443,
         path: parsed.pathname + parsed.search,
         method,
+        timeout: 30000, // FIX: タイムアウトを追加
         headers: {
           'Authorization': `token ${GITHUB_TOKEN}`,
           'User-Agent': 'Avfile-Netlify',
           'Content-Type': 'application/octet-stream',
+          'Content-Length': body.length, // FIX: 整数値として設定
           ...headers,
         },
       };
-
-      if (body && typeof body !== 'string' && !Buffer.isBuffer(body)) {
-        body = Buffer.from(body);
-      }
-
-      if (body) {
-        options.headers['Content-Length'] = body.length;
-      }
 
       logInfo(`Upload Request: ${method} ${parsed.hostname}${parsed.pathname.substring(0, 50)}...`);
 
@@ -151,6 +153,12 @@ async function githubUploadRequest(method, fullUrl, body, headers = {}) {
       req.on('error', (err) => {
         logError(`Upload request error: ${err.message}`);
         reject(err);
+      });
+
+      req.on('timeout', () => {
+        logError('Upload request timeout');
+        req.destroy();
+        reject(new Error('Upload request timeout'));
       });
       
       if (body) req.write(body);
@@ -202,6 +210,7 @@ async function createRelease(tag, metadata) {
 
 /**
  * Asset (ファイル) をアップロード
+ * FIX: base64デコード時のエラーハンドリング強化
  */
 async function uploadAsset(uploadUrl, fileName, fileData) {
   try {
@@ -224,25 +233,44 @@ async function uploadAsset(uploadUrl, fileName, fileData) {
 
     logInfo(`Asset URL: ${assetUrl.substring(0, 100)}...`);
 
-    // fileData を Buffer に変換
-    if (!Buffer.isBuffer(fileData)) {
-      if (typeof fileData === 'string') {
-        logInfo(`Converting base64 string to Buffer...`);
-        fileData = Buffer.from(fileData, 'base64');
-      } else {
-        throw new Error('Invalid fileData type: must be string or Buffer');
+    // fileData を Buffer に変換 (FIX: エラーハンドリング強化)
+    let fileBuffer;
+    
+    if (Buffer.isBuffer(fileData)) {
+      fileBuffer = fileData;
+      logInfo(`File is already a Buffer: ${fileBuffer.length} bytes`);
+    } else if (typeof fileData === 'string') {
+      try {
+        // base64 文字列をバリデーション
+        if (!fileData || fileData.length === 0) {
+          throw new Error('fileBase64 is empty');
+        }
+
+        // base64 の有効性をチェック
+        if (!/^[A-Za-z0-9+/=]*$/.test(fileData)) {
+          throw new Error('fileBase64 contains invalid base64 characters');
+        }
+
+        logInfo(`Converting base64 string to Buffer (length: ${fileData.length})`);
+        fileBuffer = Buffer.from(fileData, 'base64');
+
+        // デコード後のバッファサイズをチェック
+        if (fileBuffer.length === 0) {
+          throw new Error('Decoded buffer is empty - possibly invalid base64');
+        }
+
+        logInfo(`Successfully decoded: ${fileBuffer.length} bytes`);
+      } catch (e) {
+        throw new Error(`Base64 decode error: ${e.message}`);
       }
+    } else {
+      throw new Error(`Invalid fileData type: ${typeof fileData}`);
     }
 
-    logInfo(`File size: ${fileData.length} bytes`);
+    logInfo(`Final file size: ${fileBuffer.length} bytes`);
 
-    // Content-Length をヘッダーに設定
-    const uploadHeaders = {
-      'Content-Type': 'application/octet-stream',
-      'Content-Length': fileData.length.toString(),
-    };
-
-    const data = await githubUploadRequest('POST', assetUrl, fileData, uploadHeaders);
+    // アップロード実行
+    const data = await githubUploadRequest('POST', assetUrl, fileBuffer);
 
     if (!data || !data.id) {
       throw new Error('Asset upload response missing id field');
