@@ -25,12 +25,13 @@
     <meta name="twitter:description" content="Share files instantly. No size limits, no registration. Videos, images, documents supported.">
     <meta name="twitter:image" content="https://avfile.io/images/folder.png">
     <meta name="twitter:site" content="@avfile">
-    
+    <meta name="google-adsense-account" content="ca-pub-9788086433456762">
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="/images/folder.png">
     <link rel="shortcut icon" href="/images/folder.png">
     <link rel="apple-touch-icon" href="/images/folder.png">
-    
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9788086433456762"
+     crossorigin="anonymous"></script>
     <title>Avfile - Fast File Sharing Service | Unlimited Storage</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -63,27 +64,36 @@
             gap: 1rem;
         }
         .logo-box {
-            width: 40px;
-            height: 40px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: #ffffff;
-            border-radius: 6px;
-            flex-shrink: 0;
+            display: none;
         }
         .logo-box img {
             display: none;
         }
         .logo-text { 
-            font-size: 1.5rem; 
+            font-size: 1.3rem; 
             font-weight: 700;
             color: #ffffff;
+            letter-spacing: 0.5px;
         }
         .logo-tagline {
-            font-size: 0.7rem;
-            color: rgba(255, 255, 255, 0.6);
-            margin-top: -0.5rem;
+            display: none;
+        }
+        
+        .policy-btn {
+            color: #ffffff;
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            padding: 0.6rem 1.2rem;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .policy-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.6);
         }
 
         .container { 
@@ -592,14 +602,9 @@
     <nav class="navbar">
         <div class="navbar-content">
             <div class="logo-container">
-                <div class="logo-box">
-                    <img src="/images/folder.png" alt="Avfile Logo">
-                </div>
-                <div>
-                    <div class="logo-text">Avfile</div>
-                    <div class="logo-tagline">File Sharing Made Simple</div>
-                </div>
+                <div class="logo-text">Avfile</div>
             </div>
+            <a href="policy.html" class="policy-btn">Policy</a>
         </div>
     </nav>
 
