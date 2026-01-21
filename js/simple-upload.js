@@ -1,8 +1,10 @@
 /**
  * js/simple-upload.js
  * 
- * IndexedDB ベースのアップロード処理
- * localStorage クォータ問題を解決
+ * Gofile 風ファイル共有サービス
+ * - 動画を 702p 30fps に圧縮
+ * - GitHub Releases に保存
+ * - CDN URL で視聴可能
  */
 
 class SimpleUploadManager {
@@ -12,44 +14,6 @@ class SimpleUploadManager {
       requestTimeout: 30000,
       ...config,
     };
-    this.dbName = 'AvfileDB';
-    this.storeName = 'files';
-    this.metaStoreName = 'metadata';
-  }
-
-  /**
-   * IndexedDB を初期化
-   */
-  async initDB() {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(this.dbName, 1);
-      
-      request.onerror = () => {
-        console.error('❌ IndexedDB open error:', request.error);
-        reject(request.error);
-      };
-      
-      request.onsuccess = () => {
-        console.log('✅ IndexedDB opened');
-        resolve(request.result);
-      };
-      
-      request.onupgradeneeded = (event) => {
-        const db = event.target.result;
-        
-        // ファイル保存用のオブジェクトストア
-        if (!db.objectStoreNames.contains(this.storeName)) {
-          db.createObjectStore(this.storeName, { keyPath: 'id' });
-          console.log('✅ Created files store');
-        }
-        
-        // メタデータ保存用のオブジェクトストア
-        if (!db.objectStoreNames.contains(this.metaStoreName)) {
-          db.createObjectStore(this.metaStoreName, { keyPath: 'id' });
-          console.log('✅ Created metadata store');
-        }
-      };
-    });
   }
 
   /**
@@ -79,240 +43,321 @@ class SimpleUploadManager {
   }
 
   /**
-   * IndexedDB にファイルを保存
+   * 動画ファイルか判定
    */
-  async saveFileToIndexedDB(fileInfo) {
+  isVideoFile(file) {
+    const videoMimes = [
+      'video/mp4',
+      'video/webm',
+      'video/ogg',
+      'video/quicktime',
+      'video/x-msvideo',
+      'video/x-matroska',
+    ];
+    return videoMimes.some(mime => file.type.startsWith(mime));
+  }
+
+  /**
+   * ファイルをアップロード
+   */
+  async uploadFile(fileBlob, fileName, onProgress = () => {}) {
     try {
-      const db = await this.initDB();
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction([this.storeName], 'readwrite');
-        const objectStore = transaction.objectStore(this.storeName);
-        const request = objectStore.add(fileInfo);
-        
-        request.onerror = () => {
-          console.error('❌ Error saving file:', request.error);
-          reject(request.error);
+      // onProgress がない場合のデフォルト
+      if (typeof onProgress !== 'function') {
+        onProgress = (progress, message) => {
+          console.log(`[${progress}%] ${message}`);
         };
+      }
+
+      const fileId = this.generateUUID();
+      
+      onProgress(5, '⏳ 準備中...');
+
+      // 動画ファイルを圧縮
+      let processedBlob = fileBlob;
+      if (this.isVideoFile(fileBlob)) {
+        console.log('🎥 動画ファイルを検出 - 圧縮開始...');
         
-        request.onsuccess = () => {
-          console.log('✅ File saved to IndexedDB:', fileInfo.id);
-          resolve(fileInfo.id);
-        };
-      });
+        if (window.VideoCompressionEngine) {
+          const compressor = new window.VideoCompressionEngine();
+          processedBlob = await compressor.compress(fileBlob, (progress, message) => {
+            // 圧縮進捗を反映（5-30%）
+            onProgress(5 + (progress * 0.5), message);
+          });
+          
+          const originalMB = (fileBlob.size / 1024 / 1024).toFixed(1);
+          const compressedMB = (processedBlob.size / 1024 / 1024).toFixed(1);
+          const ratio = ((1 - processedBlob.size / fileBlob.size) * 100).toFixed(0);
+          console.log(`📊 圧縮完了: ${originalMB}MB → ${compressedMB}MB (${ratio}% 削減)`);
+        } else {
+          console.warn('⚠️ 圧縮エンジンが利用できません');
+        }
+      }
+
+      onProgress(30, '📤 Base64 エンコード中...');
+
+      // Base64 にエンコード
+      const base64 = await this.fileToBase64(processedBlob);
+
+      onProgress(40, '☁️ GitHub にアップロード中...');
+
+      // GitHub Releases にアップロード
+      const uploadResult = await this.uploadToGitHubReleases(
+        fileId, 
+        fileName, 
+        base64, 
+        processedBlob.type,
+        (progress, message) => {
+          // GitHub アップロード進捗を反映（40-70%）
+          onProgress(40 + (progress * 0.3), message);
+        }
+      );
+
+      onProgress(75, '🔗 共有リンク生成中...');
+
+      // 共有情報を localStorage に保存
+      this.saveShareLink(fileId, fileName, uploadResult);
+
+      onProgress(90, '✨ 最後の処理中...');
+
+      // 視聴可能な URL を生成
+      const viewUrl = `${window.location.origin}/?id=${fileId}`;
+
+      onProgress(100, '✅ アップロード完了！');
+
+      console.log('✅ ファイルがアップロードされました');
+      console.log('📺 視聴URL:', viewUrl);
+      console.log('📥 ダウンロードURL:', uploadResult.download_url);
+
+      return {
+        success: true,
+        fileName: fileName,
+        fileId: fileId,
+        viewUrl: viewUrl,
+        downloadUrl: uploadResult.download_url,
+        fileSize: processedBlob.size,
+        githubUrl: uploadResult.html_url,
+        uploadedAt: new Date().toISOString(),
+      };
     } catch (error) {
-      console.error('❌ IndexedDB save error:', error);
+      console.error('❌ アップロードエラー:', error.message);
+      throw new Error(`ファイルアップロード失敗: ${error.message}`);
+    }
+  }
+
+  /**
+   * GitHub Releases にアップロード
+   */
+  async uploadToGitHubReleases(fileId, fileName, base64, fileType, onProgress) {
+    try {
+      const releaseTag = `file_${fileId}`;
+      const assetFileName = `${fileId}.${this.getFileExtension(fileType)}`;
+
+      onProgress(10, '📝 Release を作成中...');
+
+      // 1. Release を作成
+      const createReleaseResponse = await fetch('/.netlify/functions/github-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create-release',
+          releaseTag: releaseTag,
+          metadata: {
+            title: `Upload: ${fileName}`,
+            description: `
+File ID: ${fileId}
+Original Name: ${fileName}
+Type: ${fileType}
+Uploaded: ${new Date().toISOString()}
+            `.trim(),
+          },
+        }),
+      });
+
+      if (!createReleaseResponse.ok) {
+        throw new Error(`Release 作成失敗: ${createReleaseResponse.statusText}`);
+      }
+
+      const createData = await createReleaseResponse.json();
+      if (!createData.success) {
+        throw new Error(createData.error || 'Release 作成失敗');
+      }
+
+      console.log('✅ Release 作成:', createData.data.release_id);
+
+      onProgress(40, '📤 ファイルをアップロード中...');
+
+      // 2. Asset（ファイル）をアップロード
+      const uploadAssetResponse = await fetch('/.netlify/functions/github-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'upload-asset',
+          uploadUrl: createData.data.upload_url,
+          fileName: assetFileName,
+          fileBase64: base64,
+        }),
+      });
+
+      if (!uploadAssetResponse.ok) {
+        throw new Error(`ファイルアップロード失敗: ${uploadAssetResponse.statusText}`);
+      }
+
+      const uploadData = await uploadAssetResponse.json();
+      if (!uploadData.success) {
+        throw new Error(uploadData.error || 'ファイルアップロード失敗');
+      }
+
+      console.log('✅ ファイルアップロード:', uploadData.data.asset_id);
+
+      onProgress(100, '✨ 完了');
+
+      return {
+        release_id: createData.data.release_id,
+        asset_id: uploadData.data.asset_id,
+        download_url: uploadData.data.download_url,
+        html_url: createData.data.html_url,
+      };
+    } catch (error) {
+      console.error('❌ GitHub アップロードエラー:', error.message);
       throw error;
     }
   }
 
   /**
-   * IndexedDB からファイルを取得
+   * ファイルタイプから拡張子を取得
    */
-  async getFileFromIndexedDB(fileId) {
+  getFileExtension(fileType) {
+    const extensionMap = {
+      'video/mp4': 'mp4',
+      'video/webm': 'webm',
+      'video/ogg': 'ogg',
+      'image/jpeg': 'jpg',
+      'image/png': 'png',
+      'image/gif': 'gif',
+      'image/webp': 'webp',
+      'application/pdf': 'pdf',
+      'text/plain': 'txt',
+    };
+    return extensionMap[fileType] || 'bin';
+  }
+
+  /**
+   * 共有リンク情報を localStorage に保存
+   */
+  saveShareLink(fileId, fileName, uploadResult) {
     try {
-      const db = await this.initDB();
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction([this.storeName], 'readonly');
-        const objectStore = transaction.objectStore(this.storeName);
-        const request = objectStore.get(fileId);
-        
-        request.onerror = () => {
-          console.error('❌ Error retrieving file:', request.error);
-          reject(request.error);
-        };
-        
-        request.onsuccess = () => {
-          const fileData = request.result;
-          if (fileData) {
-            console.log('✅ File retrieved from IndexedDB:', fileId);
-          } else {
-            console.warn('⚠️ File not found:', fileId);
-          }
-          resolve(fileData);
-        };
+      let shareLinks = JSON.parse(localStorage.getItem('avfile_shares') || '[]');
+      
+      shareLinks.push({
+        fileId: fileId,
+        fileName: fileName,
+        downloadUrl: uploadResult.download_url,
+        githubUrl: uploadResult.html_url,
+        uploadedAt: new Date().toISOString(),
       });
+
+      // 最新 50 件のみ保持
+      shareLinks = shareLinks.slice(-50);
+      localStorage.setItem('avfile_shares', JSON.stringify(shareLinks));
+      
+      console.log('✅ 共有リンクを保存');
     } catch (error) {
-      console.error('❌ IndexedDB retrieval error:', error);
+      console.warn('⚠️ 共有リンク保存失敗:', error.message);
+    }
+  }
+
+  /**
+   * GitHub から共有ファイルを取得
+   */
+  async getSharedFile(fileId) {
+    try {
+      console.log('📥 ファイルを取得中...');
+
+      const releaseTag = `file_${fileId}`;
+      
+      // Netlify Function 経由で Release 情報を取得
+      const response = await fetch('/.netlify/functions/github-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'get-release-by-tag',
+          releaseTag: releaseTag,
+        }),
+      });
+
+      if (!response.ok) {
+        console.warn('⚠️ ファイルが見つかりません');
+        return null;
+      }
+
+      const data = await response.json();
+      if (!data.success) {
+        console.warn('⚠️ エラー:', data.error);
+        return null;
+      }
+
+      const releaseData = data.data;
+      if (!releaseData.assets || releaseData.assets.length === 0) {
+        console.warn('⚠️ ファイルが見つかりません');
+        return null;
+      }
+
+      const asset = releaseData.assets[0];
+
+      const fileInfo = {
+        fileId: fileId,
+        fileName: asset.name,
+        downloadUrl: asset.download_url,
+        githubUrl: releaseData.html_url,
+        size: asset.size,
+        uploadedAt: releaseData.created_at,
+      };
+
+      console.log('✅ ファイル取得完了:', fileInfo.fileName);
+      return fileInfo;
+    } catch (error) {
+      console.error('❌ エラー:', error.message);
       return null;
     }
   }
 
   /**
-   * メタデータを localStorage に保存（小サイズなので OK）
+   * 共有履歴を取得
    */
-  saveMetadata(fileId, fileName, fileSize, uploadedAt) {
+  getShareHistory() {
     try {
-      let uploads = JSON.parse(localStorage.getItem('avfile_uploads') || '[]');
-      uploads.push({
-        id: fileId,
-        fileName: fileName,
-        fileSize: fileSize,
-        uploadedAt: uploadedAt,
-      });
-      // 最新 100 件のみ保持
-      uploads = uploads.slice(-100);
-      localStorage.setItem('avfile_uploads', JSON.stringify(uploads));
-      console.log('✅ Metadata saved to localStorage');
+      return JSON.parse(localStorage.getItem('avfile_shares') || '[]');
     } catch (error) {
-      console.warn('⚠️ Metadata save warning:', error.message);
-      // メタデータ保存失敗は警告のみ（ファイル自体は保存済み）
+      console.warn('⚠️ 共有履歴取得失敗');
+      return [];
     }
   }
 
   /**
-   * デモモード - IndexedDB にアップロード
+   * 共有リンクをクリップボードにコピー
    */
-  async createDemoUpload(fileBlob, fileName, onProgress = () => {}) {
-    try {
-      console.log('📁 Demo mode: Uploading to IndexedDB...');
-      
-      onProgress(10, 'Checking file type...');
-
-      // UUID を生成
-      const fileId = this.generateUUID();
-      
-      // 動画ファイルか確認して圧縮
-      let processedBlob = fileBlob;
-      if (fileBlob.type.startsWith('video/')) {
-        console.log('🎥 Video file detected - compressing...');
-        
-        if (window.VideoCompressionEngine) {
-          const compressor = new window.VideoCompressionEngine();
-          processedBlob = await compressor.compress(fileBlob, (progress, message) => {
-            onProgress(Math.min(progress, 30), message);
-          });
-        } else {
-          console.warn('⚠️ VideoCompressionEngine not available');
-        }
+  copyToClipboard(text) {
+    return new Promise((resolve, reject) => {
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(text)
+          .then(() => {
+            console.log('✅ コピー完了');
+            resolve();
+          })
+          .catch(reject);
+      } else {
+        // フォールバック
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        console.log('✅ コピー完了');
+        resolve();
       }
-
-      onProgress(40, 'Encoding to Base64...');
-
-      // Base64 にエンコード
-      const base64 = await this.fileToBase64(processedBlob);
-      console.log(`📊 File size: ${fileBlob.size} bytes, Base64 size: ${base64.length} bytes`);
-
-      onProgress(60, 'Saving to IndexedDB...');
-
-      // ファイル情報を作成
-      const fileInfo = {
-        id: fileId,
-        name: fileName,
-        size: processedBlob.size,
-        type: processedBlob.type || fileBlob.type,
-        uploadedAt: new Date().toISOString(),
-        data: base64,
-      };
-
-      // IndexedDB に保存（容量無制限）
-      await this.saveFileToIndexedDB(fileInfo);
-
-      onProgress(80, 'Saving metadata...');
-
-      // メタデータを localStorage に保存
-      this.saveMetadata(fileId, fileName, processedBlob.size, fileInfo.uploadedAt);
-
-      onProgress(100, 'Upload complete!');
-
-      console.log('✅ File uploaded successfully');
-
-      return {
-        success: true,
-        fileName: fileName,
-        downloadUrl: `${window.location.origin}/?id=${fileId}`,
-        fileSize: processedBlob.size,
-        fileId: fileId,
-      };
-    } catch (error) {
-      console.error('❌ Upload error:', error.message);
-      throw new Error(`Upload failed: ${error.message}`);
-    }
-  }
-
-  /**
-   * GitHub API を使用したアップロード
-   */
-  async uploadToGitHub(fileBlob, fileName, onProgress = () => {}) {
-    try {
-      // GitHub Token を確認
-      const token = localStorage.getItem('github_token');
-      if (!token) {
-        console.warn('⚠️ No GitHub token. Using IndexedDB only.');
-        return this.createDemoUpload(fileBlob, fileName, onProgress);
-      }
-
-      const owner = localStorage.getItem('github_owner') || 'user';
-      const repo = localStorage.getItem('github_repo') || 'avfile-files';
-
-      console.log(`📤 Uploading to GitHub: ${owner}/${repo}`);
-      
-      onProgress(20, 'Connecting to GitHub...');
-
-      // GitHub アップローダーを作成
-      const uploader = new GitHubUploader(token, owner, repo);
-      
-      // Base64 にエンコード
-      onProgress(40, 'Encoding file...');
-      const base64 = await this.fileToBase64(fileBlob);
-
-      // GitHub にアップロード
-      onProgress(60, 'Uploading to GitHub...');
-      const result = await uploader.uploadFile(base64, fileName, (progress, message) => {
-        onProgress(60 + (progress / 2), message);
-      });
-
-      onProgress(90, 'Saving metadata...');
-
-      // メタデータも IndexedDB に保存（ローカルアクセス用）
-      const fileId = this.generateUUID();
-      const fileInfo = {
-        id: fileId,
-        name: fileName,
-        size: fileBlob.size,
-        type: fileBlob.type,
-        uploadedAt: new Date().toISOString(),
-        githubPath: result.filePath,
-        githubUrl: result.downloadUrl,
-        data: base64,  // ローカルキャッシュ
-      };
-
-      // IndexedDB に保存
-      await this.saveFileToIndexedDB(fileInfo);
-
-      // メタデータを localStorage に保存
-      this.saveMetadata(fileId, fileName, fileBlob.size, fileInfo.uploadedAt);
-
-      onProgress(100, 'Upload complete!');
-
-      console.log('✅ File uploaded to GitHub and IndexedDB');
-
-      return {
-        success: true,
-        fileName: fileName,
-        downloadUrl: result.downloadUrl,
-        fileSize: fileBlob.size,
-        fileId: fileId,
-        githubPath: result.filePath,
-      };
-    } catch (error) {
-      console.error('❌ GitHub upload error:', error.message);
-      console.warn('⚠️ Falling back to IndexedDB only...');
-      // GitHub が失敗した場合は IndexedDB にフォールバック
-      return this.createDemoUpload(fileBlob, fileName, onProgress);
-    }
-  }
-
-  /**
-   * ファイルデータを取得
-   */
-  async getFileData(fileId) {
-    try {
-      const fileData = await this.getFileFromIndexedDB(fileId);
-      return fileData;
-    } catch (error) {
-      console.error('❌ Error getting file:', error.message);
-      return null;
-    }
+    });
   }
 }
 
