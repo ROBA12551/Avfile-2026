@@ -40,11 +40,13 @@ function logError(message) {
 }
 
 // 環境変数チェック
+logInfo('='.repeat(60));
+logInfo('🚀 Netlify Function Starting...');
 logInfo('Environment Variables Check:');
-logInfo(`  GITHUB_TOKEN: ${GITHUB_TOKEN ? '✅ SET' : '❌ MISSING'}`);
+logInfo(`  GITHUB_TOKEN: ${GITHUB_TOKEN ? `✅ SET (${GITHUB_TOKEN.substring(0, 10)}...)` : '❌ MISSING'}`);
 logInfo(`  GITHUB_OWNER: ${GITHUB_OWNER ? `✅ SET (${GITHUB_OWNER})` : '❌ MISSING'}`);
 logInfo(`  GITHUB_REPO: ${GITHUB_REPO ? `✅ SET (${GITHUB_REPO})` : '❌ MISSING'}`);
-
+logInfo('='.repeat(60));
 // Rate Limiting (簡易版)
 const requestCache = new Map();
 
@@ -125,6 +127,18 @@ async function githubRequest(method, path, body = null, headers = {}) {
             resolve({ status: res.statusCode, data: json });
           } else {
             const error = data ? JSON.parse(data) : { message: 'Unknown error' };
+            
+            // 404 エラーの詳細ログ
+            if (res.statusCode === 404) {
+              logError(`🔍 GitHub 404 Not Found Details:`);
+              logError(`  Method: ${method}`);
+              logError(`  Path: ${path}`);
+              logError(`  GITHUB_OWNER: ${GITHUB_OWNER}`);
+              logError(`  GITHUB_REPO: ${GITHUB_REPO}`);
+              logError(`  Full URL: https://api.github.com${path}`);
+              logError(`  GitHub Response: ${JSON.stringify(error)}`);
+            }
+            
             logError(`GitHub API Error (${res.statusCode}): ${JSON.stringify(error)}`);
             reject(new Error(`GitHub API Error (${res.statusCode}): ${error.message}`));
           }
