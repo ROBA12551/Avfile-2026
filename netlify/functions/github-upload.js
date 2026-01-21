@@ -30,6 +30,21 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_OWNER = process.env.GITHUB_OWNER;
 const GITHUB_REPO = process.env.GITHUB_REPO;
 
+// ログ関数
+function logInfo(message) {
+  console.log(`[INFO] ${new Date().toISOString()} ${message}`);
+}
+
+function logError(message) {
+  console.error(`[ERROR] ${new Date().toISOString()} ${message}`);
+}
+
+// 環境変数チェック
+logInfo('Environment Variables Check:');
+logInfo(`  GITHUB_TOKEN: ${GITHUB_TOKEN ? '✅ SET' : '❌ MISSING'}`);
+logInfo(`  GITHUB_OWNER: ${GITHUB_OWNER ? `✅ SET (${GITHUB_OWNER})` : '❌ MISSING'}`);
+logInfo(`  GITHUB_REPO: ${GITHUB_REPO ? `✅ SET (${GITHUB_REPO})` : '❌ MISSING'}`);
+
 // Rate Limiting (簡易版)
 const requestCache = new Map();
 
@@ -84,6 +99,8 @@ async function githubRequest(method, path, body = null, headers = {}) {
       },
     };
 
+    logInfo(`GitHub API Request: ${method} ${path}`);
+
     if (body && typeof body !== 'string' && !Buffer.isBuffer(body)) {
       body = JSON.stringify(body);
     }
@@ -101,20 +118,25 @@ async function githubRequest(method, path, body = null, headers = {}) {
 
       res.on('end', () => {
         try {
+          logInfo(`GitHub API Response: ${res.statusCode}`);
+          
           if (res.statusCode >= 200 && res.statusCode < 300) {
             const json = data ? JSON.parse(data) : {};
             resolve({ status: res.statusCode, data: json });
           } else {
             const error = data ? JSON.parse(data) : { message: 'Unknown error' };
+            logError(`GitHub API Error (${res.statusCode}): ${JSON.stringify(error)}`);
             reject(new Error(`GitHub API Error (${res.statusCode}): ${error.message}`));
           }
         } catch (e) {
+          logError(`JSON Parse Error: ${e.message}`);
           reject(new Error(`JSON Parse Error: ${e.message}`));
         }
       });
     });
 
     req.on('error', (e) => {
+      logError(`Network Error: ${e.message}`);
       reject(new Error(`Network Error: ${e.message}`));
     });
 
@@ -133,7 +155,7 @@ async function githubRequest(method, path, body = null, headers = {}) {
  * @returns {Promise<Object>} - Release 情報
  */
 async function createRelease(releaseTag, metadata) {
-  console.log(`[createRelease] Tag: ${releaseTag}`);
+  logInfo(`[createRelease] Tag: ${releaseTag}`);
 
   const path = `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases`;
   const body = {
@@ -162,7 +184,7 @@ async function createRelease(releaseTag, metadata) {
  * @returns {Promise<Object>} - Asset 情報
  */
 async function uploadAsset(uploadUrl, fileData, fileName) {
-  console.log(`[uploadAsset] File: ${fileName}, Size: ${fileData.length} bytes`);
+  logInfo(`[uploadAsset] File: ${fileName}, Size: ${fileData.length} bytes`);
 
   // upload_url テンプレートを展開
   const cleanUrl = uploadUrl.replace('{?name,label}', '');
@@ -191,7 +213,7 @@ async function uploadAsset(uploadUrl, fileData, fileName) {
  * @returns {Promise<Object>} - Release 情報
  */
 async function getRelease(releaseId) {
-  console.log(`[getRelease] ID: ${releaseId}`);
+  logInfo(`[getRelease] ID: ${releaseId}`);
 
   const path = `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/${releaseId}`;
   const response = await githubRequest('GET', path);
@@ -211,7 +233,7 @@ async function getRelease(releaseId) {
  * @returns {Promise<Object>} - Release 情報
  */
 async function getReleaseByTag(releaseTag) {
-  console.log(`[getReleaseByTag] Tag: ${releaseTag}`);
+  logInfo(`[getReleaseByTag] Tag: ${releaseTag}`);
 
   const path = `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/tags/${releaseTag}`;
   const response = await githubRequest('GET', path);
@@ -233,21 +255,21 @@ async function getGithubJson() {
     const path = `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`;
     const response = await githubRequest('GET', path);
     
-    if (!response.content) {
+    if (!response.data.content) {
       throw new Error('github.json が見つかりません');
     }
     
     // Base64 デコード
-    const content = Buffer.from(response.content, 'base64').toString('utf-8');
+    const content = Buffer.from(response.data.content, 'base64').toString('utf-8');
     const jsonData = JSON.parse(content);
     
     return {
       data: jsonData,
-      sha: response.sha,
+      sha: response.data.sha,
     };
   } catch (error) {
     if (error.message.includes('404') || error.message.includes('Not Found')) {
-      console.log('📝 github.json が存在しません - 新規作成対象');
+      logInfo('📝 github.json が存在しません - 新規作成対象');
       return {
         data: { files: [], lastUpdated: new Date().toISOString() },
         sha: null,
@@ -289,6 +311,10 @@ async function saveGithubJson(jsonData, existingSha = null) {
  * Netlify Function メインハンドラー
  */
 exports.handler = async (event, context) => {
+  logInfo('='.repeat(50));
+  logInfo(`Request received: ${event.httpMethod} ${event.path}`);
+  logInfo(`Body: ${event.body ? event.body.substring(0, 200) : 'empty'}`);
+
   // CORS プリフライト
   if (event.httpMethod === 'OPTIONS') {
     return {
@@ -298,6 +324,24 @@ exports.handler = async (event, context) => {
         'Access-Control-Allow-Methods': 'POST, GET, DELETE',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       },
+    };
+  }
+
+  // 環境変数チェック
+  if (!GITHUB_TOKEN || !GITHUB_OWNER || !GITHUB_REPO) {
+    logError('Missing required environment variables');
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        success: false,
+        error: 'Server configuration error: Missing environment variables (GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO)',
+        debug: {
+          GITHUB_TOKEN: GITHUB_TOKEN ? '✅ SET' : '❌ MISSING',
+          GITHUB_OWNER: GITHUB_OWNER ? '✅ SET' : '❌ MISSING',
+          GITHUB_REPO: GITHUB_REPO ? '✅ SET' : '❌ MISSING',
+        },
+      }),
     };
   }
 
@@ -319,7 +363,8 @@ exports.handler = async (event, context) => {
     const body = JSON.parse(event.body || '{}');
     const action = body.action || 'upload-asset';
 
-    console.log(`[${action}] Request received from ${clientIp}`);
+    logInfo(`Action: ${action}`);
+    logInfo(`Client IP: ${clientIp}`);
 
     let response;
 
@@ -352,13 +397,6 @@ exports.handler = async (event, context) => {
         response = await getReleaseByTag(body.releaseTag);
         break;
 
-      case 'delete-release':
-        if (!body.releaseId) {
-          throw new Error('Missing releaseId');
-        }
-        response = await deleteRelease(body.releaseId);
-        break;
-
       case 'get-github-json':
         const jsonResult = await getGithubJson();
         response = jsonResult.data;
@@ -377,7 +415,7 @@ exports.handler = async (event, context) => {
         throw new Error(`Unknown action: ${action}`);
     }
 
-    console.log(`[${action}] Success`);
+    logInfo(`[${action}] Success`);
 
     return {
       statusCode: 200,
@@ -388,7 +426,7 @@ exports.handler = async (event, context) => {
       }),
     };
   } catch (error) {
-    console.error('[Error]', error.message);
+    logError(`[Error] ${error.message}`);
 
     return {
       statusCode: error.message.includes('Rate limit') ? 429 : 400,
