@@ -1235,105 +1235,99 @@ document.getElementById('openLinkBtn').onclick = () => window.open(document.getE
 document.getElementById('retryBtn').onclick = () => { showUpload(); document.getElementById('fileInput').value = ''; };
 document.getElementById('backBtn').onclick = () => showUpload();
 
-// ★ 修正: uploadMultiple関数全体を置き換え
 async function uploadMultiple(files) {
   showStatus();
   const uploader = new GitHubUploader();
+  const fileUploader = new UniversalFileUploaderEnhanced();  // ★ 強化版を使用
+  const deviceInfo = fileUploader.getDeviceInfo();
   const ids = [];
-  const isMobile = isMobileDevice();
+  const isMobile = deviceInfo.isMobile;
 
   try {
-    console.log('[UPLOAD_MAIN] Starting upload with', files.length, 'files');
+    console.log('[UPLOAD_MAIN] ========== UPLOAD START ==========');
+    console.log('[UPLOAD_MAIN] Device Info:', deviceInfo);
+    console.log('[UPLOAD_MAIN] Files count:', files.length);
+
+    // ★ 各ファイルの詳細情報をログ
+    for (let i = 0; i < files.length; i++) {
+      fileUploader.logFileDetails(files[i], i);
+    }
+
+    // ★ ファイルをバリデーション（詳細ログ付き）
+    const { valid, errors } = await fileUploader.validateFiles(files);
+    
+    if (errors.length > 0) {
+      const errorMsg = 'Invalid files:\n' + errors.join('\n');
+      console.error('[UPLOAD_MAIN] Validation errors:', errors);
+      showError(errorMsg);
+      return;
+    }
+
+    if (valid.length === 0) {
+      showError('No valid files to upload');
+      return;
+    }
+
+    console.log('[UPLOAD_MAIN] Validation passed:', valid.length, 'files');
     console.log('[UPLOAD_MAIN] isMobile:', isMobile);
 
-    const promises = files.map((file, i) => (async () => {
+    // ★ 修正: valid を使用
+    const promises = valid.map((file, i) => (async () => {
       try {
-        document.getElementById('statusMessage').textContent = `${i + 1} / ${files.length}`;
+        document.getElementById('statusMessage').textContent = `${i + 1} / ${valid.length}`;
         
         const fileId = 'f_' + Math.random().toString(36).substr(2, 9);
         
-        console.log(`[FILE_${i}] Starting:`, file.name, 'Size:', file.size, 'Type:', file.type);
+        // ★ 強化版で ファイル情報を取得
+        const metadata = await fileUploader.getFileInfo(file);
+        console.log(`[FILE_${i}] File metadata:`, {
+          name: metadata.name,
+          type: metadata.type,
+          size: metadata.sizeStr,
+        });
         
         // ★ ファイル名のサニタイゼーション
-        let fileName = file.name || 'file';
+        let fileName = metadata.name;
         fileName = sanitizeFileName(fileName);
         console.log(`[FILE_${i}] Sanitized fileName:`, fileName);
         
-        // ★ ファイルサイズチェック
-        if (file.size > MAX_FILE_SIZE) {
-          const msg = `File size exceeds limit: ${(file.size / 1024 / 1024).toFixed(2)}MB (max 500MB)`;
-          console.error(`[FILE_${i}]`, msg);
-          throw new Error(msg);
-        }
-        
         let uploadFile = file;
         
-        // ★ ビデオ圧縮（ローカル）
-        // ローカル圧縮対応: VideoCompressionEngineLocal を使用
-        if (isVideoFile(file) && !isMobile && window.VideoCompressionEngineLocal) {
+        // ★ 動画のみ圧縮
+        const isVideoType = metadata.type === 'video';
+        const isLargeVideo = file.size > 100 * 1024 * 1024;
+        
+        if (isVideoType && isLargeVideo && !isMobile && window.VideoCompressionEngineLocal) {
           try {
             console.log(`[FILE_${i}] Video compression starting...`);
             const engine = new VideoCompressionEngineLocal();
             uploadFile = await engine.compress(file, (percent, message) => {
-              document.getElementById('statusMessage').textContent = `${i + 1} / ${files.length} - ${message}`;
+              document.getElementById('statusMessage').textContent = 
+                `${i + 1} / ${valid.length} - ${message}`;
             });
             console.log(`[FILE_${i}] Video compression successful`);
           } catch (err) {
             console.warn(`[FILE_${i}] Compression failed, using original:`, err.message);
             uploadFile = file;
           }
+        } else if (isVideoType) {
+          console.log(`[FILE_${i}] Video compression skipped - isMobile: ${isMobile}, size: ${fileUploader.formatSize(file.size)}`);
         }
         
-        // ★ Base64変換
+        // ★ Base64変換（タイムアウト付き）
         console.log(`[FILE_${i}] Converting to Base64...`);
         let base64 = '';
         try {
-          base64 = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            
-            reader.onload = () => {
-              try {
-                const result = reader.result;
-                if (!result || typeof result !== 'string') {
-                  console.error(`[FILE_${i}] Invalid FileReader result`);
-                  reject(new Error('Invalid FileReader result'));
-                  return;
-                }
-                
-                const parts = result.split(',');
-                if (parts.length < 2) {
-                  console.error(`[FILE_${i}] Invalid data URL format`);
-                  reject(new Error('Invalid data URL format'));
-                  return;
-                }
-                
-                const b64 = parts[1];
-                if (!b64 || b64.length === 0) {
-                  console.error(`[FILE_${i}] Empty Base64 data`);
-                  reject(new Error('Empty Base64 data'));
-                  return;
-                }
-                
-                console.log(`[FILE_${i}] Base64 conversion successful, length:`, b64.length);
-                resolve(b64);
-              } catch (e) {
-                console.error(`[FILE_${i}] Base64 parsing error:`, e);
-                reject(e);
-              }
-            };
-            
-            reader.onerror = () => {
-              console.error(`[FILE_${i}] FileReader error:`, reader.error);
-              reject(reader.error);
-            };
-            
-            reader.onprogress = (event) => {
-              console.log(`[FILE_${i}] FileReader progress:`, event.loaded, '/', event.total);
-            };
-            
-            console.log(`[FILE_${i}] Starting FileReader...`);
-            reader.readAsDataURL(uploadFile);
+          base64 = await fileUploader.toBase64(uploadFile, (progress) => {
+            document.getElementById('statusMessage').textContent = 
+              `${i + 1} / ${valid.length} - Base64 ${progress}%`;
           });
+
+          if (!base64 || base64.length === 0) {
+            throw new Error('Base64 conversion resulted in empty string');
+          }
+
+          console.log(`[FILE_${i}] Base64 conversion successful, length: ${base64.length}`);
         } catch (err) {
           console.error(`[FILE_${i}] Base64 conversion failed:`, err);
           throw new Error(`Failed to convert file to Base64: ${err.message}`);
@@ -1345,7 +1339,6 @@ async function uploadMultiple(files) {
         try {
           releaseData = await uploader.createRelease(`file_${fileId}`, fileName);
           console.log(`[FILE_${i}] Release created:`, releaseData.release_id);
-          console.log(`[FILE_${i}] Upload URL:`, releaseData.upload_url.substring(0, 100));
         } catch (err) {
           console.error(`[FILE_${i}] Release creation failed:`, err.message);
           throw new Error(`Release creation failed: ${err.message}`);
@@ -1355,13 +1348,6 @@ async function uploadMultiple(files) {
         console.log(`[FILE_${i}] Uploading asset...`);
         let assetData;
         try {
-          console.log(`[FILE_${i}] Asset upload parameters:`, {
-            uploadUrl: releaseData.upload_url.substring(0, 100),
-            fileName: fileName,
-            base64Length: base64.length,
-            fileSize: uploadFile.size,
-          });
-          
           assetData = await uploader.uploadAsset(
             releaseData.upload_url,
             fileName,
@@ -1372,7 +1358,6 @@ async function uploadMultiple(files) {
           console.log(`[FILE_${i}] Asset uploaded successfully:`, assetData.download_url);
         } catch (err) {
           console.error(`[FILE_${i}] Asset upload failed:`, err.message);
-          console.error(`[FILE_${i}] Stack:`, err.stack);
           throw new Error(`Asset upload failed: ${err.message}`);
         }
 
@@ -1383,16 +1368,14 @@ async function uploadMultiple(files) {
           githubJson = await uploader.getGithubJson();
           
           if (!githubJson || typeof githubJson !== 'object') {
-            console.error(`[FILE_${i}] Invalid githubJson:`, githubJson);
             throw new Error('Invalid githubJson response');
           }
 
           if (!Array.isArray(githubJson.files)) {
-            console.warn(`[FILE_${i}] githubJson.files is not an array, reinitializing`);
             githubJson.files = [];
           }
           
-          console.log(`[FILE_${i}] github.json retrieved, current files:`, githubJson.files.length);
+          console.log(`[FILE_${i}] github.json retrieved`);
         } catch (err) {
           console.error(`[FILE_${i}] Failed to get github.json:`, err.message);
           throw new Error(`Failed to get github.json: ${err.message}`);
@@ -1404,9 +1387,15 @@ async function uploadMultiple(files) {
           const fileInfo = {
             fileId: fileId,
             fileName: fileName,
-            downloadUrl: assetData.download_url || releaseData.upload_url,
+            fileType: metadata.type,
+            downloadUrl: assetData.download_url,
             fileSize: uploadFile.size,
             uploadedAt: new Date().toISOString(),
+            metadata: {
+              extension: metadata.name.split('.').pop(),
+              originalName: metadata.originalName,
+              mimeType: metadata.mimeType
+            }
           };
 
           console.log(`[FILE_${i}] File info:`, fileInfo);
@@ -1420,10 +1409,11 @@ async function uploadMultiple(files) {
           throw new Error(`Failed to save file info: ${err.message}`);
         }
 
-        console.log(`[FILE_${i}] Completed successfully`);
+        console.log(`[FILE_${i}] ========== FILE COMPLETED ==========`);
         return fileId;
       } catch (fileError) {
-        console.error(`[FILE_${i}] File upload failed:`, fileError);
+        console.error(`[FILE_${i}] ========== FILE FAILED ==========`);
+        console.error(`[FILE_${i}] Error:`, fileError);
         throw fileError;
       }
     })());
@@ -1450,9 +1440,10 @@ async function uploadMultiple(files) {
     console.log('[UPLOAD_MAIN] Setting share URL...');
     document.getElementById('shareUrl').value = view.shareUrl;
     
-    console.log('[UPLOAD_MAIN] Upload completed successfully!');
+    console.log('[UPLOAD_MAIN] ========== UPLOAD SUCCESS ==========');
     showSuccess();
   } catch (e) {
+    console.error('[UPLOAD_MAIN] ========== UPLOAD FAILED ==========');
     console.error('[UPLOAD_MAIN] Fatal error:', e);
     console.error('[UPLOAD_MAIN] Stack:', e.stack);
     
@@ -1462,7 +1453,6 @@ async function uploadMultiple(files) {
     showError(errorMsg);
   }
 }
-
 // ビュー読み込み
 async function loadView(viewId) {
   try {

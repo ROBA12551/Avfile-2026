@@ -1,44 +1,36 @@
 /**
- * js/universal-file-uploader.js
- * 汎用ファイルアップロード機能
- * 画像、動画、PDF、音声、ドキュメント など全ファイルタイプに対応
- * GoFile や MediaFile のような多機能ファイル共有サービス対応
+ * js/universal-file-uploader-enhanced.js
+ * フォトライブラリ＆ファイル選択対応
+ * iOS/Android のメディアピッカーに完全対応
  */
 
-class UniversalFileUploader {
+class UniversalFileUploaderEnhanced {
   constructor() {
     this.supportedTypes = {
-      // 動画
       video: {
         extensions: ['mp4', 'webm', 'ogg', 'mkv', 'avi', 'mov', 'flv', 'wmv', 'm4v', 'ts', 'm2ts', 'mts', '3gp', '3g2', 'asf', 'f4v', 'm3u8', 'mxf', 'mpeg', 'mpg'],
         mimeTypes: ['video/mp4', 'video/webm', 'video/ogg', 'video/x-matroska', 'video/x-msvideo', 'video/quicktime', 'video/x-flv', 'video/x-ms-wmv']
       },
-      // 画像
       image: {
         extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'ico', 'tiff', 'tif', 'heic', 'heif', 'avif'],
         mimeTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/svg+xml', 'image/x-icon', 'image/tiff', 'image/heic', 'image/heif', 'image/avif']
       },
-      // PDF
       pdf: {
         extensions: ['pdf'],
         mimeTypes: ['application/pdf']
       },
-      // 音声
       audio: {
         extensions: ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'wma', 'opus', 'aiff'],
         mimeTypes: ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/flac', 'audio/mp4', 'audio/aac', 'audio/x-ms-wma', 'audio/opus', 'audio/aiff']
       },
-      // ドキュメント
       document: {
         extensions: ['doc', 'docx', 'txt', 'rtf', 'odt', 'xls', 'xlsx', 'csv', 'ods', 'ppt', 'pptx', 'odp'],
-        mimeTypes: ['application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'application/rtf', 'application/vnd.oasis.opendocument.text']
+        mimeTypes: ['application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'application/rtf']
       },
-      // アーカイブ
       archive: {
         extensions: ['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz'],
         mimeTypes: ['application/zip', 'application/x-rar-compressed', 'application/x-7z-compressed', 'application/x-tar', 'application/gzip']
       },
-      // コード
       code: {
         extensions: ['js', 'ts', 'jsx', 'tsx', 'py', 'java', 'cpp', 'c', 'go', 'rs', 'rb', 'php', 'html', 'css', 'scss', 'json', 'xml', 'yaml', 'yml', 'sh', 'bash', 'sql'],
         mimeTypes: ['application/javascript', 'text/javascript', 'text/typescript', 'text/plain', 'text/html', 'text/css']
@@ -46,6 +38,98 @@ class UniversalFileUploader {
     };
 
     this.maxFileSize = 500 * 1024 * 1024; // 500MB
+  }
+
+  /**
+   * ファイル名を修復（フォトライブラリ対応）
+   * ★ Blob/File から拡張子がない場合は MIME タイプから推測
+   */
+  inferFileNameFromMimeType(file) {
+    try {
+      let fileName = file.name || 'file';
+
+      // ファイル名に拡張子がない場合
+      if (!fileName || !fileName.includes('.')) {
+        const mimeType = file.type || 'application/octet-stream';
+        
+        // MIME タイプから拡張子を推測
+        const mimeToExt = {
+          'video/mp4': 'mp4',
+          'video/quicktime': 'mov',
+          'image/jpeg': 'jpg',
+          'image/png': 'png',
+          'image/gif': 'gif',
+          'image/webp': 'webp',
+          'image/heic': 'heic',
+          'image/heif': 'heif',
+          'audio/mpeg': 'mp3',
+          'audio/wav': 'wav',
+          'audio/ogg': 'ogg',
+          'audio/mp4': 'm4a',
+          'application/pdf': 'pdf',
+          'application/zip': 'zip',
+          'text/plain': 'txt',
+          'text/html': 'html',
+          'text/css': 'css',
+          'application/json': 'json',
+          'application/xml': 'xml',
+        };
+
+        const ext = mimeToExt[mimeType] || 'bin';
+        fileName = `file_${Date.now()}.${ext}`;
+
+        console.log(`[FILE_INFER] MIME type: ${mimeType} → Extension: ${ext}`);
+        console.log(`[FILE_INFER] New filename: ${fileName}`);
+      }
+
+      return fileName;
+    } catch (e) {
+      console.error('[FILE_INFER] Error:', e.message);
+      return `file_${Date.now()}`;
+    }
+  }
+
+  /**
+   * ファイル情報を取得（フォトライブラリ対応）
+   */
+  async getFileInfo(file) {
+    try {
+      if (!file) return null;
+
+      // ★ ファイル名を修復
+      const inferredName = this.inferFileNameFromMimeType(file);
+      
+      const fileType = this.getFileType(inferredName);
+      const size = file.size;
+      const sizeStr = this.formatSize(size);
+      const mimeType = file.type || this.getMimeType(inferredName);
+
+      console.log(`[FILE_INFO] OriginalName: ${file.name}, InferredName: ${inferredName}`);
+      console.log(`[FILE_INFO] MIME: ${mimeType}, Type: ${fileType}, Size: ${sizeStr}`);
+
+      return {
+        originalName: file.name,
+        name: inferredName,
+        type: fileType,
+        size: size,
+        sizeStr: sizeStr,
+        mimeType: mimeType,
+        lastModified: file.lastModified,
+        lastModifiedDate: new Date(file.lastModified)
+      };
+    } catch (e) {
+      console.error('[FILE_INFO] Error:', e.message);
+      return {
+        originalName: file.name,
+        name: `file_${Date.now()}`,
+        type: 'file',
+        size: file.size,
+        sizeStr: this.formatSize(file.size),
+        mimeType: file.type || 'application/octet-stream',
+        lastModified: file.lastModified,
+        lastModifiedDate: new Date(file.lastModified)
+      };
+    }
   }
 
   /**
@@ -67,38 +151,6 @@ class UniversalFileUploader {
   }
 
   /**
-   * ファイルが圧縮対象かどうか判定
-   * 動画ファイルのみローカル圧縮対象
-   */
-  shouldCompress(file) {
-    if (!file) return false;
-    const fileType = this.getFileType(file.name);
-    return fileType === 'video' && file.size > 100 * 1024 * 1024; // 100MB以上
-  }
-
-  /**
-   * ファイル情報を取得
-   */
-  getFileInfo(file) {
-    if (!file) return null;
-
-    const fileType = this.getFileType(file.name);
-    const size = file.size;
-    const sizeStr = this.formatSize(size);
-    const mimeType = file.type || this.getMimeType(file.name);
-
-    return {
-      name: file.name,
-      type: fileType,
-      size: size,
-      sizeStr: sizeStr,
-      mimeType: mimeType,
-      lastModified: file.lastModified,
-      lastModifiedDate: new Date(file.lastModified)
-    };
-  }
-
-  /**
    * MIME タイプを取得
    */
   getMimeType(fileName) {
@@ -114,7 +166,6 @@ class UniversalFileUploader {
       }
     }
 
-    // 一般的な拡張子のマッピング
     const mimeMap = {
       'pdf': 'application/pdf',
       'zip': 'application/zip',
@@ -132,7 +183,7 @@ class UniversalFileUploader {
   }
 
   /**
-   * ファイルサイズを人間が読みやすい形式にフォーマット
+   * ファイルサイズをフォーマット
    */
   formatSize(bytes) {
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -142,27 +193,38 @@ class UniversalFileUploader {
   }
 
   /**
-   * 複数ファイルをバリデーション
+   * ファイルをバリデーション（詳細ログ付き）
    */
-  validateFiles(files) {
+  async validateFiles(files) {
     const errors = [];
     const valid = [];
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       
+      console.log(`[VALIDATE] File ${i + 1}: ${file.name || 'unnamed'}`);
+
       // ファイルサイズチェック
       if (file.size > this.maxFileSize) {
-        errors.push(`${file.name}: ${this.formatSize(file.size)} (Max: ${this.formatSize(this.maxFileSize)})`);
+        const msg = `${file.name}: ${this.formatSize(file.size)} (Max: ${this.formatSize(this.maxFileSize)})`;
+        errors.push(msg);
+        console.error(`[VALIDATE] Size error: ${msg}`);
         continue;
       }
 
       // ファイル名チェック
-      if (!file.name || file.name.length === 0) {
-        errors.push(`File ${i + 1}: No file name`);
+      if (!file.name && file.size === 0) {
+        const msg = `File ${i + 1}: Empty or invalid file`;
+        errors.push(msg);
+        console.error(`[VALIDATE] Empty file error: ${msg}`);
         continue;
       }
 
+      // ★ フォトライブラリ対応: 名前がない場合でも MIME タイプから判定
+      const inferredName = this.inferFileNameFromMimeType(file);
+      const fileType = this.getFileType(inferredName);
+
+      console.log(`[VALIDATE] File ${i + 1} OK - Type: ${fileType}, Size: ${this.formatSize(file.size)}`);
       valid.push(file);
     }
 
@@ -170,220 +232,119 @@ class UniversalFileUploader {
   }
 
   /**
-   * ファイルをプレビュー用にキャッシュ
+   * Base64 変換時のエラーハンドリング
    */
-  async cacheFilePreview(file, fileId) {
-    try {
-      const fileType = this.getFileType(file.name);
-      
-      // 画像とビデオのみキャッシュ
-      if (fileType === 'image' || fileType === 'video') {
-        const dataUrl = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = (e) => resolve(e.target.result);
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
-
-        try {
-          localStorage.setItem(`preview_${fileId}`, dataUrl);
-          console.log(`[CACHE] Preview cached: ${fileId}`);
-        } catch (e) {
-          window._previewCache = window._previewCache || {};
-          window._previewCache[fileId] = dataUrl;
-          console.log(`[CACHE] Preview cached to memory: ${fileId}`);
-        }
-
-        return dataUrl;
-      }
-
-      return null;
-    } catch (e) {
-      console.warn('[CACHE] Preview caching failed:', e.message);
-      return null;
-    }
-  }
-
-  /**
-   * キャッシュされたプレビューを取得
-   */
-  getPreviewFromCache(fileId) {
-    try {
-      const cached = localStorage.getItem(`preview_${fileId}`);
-      if (cached) return cached;
-    } catch (e) {
-      // localStorageが無効な場合
-    }
-
-    if (window._previewCache && window._previewCache[fileId]) {
-      return window._previewCache[fileId];
-    }
-
-    return null;
-  }
-
-  /**
-   * ファイルの詳細情報を取得（メタデータ）
-   */
-  async getFileMetadata(file) {
-    try {
-      const fileInfo = this.getFileInfo(file);
-      const metadata = {
-        ...fileInfo,
-        extension: file.name.split('.').pop().toLowerCase(),
-        isCompressible: this.shouldCompress(file),
-        previewCapable: ['image', 'video', 'pdf'].includes(fileInfo.type)
-      };
-
-      // ビデオの場合は尺を取得してみる
-      if (fileInfo.type === 'video') {
-        try {
-          const duration = await this.getVideoDuration(file);
-          if (duration) {
-            metadata.duration = duration;
-            metadata.durationStr = this.formatDuration(duration);
-          }
-        } catch (e) {
-          console.warn('[METADATA] Failed to get video duration:', e.message);
-        }
-      }
-
-      // 画像の場合は寸法を取得してみる
-      if (fileInfo.type === 'image') {
-        try {
-          const dimensions = await this.getImageDimensions(file);
-          if (dimensions) {
-            metadata.width = dimensions.width;
-            metadata.height = dimensions.height;
-          }
-        } catch (e) {
-          console.warn('[METADATA] Failed to get image dimensions:', e.message);
-        }
-      }
-
-      return metadata;
-    } catch (e) {
-      console.error('[METADATA] Error getting metadata:', e.message);
-      return this.getFileInfo(file);
-    }
-  }
-
-  /**
-   * ビデオの尺を取得
-   */
-  getVideoDuration(file) {
+  async toBase64(file, onProgress) {
     return new Promise((resolve, reject) => {
-      const url = URL.createObjectURL(file);
-      const video = document.createElement('video');
-      
-      const timeout = setTimeout(() => {
-        URL.revokeObjectURL(url);
-        reject(new Error('Timeout'));
-      }, 5000);
+      try {
+        const reader = new FileReader();
 
-      video.addEventListener('loadedmetadata', () => {
-        clearTimeout(timeout);
-        URL.revokeObjectURL(url);
-        resolve(video.duration);
-      });
+        reader.onloadstart = () => {
+          console.log(`[BASE64] Starting conversion for: ${file.name || 'unnamed'}`);
+        };
 
-      video.addEventListener('error', () => {
-        clearTimeout(timeout);
-        URL.revokeObjectURL(url);
-        reject(new Error('Failed to load video'));
-      });
+        reader.onprogress = (event) => {
+          const progress = Math.round((event.loaded / event.total) * 100);
+          console.log(`[BASE64] Progress: ${progress}%`);
+          if (onProgress) onProgress(progress);
+        };
 
-      video.src = url;
+        reader.onload = () => {
+          try {
+            const result = reader.result;
+
+            if (!result || typeof result !== 'string') {
+              throw new Error('Invalid FileReader result');
+            }
+
+            const parts = result.split(',');
+            if (parts.length < 2) {
+              throw new Error('Invalid data URL format');
+            }
+
+            const base64 = parts[1];
+            if (!base64 || base64.length === 0) {
+              throw new Error('Empty Base64 data');
+            }
+
+            console.log(`[BASE64] Conversion successful: ${base64.length} chars`);
+            resolve(base64);
+          } catch (e) {
+            console.error(`[BASE64] Parsing error: ${e.message}`);
+            reject(e);
+          }
+        };
+
+        reader.onerror = () => {
+          const errorMsg = reader.error ? reader.error.message : 'Unknown error';
+          console.error(`[BASE64] FileReader error: ${errorMsg}`);
+          reject(new Error(`FileReader error: ${errorMsg}`));
+        };
+
+        reader.onabort = () => {
+          console.error(`[BASE64] FileReader aborted`);
+          reject(new Error('FileReader aborted'));
+        };
+
+        console.log(`[BASE64] Starting FileReader for: ${file.name || 'unnamed'} (${this.formatSize(file.size)})`);
+        reader.readAsDataURL(file);
+
+        // ★ タイムアウト設定（30秒）
+        const timeout = setTimeout(() => {
+          console.error(`[BASE64] Timeout after 30 seconds`);
+          reader.abort();
+          reject(new Error('Base64 conversion timeout (30s)'));
+        }, 30000);
+
+        // 完了時にタイムアウトをクリア
+        const originalOnload = reader.onload;
+        reader.onload = function() {
+          clearTimeout(timeout);
+          originalOnload.call(this);
+        };
+
+      } catch (e) {
+        console.error(`[BASE64] Error: ${e.message}`);
+        reject(e);
+      }
     });
   }
 
   /**
-   * 画像の寸法を取得
+   * ファイル情報を詳細ログ出力
    */
-  getImageDimensions(file) {
-    return new Promise((resolve, reject) => {
-      const url = URL.createObjectURL(file);
-      const img = new Image();
-
-      const timeout = setTimeout(() => {
-        URL.revokeObjectURL(url);
-        reject(new Error('Timeout'));
-      }, 5000);
-
-      img.addEventListener('load', () => {
-        clearTimeout(timeout);
-        URL.revokeObjectURL(url);
-        resolve({ width: img.width, height: img.height });
-      });
-
-      img.addEventListener('error', () => {
-        clearTimeout(timeout);
-        URL.revokeObjectURL(url);
-        reject(new Error('Failed to load image'));
-      });
-
-      img.src = url;
-    });
-  }
-
-  /**
-   * 時間をフォーマット（秒 → HH:MM:SS）
-   */
-  formatDuration(seconds) {
-    if (!seconds || typeof seconds !== 'number') return '0:00';
-    
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
-
-    if (hours > 0) {
-      return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  logFileDetails(file, index) {
+    try {
+      console.log(`\n[FILE_DETAILS] ========== File ${index + 1} ==========`);
+      console.log(`[FILE_DETAILS] Name: ${file.name || 'unnamed'}`);
+      console.log(`[FILE_DETAILS] Type: ${file.type || 'unknown'}`);
+      console.log(`[FILE_DETAILS] Size: ${this.formatSize(file.size)} (${file.size} bytes)`);
+      console.log(`[FILE_DETAILS] LastModified: ${new Date(file.lastModified).toISOString()}`);
+      console.log(`[FILE_DETAILS] Is Blob: ${file instanceof Blob}`);
+      console.log(`[FILE_DETAILS] Is File: ${file instanceof File}`);
+      console.log(`[FILE_DETAILS] ==============================\n`);
+    } catch (e) {
+      console.error('[FILE_DETAILS] Error logging file details:', e.message);
     }
-    return `${minutes}:${String(secs).padStart(2, '0')}`;
   }
 
   /**
-   * ファイル用のアイコン（絵文字）を取得
+   * デバイス情報を取得
    */
-  getFileIcon(fileName) {
-    const fileType = this.getFileType(fileName);
-
-    const iconMap = {
-      'video': '🎬',
-      'image': '🖼️',
-      'pdf': '📄',
-      'audio': '🎵',
-      'document': '📝',
-      'archive': '📦',
-      'code': '💻',
-      'file': '📁'
+  getDeviceInfo() {
+    const ua = navigator.userAgent;
+    return {
+      isIOS: /iPad|iPhone|iPod/.test(ua),
+      isAndroid: /Android/.test(ua),
+      isMobile: /iPad|iPhone|iPod|Android/.test(ua),
+      isChrome: /Chrome/.test(ua),
+      isSafari: /Safari/.test(ua),
+      isFirefox: /Firefox/.test(ua),
+      userAgent: ua
     };
-
-    return iconMap[fileType] || '📁';
-  }
-
-  /**
-   * ファイル用の色を取得
-   */
-  getFileColor(fileName) {
-    const fileType = this.getFileType(fileName);
-
-    const colorMap = {
-      'video': '#FF6B6B',
-      'image': '#4ECDC4',
-      'pdf': '#FF6348',
-      'audio': '#FFE66D',
-      'document': '#95E1D3',
-      'archive': '#C44569',
-      'code': '#6BCB77',
-      'file': '#8B9DC3'
-    };
-
-    return colorMap[fileType] || '#8B9DC3';
   }
 }
 
-// グローバルに割り当て
-window.UniversalFileUploader = UniversalFileUploader;
+window.UniversalFileUploaderEnhanced = UniversalFileUploaderEnhanced;
 
-console.log('[UPLOADER] Universal File Uploader initialized');
+console.log('[UPLOADER_ENHANCED] Initialized - Photo Library support enabled');
