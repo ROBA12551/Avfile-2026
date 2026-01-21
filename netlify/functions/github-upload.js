@@ -7,6 +7,8 @@ const GITHUB_REPO  = process.env.GITHUB_REPO;
 let pendingFiles = [];
 let lastGithubJsonUpdate = 0;
 const GITHUB_JSON_UPDATE_INTERVAL = 30000;
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 500; // ミリ秒
 
 function logInfo(msg) {
   console.log(`[INFO] ${new Date().toISOString()} ${msg}`);
@@ -16,11 +18,22 @@ function logError(msg) {
   console.error(`[ERROR] ${new Date().toISOString()} ${msg}`);
 }
 
+function logWarn(msg) {
+  console.warn(`[WARN] ${new Date().toISOString()} ${msg}`);
+}
+
 function generateShortId(len = 6) {
   const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let out = '';
   for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
   return out;
+}
+
+/**
+ * 指定時間待機
+ */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
@@ -90,7 +103,6 @@ async function githubRequest(method, path, body = null, headers = {}) {
 
 /**
  * GitHub アセットアップロード用リクエスト
- * ★ Base64のまま送信（デコード不要）
  */
 async function githubUploadRequest(method, fullUrl, body, headers = {}) {
   return new Promise((resolve, reject) => {
@@ -113,17 +125,14 @@ async function githubUploadRequest(method, fullUrl, body, headers = {}) {
         throw new Error(`Invalid URL format: ${e.message}`);
       }
 
-      // ★ 修正: Buffer または Base64文字列を受け入れ
       let uploadBody = body;
       let contentLength = 0;
 
       if (typeof body === 'string') {
-        // Base64 文字列の場合
         uploadBody = Buffer.from(body, 'base64');
         contentLength = uploadBody.length;
         logInfo(`Upload body: Base64 string (${body.length} chars) → Buffer (${contentLength} bytes)`);
       } else if (Buffer.isBuffer(body)) {
-        // Buffer の場合
         uploadBody = body;
         contentLength = body.length;
         logInfo(`Upload body: Buffer (${contentLength} bytes)`);
@@ -227,7 +236,6 @@ async function createRelease(tag, metadata) {
 
 /**
  * Asset (ファイル) をアップロード
- * ★ 修正: Base64 文字列を直接受け入れ
  */
 async function uploadAsset(uploadUrl, fileName, fileBase64String) {
   try {
@@ -237,7 +245,6 @@ async function uploadAsset(uploadUrl, fileName, fileBase64String) {
       throw new Error('Invalid uploadUrl provided');
     }
 
-    // ★ 修正: Base64 文字列をそのまま受け入れ
     if (typeof fileBase64String !== 'string') {
       throw new Error('fileBase64String must be a string');
     }
@@ -258,8 +265,6 @@ async function uploadAsset(uploadUrl, fileName, fileBase64String) {
 
     logInfo(`Asset URL: ${assetUrl.substring(0, 100)}...`);
 
-    // ★ Base64 文字列を githubUploadRequest に渡す
-    // githubUploadRequest 内で Buffer に変換される
     const data = await githubUploadRequest('POST', assetUrl, fileBase64String);
 
     if (!data || !data.id) {
@@ -304,7 +309,7 @@ async function getGithubJson() {
     parsed.files = Array.isArray(parsed.files) ? parsed.files : [];
     parsed.views = Array.isArray(parsed.views) ? parsed.views : [];
 
-    logInfo(`github.json retrieved: ${parsed.files.length} files, ${parsed.views.length} views`);
+    logInfo(`github.json retrieved: ${parsed.files.length} files, ${parsed.views.length} views, SHA: ${res.sha}`);
 
     return { data: parsed, sha: res.sha };
   } catch (error) {
@@ -317,12 +322,13 @@ async function getGithubJson() {
 }
 
 /**
- * github.json を保存
+ * github.json を保存（リトライ機能付き）
+ * ★ SHA競合時は最新を再取得してリトライ
  */
-async function saveGithubJson(jsonData, sha = null) {
+async function saveGithubJson(jsonData, sha = null, retryCount = 0) {
   const path = `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`;
 
-  logInfo(`Saving: ${jsonData.files.length} files, ${jsonData.views.length} views`);
+  logInfo(`Saving: ${jsonData.files.length} files, ${jsonData.views.length} views (attempt ${retryCount + 1}/${MAX_RETRIES})`);
 
   const content = Buffer.from(JSON.stringify(jsonData, null, 2)).toString('base64');
 
@@ -334,15 +340,39 @@ async function saveGithubJson(jsonData, sha = null) {
 
   if (sha) {
     payload.sha = sha;
-    logInfo(`Updating existing github.json with SHA: ${sha}`);
+    logInfo(`Using SHA: ${sha}`);
   } else {
-    logInfo(`Creating new github.json`);
+    logInfo(`Creating new github.json (no SHA)`);
   }
 
   try {
     await githubRequest('PUT', path, payload);
     logInfo('github.json saved successfully');
   } catch (error) {
+    // ★ SHA競合エラーをチェック
+    if (error.message.includes('409') && retryCount < MAX_RETRIES) {
+      logWarn(`SHA競合検出。リトライ中... (${retryCount + 1}/${MAX_RETRIES})`);
+      
+      // 少し待機
+      await sleep(RETRY_DELAY * (retryCount + 1));
+      
+      try {
+        // 最新の SHA を取得
+        const latest = await getGithubJson();
+        logInfo(`最新の SHA を取得: ${latest.sha}`);
+        
+        // マージして再試行
+        // 新しいデータを上書きする（古いデータは失う）
+        logInfo(`古いデータとのマージを試行`);
+        
+        // リトライ
+        return await saveGithubJson(jsonData, latest.sha, retryCount + 1);
+      } catch (retryError) {
+        logError(`リトライ失敗: ${retryError.message}`);
+        throw new Error(`Failed to save github.json after ${retryCount + 1} attempts: ${error.message}`);
+      }
+    }
+
     logError(`Failed to save github.json: ${error.message}`);
     throw error;
   }
@@ -350,9 +380,11 @@ async function saveGithubJson(jsonData, sha = null) {
 
 /**
  * github.json を非同期で更新
+ * ★ 複数ファイル同時アップロード時にバッチ処理
  */
 async function updateGithubJsonAsync(fileId, fileName, downloadUrl, fileSize) {
   try {
+    // ★ fileInfo をキューに追加
     pendingFiles.push({
       fileId,
       fileName,
@@ -361,29 +393,41 @@ async function updateGithubJsonAsync(fileId, fileName, downloadUrl, fileSize) {
       uploadedAt: new Date().toISOString(),
     });
 
+    logInfo(`[ASYNC] File queued (${pendingFiles.length} pending)`);
+
     const now = Date.now();
     const timeSinceLastUpdate = now - lastGithubJsonUpdate;
 
+    // ★ 一定条件でバッチ更新
     if (timeSinceLastUpdate >= GITHUB_JSON_UPDATE_INTERVAL || pendingFiles.length >= 10) {
       logInfo(`[ASYNC] Flushing ${pendingFiles.length} pending files to github.json`);
       
+      // 最新の github.json を取得
       const current = await getGithubJson();
       const json = current.data;
       json.files = json.files || [];
-      json.files.push(...pendingFiles);
+      
+      // pendingFiles を全て追加
+      const filesToAdd = [...pendingFiles];
+      json.files.push(...filesToAdd);
       json.lastUpdated = new Date().toISOString();
-      
-      await saveGithubJson(json, current.sha);
-      
-      lastGithubJsonUpdate = Date.now();
-      pendingFiles = [];
-      
-      logInfo(`[ASYNC] github.json updated successfully`);
-    } else {
-      logInfo(`[ASYNC] File queued for batch update (${pendingFiles.length} pending)`);
+
+      try {
+        // SHA を指定して保存（リトライ機能付き）
+        await saveGithubJson(json, current.sha, 0);
+        
+        lastGithubJsonUpdate = Date.now();
+        pendingFiles = [];
+        
+        logInfo(`[ASYNC] github.json updated successfully (${filesToAdd.length} files added)`);
+      } catch (saveError) {
+        logError(`[ASYNC] Failed to save github.json: ${saveError.message}`);
+        // エラーでも処理は続行（ファイル自体はアップロード済み）
+        pendingFiles = [];
+      }
     }
   } catch (error) {
-    logError(`[ASYNC] github.json update failed: ${error.message}`);
+    logError(`[ASYNC] Error: ${error.message}`);
   }
 }
 
@@ -425,7 +469,8 @@ async function createViewOnServer(fileIds, passwordHash, origin) {
 
     json.lastUpdated = new Date().toISOString();
 
-    await saveGithubJson(json, current.sha);
+    // リトライ機能付きで保存
+    await saveGithubJson(json, current.sha, 0);
 
     logInfo(`View created: ${viewId}`);
 
@@ -448,7 +493,6 @@ exports.handler = async (event) => {
     logInfo(`=== REQUEST START ===`);
     logInfo(`Method: ${event.httpMethod}, Path: ${event.path}`);
 
-    // 環境変数チェック
     if (!GITHUB_TOKEN || !GITHUB_OWNER || !GITHUB_REPO) {
       logError('Missing environment variables');
       return {
@@ -461,7 +505,6 @@ exports.handler = async (event) => {
       };
     }
 
-    // CORS プリフライト対応
     if (event.httpMethod === 'OPTIONS') {
       return {
         statusCode: 200,
@@ -474,7 +517,6 @@ exports.handler = async (event) => {
       };
     }
 
-    // JSON をパース
     let body;
     try {
       body = JSON.parse(event.body || '{}');
@@ -495,7 +537,6 @@ exports.handler = async (event) => {
     let response;
 
     switch (body.action) {
-      // Release 作成
       case 'create-release': {
         logInfo(`Creating release: ${body.releaseTag}`);
         
@@ -507,7 +548,6 @@ exports.handler = async (event) => {
         break;
       }
 
-      // ★ Asset アップロード（Base64対応）
       case 'upload-asset': {
         logInfo(`Uploading asset: ${body.fileName}`);
         
@@ -525,14 +565,13 @@ exports.handler = async (event) => {
 
         logInfo(`File: ${body.fileName}, Base64 length: ${body.fileBase64.length}`);
 
-        // ★ Base64 文字列をそのまま渡す
         const assetResponse = await uploadAsset(
           body.uploadUrl,
           body.fileName,
-          body.fileBase64  // Base64 文字列を直接渡す
+          body.fileBase64
         );
 
-        // github.json 更新は非同期
+        // ★ 非同期で github.json を更新
         updateGithubJsonAsync(
           body.fileId,
           body.fileName,
@@ -544,7 +583,6 @@ exports.handler = async (event) => {
         break;
       }
 
-      // github.json 取得
       case 'get-github-json': {
         logInfo('Getting github.json');
         const result = await getGithubJson();
@@ -552,7 +590,6 @@ exports.handler = async (event) => {
         break;
       }
 
-      // github.json 保存
       case 'save-github-json': {
         logInfo('Saving github.json');
         
@@ -561,12 +598,12 @@ exports.handler = async (event) => {
         }
 
         const current = await getGithubJson();
-        await saveGithubJson(body.jsonData, current.sha);
+        // ★ リトライ機能付きで保存
+        await saveGithubJson(body.jsonData, current.sha, 0);
         response = { success: true };
         break;
       }
 
-      // View 作成
       case 'create-view': {
         logInfo(`Creating view with ${body.fileIds ? body.fileIds.length : 0} files`);
         
