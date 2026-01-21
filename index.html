@@ -1230,7 +1230,7 @@ document.getElementById('openLinkBtn').onclick = () => window.open(document.getE
 document.getElementById('retryBtn').onclick = () => { showUpload(); document.getElementById('fileInput').value = ''; };
 document.getElementById('backBtn').onclick = () => showUpload();
 
-// ★ 修正: ファイルアップロード処理（iOS対応）
+// ★ 修正: uploadMultiple関数全体を置き換え
 async function uploadMultiple(files) {
   showStatus();
   const uploader = new GitHubUploader();
@@ -1238,120 +1238,221 @@ async function uploadMultiple(files) {
   const isMobile = isMobileDevice();
 
   try {
+    console.log('[UPLOAD_MAIN] Starting upload with', files.length, 'files');
+    console.log('[UPLOAD_MAIN] isMobile:', isMobile);
+
     const promises = files.map((file, i) => (async () => {
-      document.getElementById('statusMessage').textContent = `${i + 1} / ${files.length}`;
-      
-      const fileId = 'f_' + Math.random().toString(36).substr(2, 9);
-      
-      console.log('[UPLOAD] Starting file:', file.name, 'Size:', file.size, 'Type:', file.type);
-      console.log('[UPLOAD] isMobile:', isMobile);
-      
-      let fileName = file.name || 'file';
-      fileName = sanitizeFileName(fileName);
-      
-      if (file.size > MAX_FILE_SIZE) {
-        throw new Error(`File size exceeds limit: ${(file.size / 1024 / 1024).toFixed(2)}MB (max 500MB)`);
-      }
-      
-      let uploadFile = file;
-      
-      // ★ 修正: VideoCompressionEngine を使用（モバイル以外）
-      if (isVideoFile(file) && !isMobile && window.VideoCompressionEngine) {
-        try {
-          console.log('[UPLOAD] Video detected - compressing...');
-          const engine = new VideoCompressionEngine();
-          uploadFile = await engine.compress(file, (percent, message) => {
-            document.getElementById('statusMessage').textContent = `${i + 1} / ${files.length} - ${message}`;
-          });
-          console.log('[UPLOAD] Compression successful');
-        } catch (err) {
-          console.warn('[UPLOAD] Compression failed:', err.message);
-          uploadFile = file;
-        }
-      } else if (isVideoFile(file) && isMobile) {
-        console.log('[UPLOAD] Mobile device - skipping compression');
-      }
-      
-      let base64 = '';
       try {
-        base64 = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            try {
-              const result = reader.result;
-              const b64 = result.split(',')[1];
-              if (!b64) {
-                reject(new Error('Failed to convert file to base64'));
-              }
-              resolve(b64);
-            } catch (e) {
-              reject(e);
-            }
-          };
-          reader.onerror = () => reject(reader.error);
-          reader.readAsDataURL(uploadFile);
-        });
-      } catch (err) {
-        console.error('[UPLOAD] Failed to read file:', err);
-        throw new Error(`Failed to read file: ${fileName}`);
-      }
-
-      const releaseData = await uploader.createRelease(`file_${fileId}`, fileName);
-      await uploader.uploadAsset(releaseData.upload_url, fileName, base64, fileId, uploadFile.size);
-
-      let githubJson = null;
-      try {
-        githubJson = await uploader.getGithubJson();
+        document.getElementById('statusMessage').textContent = `${i + 1} / ${files.length}`;
         
-        if (!githubJson || typeof githubJson !== 'object') {
-          throw new Error('Invalid githubJson response');
+        const fileId = 'f_' + Math.random().toString(36).substr(2, 9);
+        
+        console.log(`[FILE_${i}] Starting:`, file.name, 'Size:', file.size, 'Type:', file.type);
+        
+        // ★ ファイル名のサニタイゼーション
+        let fileName = file.name || 'file';
+        fileName = sanitizeFileName(fileName);
+        console.log(`[FILE_${i}] Sanitized fileName:`, fileName);
+        
+        // ★ ファイルサイズチェック
+        if (file.size > MAX_FILE_SIZE) {
+          const msg = `File size exceeds limit: ${(file.size / 1024 / 1024).toFixed(2)}MB (max 500MB)`;
+          console.error(`[FILE_${i}]`, msg);
+          throw new Error(msg);
+        }
+        
+        let uploadFile = file;
+        
+        // ★ ビデオ圧縮
+        if (isVideoFile(file) && !isMobile && window.VideoCompressionEngine) {
+          try {
+            console.log(`[FILE_${i}] Video compression starting...`);
+            const engine = new VideoCompressionEngine();
+            uploadFile = await engine.compress(file, (percent, message) => {
+              document.getElementById('statusMessage').textContent = `${i + 1} / ${files.length} - ${message}`;
+            });
+            console.log(`[FILE_${i}] Video compression successful`);
+          } catch (err) {
+            console.warn(`[FILE_${i}] Compression failed, using original:`, err.message);
+            uploadFile = file;
+          }
+        }
+        
+        // ★ Base64変換
+        console.log(`[FILE_${i}] Converting to Base64...`);
+        let base64 = '';
+        try {
+          base64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            
+            reader.onload = () => {
+              try {
+                const result = reader.result;
+                if (!result || typeof result !== 'string') {
+                  console.error(`[FILE_${i}] Invalid FileReader result`);
+                  reject(new Error('Invalid FileReader result'));
+                  return;
+                }
+                
+                const parts = result.split(',');
+                if (parts.length < 2) {
+                  console.error(`[FILE_${i}] Invalid data URL format`);
+                  reject(new Error('Invalid data URL format'));
+                  return;
+                }
+                
+                const b64 = parts[1];
+                if (!b64 || b64.length === 0) {
+                  console.error(`[FILE_${i}] Empty Base64 data`);
+                  reject(new Error('Empty Base64 data'));
+                  return;
+                }
+                
+                console.log(`[FILE_${i}] Base64 conversion successful, length:`, b64.length);
+                resolve(b64);
+              } catch (e) {
+                console.error(`[FILE_${i}] Base64 parsing error:`, e);
+                reject(e);
+              }
+            };
+            
+            reader.onerror = () => {
+              console.error(`[FILE_${i}] FileReader error:`, reader.error);
+              reject(reader.error);
+            };
+            
+            reader.onprogress = (event) => {
+              console.log(`[FILE_${i}] FileReader progress:`, event.loaded, '/', event.total);
+            };
+            
+            console.log(`[FILE_${i}] Starting FileReader...`);
+            reader.readAsDataURL(uploadFile);
+          });
+        } catch (err) {
+          console.error(`[FILE_${i}] Base64 conversion failed:`, err);
+          throw new Error(`Failed to convert file to Base64: ${err.message}`);
         }
 
-        if (!Array.isArray(githubJson.files)) {
-          console.warn('[UPLOAD] files is not an array, reinitializing');
-          githubJson.files = [];
+        // ★ Release作成
+        console.log(`[FILE_${i}] Creating release...`);
+        let releaseData;
+        try {
+          releaseData = await uploader.createRelease(`file_${fileId}`, fileName);
+          console.log(`[FILE_${i}] Release created:`, releaseData.release_id);
+          console.log(`[FILE_${i}] Upload URL:`, releaseData.upload_url.substring(0, 100));
+        } catch (err) {
+          console.error(`[FILE_${i}] Release creation failed:`, err.message);
+          throw new Error(`Release creation failed: ${err.message}`);
         }
-      } catch (error) {
-        console.error('[UPLOAD] Error fetching github.json:', error.message);
-        throw new Error(`Failed to fetch github.json: ${error.message}`);
+
+        // ★ Asset アップロード
+        console.log(`[FILE_${i}] Uploading asset...`);
+        let assetData;
+        try {
+          console.log(`[FILE_${i}] Asset upload parameters:`, {
+            uploadUrl: releaseData.upload_url.substring(0, 100),
+            fileName: fileName,
+            base64Length: base64.length,
+            fileSize: uploadFile.size,
+          });
+          
+          assetData = await uploader.uploadAsset(
+            releaseData.upload_url,
+            fileName,
+            base64,
+            fileId,
+            uploadFile.size
+          );
+          console.log(`[FILE_${i}] Asset uploaded successfully:`, assetData.download_url);
+        } catch (err) {
+          console.error(`[FILE_${i}] Asset upload failed:`, err.message);
+          console.error(`[FILE_${i}] Stack:`, err.stack);
+          throw new Error(`Asset upload failed: ${err.message}`);
+        }
+
+        // ★ github.json取得
+        console.log(`[FILE_${i}] Getting github.json...`);
+        let githubJson;
+        try {
+          githubJson = await uploader.getGithubJson();
+          
+          if (!githubJson || typeof githubJson !== 'object') {
+            console.error(`[FILE_${i}] Invalid githubJson:`, githubJson);
+            throw new Error('Invalid githubJson response');
+          }
+
+          if (!Array.isArray(githubJson.files)) {
+            console.warn(`[FILE_${i}] githubJson.files is not an array, reinitializing`);
+            githubJson.files = [];
+          }
+          
+          console.log(`[FILE_${i}] github.json retrieved, current files:`, githubJson.files.length);
+        } catch (err) {
+          console.error(`[FILE_${i}] Failed to get github.json:`, err.message);
+          throw new Error(`Failed to get github.json: ${err.message}`);
+        }
+
+        // ★ ファイル情報を保存
+        console.log(`[FILE_${i}] Saving file info...`);
+        try {
+          const fileInfo = {
+            fileId: fileId,
+            fileName: fileName,
+            downloadUrl: assetData.download_url || releaseData.upload_url,
+            fileSize: uploadFile.size,
+            uploadedAt: new Date().toISOString(),
+          };
+
+          console.log(`[FILE_${i}] File info:`, fileInfo);
+          githubJson.files.push(fileInfo);
+          githubJson.lastUpdated = new Date().toISOString();
+
+          await uploader.saveGithubJson(githubJson);
+          console.log(`[FILE_${i}] github.json saved successfully`);
+        } catch (err) {
+          console.error(`[FILE_${i}] Failed to save file info:`, err.message);
+          throw new Error(`Failed to save file info: ${err.message}`);
+        }
+
+        console.log(`[FILE_${i}] Completed successfully`);
+        return fileId;
+      } catch (fileError) {
+        console.error(`[FILE_${i}] File upload failed:`, fileError);
+        throw fileError;
       }
-
-      try {
-        const fileInfo = {
-          fileId: fileId,
-          fileName: fileName,
-          downloadUrl: releaseData.assets_url || releaseData.upload_url,
-          fileSize: uploadFile.size,
-          uploadedAt: new Date().toISOString(),
-        };
-
-        console.log('[UPLOAD] Adding file info:', fileInfo);
-        githubJson.files.push(fileInfo);
-        githubJson.lastUpdated = new Date().toISOString();
-
-        await uploader.saveGithubJson(githubJson);
-        console.log('[UPLOAD] github.json saved successfully');
-      } catch (error) {
-        console.error('[UPLOAD] Error saving file info:', error.message);
-        throw new Error(`Failed to save file info: ${error.message}`);
-      }
-
-      const progress = Math.round(((ids.length + 1) / files.length) * 100);
-      document.getElementById('progressFill').style.width = progress + '%';
-      document.getElementById('progressPercent').textContent = progress + '%';
-
-      return fileId;
     })());
 
+    console.log('[UPLOAD_MAIN] Waiting for all files to upload...');
     const results = await Promise.all(promises);
+    
+    console.log('[UPLOAD_MAIN] All files uploaded, creating view...');
+    console.log('[UPLOAD_MAIN] File IDs:', results);
+    
     ids.push(...results);
 
-    const view = await uploader.createView(ids);
+    // ★ View作成
+    console.log('[UPLOAD_MAIN] Creating view with', ids.length, 'files...');
+    let view;
+    try {
+      view = await uploader.createView(ids);
+      console.log('[UPLOAD_MAIN] View created:', view.shareUrl);
+    } catch (err) {
+      console.error('[UPLOAD_MAIN] View creation failed:', err.message);
+      throw new Error(`View creation failed: ${err.message}`);
+    }
+
+    console.log('[UPLOAD_MAIN] Setting share URL...');
     document.getElementById('shareUrl').value = view.shareUrl;
+    
+    console.log('[UPLOAD_MAIN] Upload completed successfully!');
     showSuccess();
   } catch (e) {
-    console.error('[UPLOAD] Error:', e);
+    console.error('[UPLOAD_MAIN] Fatal error:', e);
+    console.error('[UPLOAD_MAIN] Stack:', e.stack);
+    
     const errorMsg = e.message || 'Upload failed. Please try again.';
+    console.error('[UPLOAD_MAIN] Showing error:', errorMsg);
+    
     showError(errorMsg);
   }
 }
