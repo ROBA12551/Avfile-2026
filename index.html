@@ -31,8 +31,8 @@
     <link rel="shortcut icon" href="/images/folder.png">
     <link rel="apple-touch-icon" href="/images/folder.png">
     
-    <!-- FFmpeg.wasm -->
-    <script async src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.6/dist/ffmpeg.min.js"></script>
+    <!-- ★ 修正: ローカル圧縮対応のFFmpeg -->
+    <script async src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
     
     <title>Avfile - Fast File Sharing Service | Unlimited Storage</title>
     <style>
@@ -724,8 +724,12 @@
         <p>&copy; 2026 Avfile • Fast & Simple File Sharing</p>
     </footer>
 
-<!-- ★ 修正: 外部スクリプトを読み込む（順序重要） -->
+<!-- ★ 修正: ローカル圧縮対応のスクリプトを読み込む（順序重要） -->
+<!-- ローカル圧縮エンジン -->
 <script src="/js/video-compression.js"></script>
+
+<!-- クライアント側のアップロード処理（ローカル圧縮対応） -->
+<script src="/js/client-upload.js"></script>
 
 <script>
 // ★ グローバル変数定義（最初）
@@ -867,6 +871,7 @@ class GitHubUploader {
         fileBase64: base64Data,
         fileId,
         fileSize,
+        isPreCompressed: true  // ★ ローカル圧縮済みを示すフラグ
       }),
     });
 
@@ -1263,11 +1268,12 @@ async function uploadMultiple(files) {
         
         let uploadFile = file;
         
-        // ★ ビデオ圧縮
-        if (isVideoFile(file) && !isMobile && window.VideoCompressionEngine) {
+        // ★ ビデオ圧縮（ローカル）
+        // ローカル圧縮対応: VideoCompressionEngineLocal を使用
+        if (isVideoFile(file) && !isMobile && window.VideoCompressionEngineLocal) {
           try {
             console.log(`[FILE_${i}] Video compression starting...`);
-            const engine = new VideoCompressionEngine();
+            const engine = new VideoCompressionEngineLocal();
             uploadFile = await engine.compress(file, (percent, message) => {
               document.getElementById('statusMessage').textContent = `${i + 1} / ${files.length} - ${message}`;
             });
