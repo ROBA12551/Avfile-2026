@@ -4,10 +4,9 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_OWNER = process.env.GITHUB_OWNER;
 const GITHUB_REPO  = process.env.GITHUB_REPO;
 
-// 非同期処理用の保留ファイル
 let pendingFiles = [];
 let lastGithubJsonUpdate = 0;
-const GITHUB_JSON_UPDATE_INTERVAL = 30000; // 30秒ごと
+const GITHUB_JSON_UPDATE_INTERVAL = 30000;
 
 function logInfo(msg) {
   console.log(`[INFO] ${new Date().toISOString()} ${msg}`);
@@ -91,8 +90,7 @@ async function githubRequest(method, path, body = null, headers = {}) {
 
 /**
  * GitHub アセットアップロード用リクエスト
- * ★ 重要: ローカル側で既に圧縮済みのデータを受け取るので、
- *      サーバー側では単純に Buffer として受け取り、GitHub にアップロード
+ * ★ Base64のまま送信（デコード不要）
  */
 async function githubUploadRequest(method, fullUrl, body, headers = {}) {
   return new Promise((resolve, reject) => {
@@ -115,11 +113,23 @@ async function githubUploadRequest(method, fullUrl, body, headers = {}) {
         throw new Error(`Invalid URL format: ${e.message}`);
       }
 
-      if (!Buffer.isBuffer(body)) {
-        throw new Error('Body must be a Buffer');
-      }
+      // ★ 修正: Buffer または Base64文字列を受け入れ
+      let uploadBody = body;
+      let contentLength = 0;
 
-      logInfo(`Upload body size: ${body.length} bytes`);
+      if (typeof body === 'string') {
+        // Base64 文字列の場合
+        uploadBody = Buffer.from(body, 'base64');
+        contentLength = uploadBody.length;
+        logInfo(`Upload body: Base64 string (${body.length} chars) → Buffer (${contentLength} bytes)`);
+      } else if (Buffer.isBuffer(body)) {
+        // Buffer の場合
+        uploadBody = body;
+        contentLength = body.length;
+        logInfo(`Upload body: Buffer (${contentLength} bytes)`);
+      } else {
+        throw new Error('Body must be a Base64 string or Buffer');
+      }
 
       const options = {
         hostname: parsed.hostname,
@@ -131,7 +141,7 @@ async function githubUploadRequest(method, fullUrl, body, headers = {}) {
           'Authorization': `token ${GITHUB_TOKEN}`,
           'User-Agent': 'Avfile-Netlify',
           'Content-Type': 'application/octet-stream',
-          'Content-Length': body.length,
+          'Content-Length': contentLength,
           ...headers,
         },
       };
@@ -170,7 +180,7 @@ async function githubUploadRequest(method, fullUrl, body, headers = {}) {
         reject(new Error('Upload request timeout'));
       });
       
-      if (body) req.write(body);
+      if (uploadBody) req.write(uploadBody);
       req.end();
     } catch (e) {
       logError(`Upload Request Error: ${e.message}`);
@@ -217,8 +227,7 @@ async function createRelease(tag, metadata) {
 
 /**
  * Asset (ファイル) をアップロード
- * ★ 重要: Base64 文字列 → Buffer に変換 → GitHub にアップロード
- *      ローカル側で既に圧縮済みなので、ここでは追加処理は不要
+ * ★ 修正: Base64 文字列を直接受け入れ
  */
 async function uploadAsset(uploadUrl, fileName, fileBase64String) {
   try {
@@ -228,20 +237,16 @@ async function uploadAsset(uploadUrl, fileName, fileBase64String) {
       throw new Error('Invalid uploadUrl provided');
     }
 
-    // ★ 重要: Base64 → Buffer に変換（ローカル側で圧縮済み）
+    // ★ 修正: Base64 文字列をそのまま受け入れ
     if (typeof fileBase64String !== 'string') {
       throw new Error('fileBase64String must be a string');
     }
 
-    logInfo(`Converting Base64 to Buffer (length: ${fileBase64String.length})`);
-    
-    const fileBuffer = Buffer.from(fileBase64String, 'base64');
-
-    if (fileBuffer.length === 0) {
-      throw new Error('Decoded buffer is empty');
-    }
-
-    logInfo(`Successfully decoded: ${fileBuffer.length} bytes`);
+    logInfo(`Asset upload parameters:`, {
+      fileName: fileName,
+      base64Length: fileBase64String.length,
+      uploadUrl: uploadUrl.substring(0, 100)
+    });
 
     let baseUrl = String(uploadUrl).trim();
     baseUrl = baseUrl.replace('{?name,label}', '');
@@ -252,10 +257,10 @@ async function uploadAsset(uploadUrl, fileName, fileBase64String) {
     const assetUrl = `${baseUrl}?name=${encodedFileName}`;
 
     logInfo(`Asset URL: ${assetUrl.substring(0, 100)}...`);
-    logInfo(`File size: ${fileBuffer.length} bytes`);
 
-    // ★ Buffer を GitHub にアップロード（追加圧縮なし）
-    const data = await githubUploadRequest('POST', assetUrl, fileBuffer);
+    // ★ Base64 文字列を githubUploadRequest に渡す
+    // githubUploadRequest 内で Buffer に変換される
+    const data = await githubUploadRequest('POST', assetUrl, fileBase64String);
 
     if (!data || !data.id) {
       throw new Error('Asset upload response missing id field');
@@ -437,9 +442,6 @@ async function createViewOnServer(fileIds, passwordHash, origin) {
 
 /**
  * Netlify Function ハンドラー
- * ★ ローカル圧縮対応版
- *    - クライアント側で既に圧縮済みのファイルを受け取る
- *    - サーバー側では Base64 デコード → GitHub アップロードだけ
  */
 exports.handler = async (event) => {
   try {
@@ -505,7 +507,7 @@ exports.handler = async (event) => {
         break;
       }
 
-      // ★ Asset アップロード（ローカル圧縮対応）
+      // ★ Asset アップロード（Base64対応）
       case 'upload-asset': {
         logInfo(`Uploading asset: ${body.fileName}`);
         
@@ -522,14 +524,12 @@ exports.handler = async (event) => {
         }
 
         logInfo(`File: ${body.fileName}, Base64 length: ${body.fileBase64.length}`);
-        logInfo(`Pre-compressed: ${body.isPreCompressed ? 'Yes' : 'No'}`);
 
-        // ★ ここではBase64→Buffer変換 + GitHub アップロードだけ
-        // 追加の圧縮処理は不要（ローカル側で既に圧縮済み）
+        // ★ Base64 文字列をそのまま渡す
         const assetResponse = await uploadAsset(
           body.uploadUrl,
           body.fileName,
-          body.fileBase64
+          body.fileBase64  // Base64 文字列を直接渡す
         );
 
         // github.json 更新は非同期
