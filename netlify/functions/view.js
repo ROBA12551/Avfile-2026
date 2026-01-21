@@ -92,35 +92,70 @@ exports.handler = async (event) => {
     logInfo(`Fetching github.json from ${GITHUB_OWNER}/${GITHUB_REPO}`);
 
     // Fetch github.json
-    const jsonRes = await githubRequest(
-      'GET',
-      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`
-    );
-
-    if (!jsonRes || !jsonRes.content) {
-      logError('Invalid github.json response');
+    let jsonRes;
+    try {
+      jsonRes = await githubRequest(
+        'GET',
+        `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`
+      );
+    } catch (e) {
+      logError(`Failed to fetch github.json: ${e.message}`);
       return {
         statusCode: 404,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'github.json not found' })
+        body: JSON.stringify({ error: 'github.json not found', message: e.message })
+      };
+    }
+
+    if (!jsonRes || !jsonRes.content) {
+      logError('Invalid github.json response - no content field');
+      logError(`Response keys: ${Object.keys(jsonRes || {})}`);
+      return {
+        statusCode: 404,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: 'github.json not found or invalid' })
       };
     }
 
     // Decode base64
-    const decoded = Buffer.from(jsonRes.content, 'base64').toString('utf-8');
-    logInfo(`Decoded github.json: ${decoded.length} bytes`);
+    let decoded;
+    try {
+      decoded = Buffer.from(jsonRes.content, 'base64').toString('utf-8');
+      logInfo(`Decoded github.json: ${decoded.length} bytes`);
+      logInfo(`Content preview: ${decoded.substring(0, 200)}`);
+    } catch (e) {
+      logError(`Decode error: ${e.message}`);
+      return {
+        statusCode: 500,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: 'Failed to decode github.json' })
+      };
+    }
 
     // Parse JSON
-    const data = JSON.parse(decoded);
-    logInfo(`Views count: ${(data.views || []).length}`);
-    logInfo(`Files count: ${(data.files || []).length}`);
+    let data;
+    try {
+      data = JSON.parse(decoded);
+      logInfo(`Parsed successfully`);
+      logInfo(`Root keys: ${Object.keys(data).join(', ')}`);
+      logInfo(`Views count: ${(data.views || []).length}`);
+      logInfo(`Files count: ${(data.files || []).length}`);
+      logInfo(`Views: ${JSON.stringify(data.views || [])}`);
+    } catch (e) {
+      logError(`Parse error: ${e.message}`);
+      return {
+        statusCode: 500,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: 'Invalid JSON in github.json', message: e.message })
+      };
+    }
 
     // Find view
     const view = (data.views || []).find(v => v && v.viewId === viewId);
     
     if (!view) {
       logError(`View not found: ${viewId}`);
-      logInfo(`Available views: ${(data.views || []).map(v => v?.viewId).join(', ')}`);
+      logInfo(`Available views: ${(data.views || []).map(v => v?.viewId).filter(Boolean).join(', ')}`);
       return {
         statusCode: 404,
         headers: { 'Content-Type': 'application/json' },
@@ -129,15 +164,18 @@ exports.handler = async (event) => {
     }
 
     logInfo(`View found: ${view.viewId}`);
+    logInfo(`View files array: ${JSON.stringify(view.files)}`);
 
     // Map files
     const files = (view.files || [])
       .map(fid => {
+        logInfo(`Looking for file: ${fid}`);
         const file = (data.files || []).find(f => f && f.fileId === fid);
         if (!file) {
-          logInfo(`File not found: ${fid}`);
+          logError(`File not found: ${fid}`);
           return null;
         }
+        logInfo(`Found file: ${file.fileName}`);
         return {
           fileId: file.fileId,
           fileName: file.fileName,
@@ -148,6 +186,7 @@ exports.handler = async (event) => {
       .filter(Boolean);
 
     logInfo(`Returning ${files.length} files`);
+    logInfo(`Files: ${JSON.stringify(files)}`);
 
     return {
       statusCode: 200,
@@ -165,7 +204,7 @@ exports.handler = async (event) => {
     };
 
   } catch (e) {
-    logError(`Error: ${e.message}`);
+    logError(`Unhandled error: ${e.message}`);
     logError(`Stack: ${e.stack}`);
     
     return {
