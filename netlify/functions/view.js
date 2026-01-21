@@ -58,61 +58,6 @@ async function githubRequest(method, path, body = null) {
   });
 }
 
-// ★ Release タグからダウンロードURLを構築
-async function getDownloadUrlForFileId(fileId) {
-  try {
-    logInfo(`Getting release URL for fileId: ${fileId}`);
-    
-    // Release tag の形式: file_XXX
-    const releaseTag = `file_${fileId}`;
-    
-    // GitHub API で release を取得
-    const release = await githubRequest(
-      'GET',
-      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/tags/${releaseTag}`
-    );
-    
-    if (!release || !release.assets || release.assets.length === 0) {
-      logError(`No assets found for release: ${releaseTag}`);
-      return null;
-    }
-    
-    // 最初のアセットのダウンロードURLを取得
-    const downloadUrl = release.assets[0].browser_download_url;
-    logInfo(`Got download URL: ${downloadUrl}`);
-    
-    return downloadUrl;
-  } catch (e) {
-    logError(`Failed to get download URL for ${fileId}: ${e.message}`);
-    return null;
-  }
-}
-
-// ★ GitHub Releases URL を jsDelivr CDN に変換（修正版）
-function convertToJsDelivrUrl(githubReleaseUrl, tag, fileName) {
-  try {
-    // githubReleaseUrl 形式:
-    // https://github.com/OWNER/REPO/releases/download/TAG/FILENAME
-    
-    const match = githubReleaseUrl.match(/github\.com\/([^/]+)\/([^/]+)\/releases\/download\//);
-    if (!match) {
-      logError(`URL doesn't match expected pattern: ${githubReleaseUrl}`);
-      return githubReleaseUrl;
-    }
-    
-    const [, owner, repo] = match;
-    
-    // jsDelivr URL: https://cdn.jsdelivr.net/gh/OWNER/REPO@TAG/FILENAME
-    const jsDelivrUrl = `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${tag}/${fileName}`;
-    logInfo(`Converted: ${githubReleaseUrl} → ${jsDelivrUrl}`);
-    
-    return jsDelivrUrl;
-  } catch (e) {
-    logError(`URL conversion error: ${e.message}`);
-    return githubReleaseUrl;
-  }
-}
-
 exports.handler = async (event) => {
   logInfo(`=== VIEW HANDLER START ===`);
   logInfo(`Query params: ${JSON.stringify(event.queryStringParameters)}`);
@@ -208,45 +153,26 @@ exports.handler = async (event) => {
 
     logInfo(`View found: ${view.viewId}`);
 
-    // ★ fileIds からファイル情報を取得し、GitHub APIから正しいダウンロードURLを取得
-    const files = [];
-    for (const fileId of (view.fileIds || [])) {
-      try {
-        logInfo(`Processing fileId: ${fileId}`);
-        
-        // github.json からファイル情報を取得
-        const fileInfo = (data.files || []).find(f => f && f.fileId === fileId);
-        if (!fileInfo) {
-          logError(`File not found in github.json: ${fileId}`);
-          continue;
+    // ★ GitHub Release URL をそのまま使用（jsDelivr変換は不要）
+    const files = (view.fileIds || [])
+      .map(fileId => {
+        logInfo(`Looking for file: ${fileId}`);
+        const file = (data.files || []).find(f => f && f.fileId === fileId);
+        if (!file) {
+          logError(`File not found: ${fileId}`);
+          return null;
         }
+        logInfo(`Found file: ${file.fileName}`);
+        logInfo(`Download URL: ${file.downloadUrl}`);
         
-        logInfo(`Found file in github.json: ${fileInfo.fileName}`);
-        
-        // ★ GitHub API から実際のダウンロードURLを取得
-        const downloadUrl = await getDownloadUrlForFileId(fileId);
-        if (!downloadUrl) {
-          logError(`Could not get download URL for: ${fileId}`);
-          continue;
-        }
-        
-        // ★ GitHub URL を jsDelivr に変換
-        const releaseTag = `file_${fileId}`;
-        const jsDelivrUrl = convertToJsDelivrUrl(downloadUrl, releaseTag, fileInfo.fileName);
-        
-        files.push({
-          fileId: fileInfo.fileId,
-          fileName: fileInfo.fileName,
-          fileSize: fileInfo.fileSize,
-          downloadUrl: jsDelivrUrl  // ★ jsDelivr URL を返す
-        });
-        
-        logInfo(`Added file: ${fileInfo.fileName} → ${jsDelivrUrl}`);
-      } catch (e) {
-        logError(`Error processing fileId ${fileId}: ${e.message}`);
-        continue;
-      }
-    }
+        return {
+          fileId: file.fileId,
+          fileName: file.fileName,
+          fileSize: file.fileSize,
+          downloadUrl: file.downloadUrl  // ★ GitHub Release URL をそのまま返す
+        };
+      })
+      .filter(Boolean);
 
     logInfo(`Returning ${files.length} files`);
 
