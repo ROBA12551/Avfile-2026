@@ -1,4 +1,26 @@
-
+/**
+ * netlify/functions/github-upload.js
+ * 
+ * GitHub Releases へのアップロードを管理する Netlify Function
+ * 
+ * リクエスト:
+ * POST /api/github-upload
+ * {
+ *   action: "create-release" | "upload-asset" | "get-info",
+ *   releaseTag: "video_abc123",
+ *   fileName: "video_abc123.mp4",
+ *   metadata: {...},
+ *   contentType: "application/octet-stream",
+ *   body: base64-encoded-file | null
+ * }
+ * 
+ * レスポンス:
+ * {
+ *   success: true,
+ *   data: {...},
+ *   error?: "エラーメッセージ"
+ * }
+ */
 
 const https = require('https');
 const url = require('url');
@@ -56,7 +78,7 @@ async function githubRequest(method, path, body = null, headers = {}) {
       headers: {
         'Authorization': `token ${GITHUB_TOKEN}`,
         'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'Gofile-Clone-Netlify',
+        'User-Agent': 'Avfile-Clone-Netlify',
         'Content-Type': headers['Content-Type'] || 'application/json',
         ...headers,
       },
@@ -184,17 +206,23 @@ async function getRelease(releaseId) {
 }
 
 /**
- * Release を削除（Admin用）
- * @param {number} releaseId - Release ID
- * @returns {Promise<boolean>}
+ * Release をタグから取得
+ * @param {string} releaseTag - Release タグ
+ * @returns {Promise<Object>} - Release 情報
  */
-async function deleteRelease(releaseId) {
-  console.log(`[deleteRelease] ID: ${releaseId}`);
+async function getReleaseByTag(releaseTag) {
+  console.log(`[getReleaseByTag] Tag: ${releaseTag}`);
 
-  const path = `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/${releaseId}`;
-  await githubRequest('DELETE', path);
+  const path = `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/tags/${releaseTag}`;
+  const response = await githubRequest('GET', path);
 
-  return true;
+  return {
+    release_id: response.data.id,
+    tag_name: response.data.tag_name,
+    assets: response.data.assets || [],
+    created_at: response.data.created_at,
+    body: response.data.body,
+  };
 }
 
 /**
@@ -255,6 +283,13 @@ exports.handler = async (event, context) => {
           throw new Error('Missing releaseId');
         }
         response = await getRelease(body.releaseId);
+        break;
+
+      case 'get-release-by-tag':
+        if (!body.releaseTag) {
+          throw new Error('Missing releaseTag');
+        }
+        response = await getReleaseByTag(body.releaseTag);
         break;
 
       case 'delete-release':
