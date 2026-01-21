@@ -878,6 +878,7 @@ class GitHubUploader {
   // 動画用: Blobでバイナリ送信
   async uploadAssetBinary(uploadUrl, fileName, blobData, fileId, fileSize) {
     console.log('[GITHUB] uploadAssetBinary:', fileName, 'Size:', (fileSize / 1024 / 1024).toFixed(2) + 'MB');
+    console.log('[GITHUB] Original uploadUrl:', uploadUrl);
     
     try {
       // Blobデータのタイプをチェック
@@ -894,18 +895,31 @@ class GitHubUploader {
         throw new Error(`Compressed file size (${(blobData.size / 1024 / 1024).toFixed(2)}MB) exceeds maximum (${(MAX_UPLOAD_SIZE / 1024 / 1024).toFixed(0)}MB). Please try a smaller video or lower resolution.`);
       }
 
+      // GitHub API のテンプレートURLを処理
+      let processedUrl = uploadUrl;
+      
+      // {?name,label} や {?name,label,state} などのテンプレートを削除
+      processedUrl = processedUrl.replace('{?name,label}', '');
+      processedUrl = processedUrl.replace('{?name,label,state}', '');
+      processedUrl = processedUrl.replace(/\{.*?\}/g, ''); // その他のテンプレートも削除
+      
+      // name パラメータを追加
+      const separator = processedUrl.includes('?') ? '&' : '?';
+      processedUrl = processedUrl + separator + `name=${encodeURIComponent(fileName)}`;
+      
+      console.log('[GITHUB] Processed uploadUrl:', processedUrl);
+
       // FormData ではなく arrayBuffer を直接送信 (オーバーヘッド削減)
       const arrayBuffer = await blobData.arrayBuffer();
       
-      console.log('[GITHUB] Sending ArrayBuffer to:', uploadUrl);
+      console.log('[GITHUB] Sending ArrayBuffer to:', processedUrl);
       console.log('[GITHUB] ArrayBuffer size:', arrayBuffer.byteLength, 'bytes');
       
-      const response = await fetch(uploadUrl, {
+      const response = await fetch(processedUrl, {
         method: 'POST',
         body: arrayBuffer,
         headers: {
-          'Content-Type': blobData.type || 'application/octet-stream',
-          'Authorization': `token ${this.token}`,
+          'Content-Type': 'application/octet-stream',
         }
       });
       
@@ -1602,13 +1616,48 @@ async function convertAndCompressVideo(videoFile) {
     try {
       // コアファイルのURLを指定
       console.log('[COMPRESS] Loading FFmpeg core...');
-      ffmpeg.load({
-        coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js',
+      
+      // FFmpeg 読み込みタイムアウト: 30秒
+      const loadTimeout = 30000;
+      let loadTimeoutId;
+      
+      const loadTimeoutPromise = new Promise((_, reject) => {
+        loadTimeoutId = setTimeout(() => {
+          console.error('[COMPRESS] FFmpeg load timeout');
+          reject(new Error('FFmpeg load timeout after 30 seconds'));
+        }, loadTimeout);
       });
-
-      if (!ffmpeg.isLoaded()) {
-        console.log('[COMPRESS] Waiting for FFmpeg to load...');
-        await Promise.race([ffmpeg.load(), timeoutPromise]);
+      
+      try {
+        // FFmpeg を読み込む
+        await Promise.race([
+          (async () => {
+            ffmpeg.load({
+              coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js',
+            });
+            
+            // ロード完了待ち
+            if (!ffmpeg.isLoaded()) {
+              console.log('[COMPRESS] Waiting for FFmpeg to load...');
+              await new Promise((resolve) => {
+                const checkInterval = setInterval(() => {
+                  if (ffmpeg.isLoaded()) {
+                    clearInterval(checkInterval);
+                    resolve();
+                  }
+                }, 100);
+              });
+            }
+            console.log('[COMPRESS] FFmpeg loaded successfully');
+          })(),
+          loadTimeoutPromise
+        ]);
+        
+        clearTimeout(loadTimeoutId);
+      } catch (loadErr) {
+        clearTimeout(loadTimeoutId);
+        console.error('[COMPRESS] FFmpeg load error:', loadErr.message);
+        throw new Error(`Failed to load FFmpeg: ${loadErr.message}. Returning original file.`);
       }
 
       const inputExt = videoFile.name.split('.').pop().toLowerCase();
@@ -1701,12 +1750,45 @@ async function compressVideoForMobile(videoFile) {
 
     try {
       console.log('[MOBILE_COMPRESS] Loading FFmpeg...');
-      ffmpeg.load({
-        coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js',
+      
+      const loadTimeout = 30000;
+      let loadTimeoutId;
+      
+      const loadTimeoutPromise = new Promise((_, reject) => {
+        loadTimeoutId = setTimeout(() => {
+          console.error('[MOBILE_COMPRESS] FFmpeg load timeout');
+          reject(new Error('FFmpeg load timeout after 30 seconds'));
+        }, loadTimeout);
       });
+      
+      try {
+        await Promise.race([
+          (async () => {
+            ffmpeg.load({
+              coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js',
+            });
 
-      if (!ffmpeg.isLoaded()) {
-        await Promise.race([ffmpeg.load(), timeoutPromise]);
+            if (!ffmpeg.isLoaded()) {
+              console.log('[MOBILE_COMPRESS] Waiting for FFmpeg to load...');
+              await new Promise((resolve) => {
+                const checkInterval = setInterval(() => {
+                  if (ffmpeg.isLoaded()) {
+                    clearInterval(checkInterval);
+                    resolve();
+                  }
+                }, 100);
+              });
+            }
+            console.log('[MOBILE_COMPRESS] FFmpeg loaded successfully');
+          })(),
+          loadTimeoutPromise
+        ]);
+        
+        clearTimeout(loadTimeoutId);
+      } catch (loadErr) {
+        clearTimeout(loadTimeoutId);
+        console.error('[MOBILE_COMPRESS] FFmpeg load error:', loadErr.message);
+        return videoFile; // フォールバック
       }
 
       const inputExt = videoFile.name.split('.').pop().toLowerCase();
