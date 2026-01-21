@@ -986,7 +986,7 @@ class GitHubUploader {
     if (!data.success) throw new Error(data.error);
     return data.data;
   }
-// ★ 修正版: 圧縮後、Base64なしでバイナリ送信
+  // ★ FormData不要、ArrayBufferをそのまま送信
 async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   const sanitizedFileName = this.sanitizeFileName(fileName);
 
@@ -1004,8 +1004,8 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
 
   let processedFile = fileObject;
   
-  // ★ 動画ファイルで2.5MB以上なら圧縮
-  const MAX_SIZE = 2.5 * 1024 * 1024; // 2.5MB
+  // ★ 動画ファイルで2.5MB以上なら圧縮（オプション）
+  const MAX_SIZE = 2.5 * 1024 * 1024;
   const isVideo = fileObject.type && fileObject.type.startsWith('video/');
   
   if (isVideo && fileObject.size > MAX_SIZE) {
@@ -1015,8 +1015,9 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
       const compressor = new VideoCompressionEngineLocal();
       processedFile = await compressor.compress(fileObject, (progress, msg) => {
         console.log(`[UPLOAD_BINARY] 圧縮中: ${progress}%`);
-        // UI更新も可能
-        document.getElementById('statusMessage').textContent = `動画圧縮中: ${progress}%`;
+        if (document.getElementById('statusMessage')) {
+          document.getElementById('statusMessage').textContent = `動画圧縮中: ${progress}%`;
+        }
       });
       
       const originalMB = (fileObject.size / 1024 / 1024).toFixed(2);
@@ -1029,23 +1030,39 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
       processedFile = fileObject;
     }
   } else {
-    console.log(`[UPLOAD_BINARY] 圧縮不要: ${isVideo ? '動画' : 'その他'}, ${(fileObject.size / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`[UPLOAD_BINARY] 圧縮スキップ: ${(fileObject.size / 1024 / 1024).toFixed(2)} MB`);
   }
 
-  // ★ FormData で送信（Base64不要）
-  console.log('[UPLOAD_BINARY] Sending to Netlify Functions via FormData...');
+  // ★ ArrayBufferに変換
+  console.log('[UPLOAD_BINARY] Converting to ArrayBuffer...');
+  const arrayBuffer = await processedFile.arrayBuffer();
+  
+  // ★ ArrayBufferをBase64に変換
+  console.log('[UPLOAD_BINARY] Converting to Base64...');
+  const uint8Array = new Uint8Array(arrayBuffer);
+  let binary = '';
+  const chunkSize = 8192;
+  for (let i = 0; i < uint8Array.length; i += chunkSize) {
+    const chunk = uint8Array.subarray(i, i + chunkSize);
+    binary += String.fromCharCode.apply(null, chunk);
+  }
+  const base64 = btoa(binary);
+  
+  console.log('[UPLOAD_BINARY] Base64 length:', base64.length, 'chars');
+  console.log('[UPLOAD_BINARY] Sending to Netlify Functions...');
 
-  const formData = new FormData();
-  formData.append('action', 'upload-asset-binary');
-  formData.append('uploadUrl', uploadUrl);
-  formData.append('fileName', sanitizedFileName);
-  formData.append('fileId', fileId);
-  formData.append('fileSize', processedFile.size.toString());
-  formData.append('file', processedFile, sanitizedFileName); // ★ 圧縮後のファイル
-
+  // ★ Netlify FunctionsにJSON形式で送信
   const response = await fetch(this.functionUrl, {
     method: 'POST',
-    body: formData,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'upload-asset-binary',
+      uploadUrl: uploadUrl,
+      fileName: sanitizedFileName,
+      fileBase64: base64,
+      fileId: fileId,
+      fileSize: processedFile.size
+    })
   });
 
   if (!response.ok) {

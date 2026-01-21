@@ -517,64 +517,71 @@ exports.handler = async (event) => {
         break;
       }
 
-      case 'upload-asset-binary': {
-        logInfo(`[BINARY] Starting upload`);
-        
-        let fileName, uploadUrl, fileId, fileSize;
-        let binaryData = null;
+     case 'upload-asset-binary': {
+  logInfo(`[BINARY] Starting upload`);
+  
+  let fileName, uploadUrl, fileId, fileSize;
+  let binaryData = null;
 
-        if (body._files && body._files.file) {
-          logInfo(`[BINARY] Using FormData with binary file`);
-          
-          fileName = body.fileName;
-          uploadUrl = body.uploadUrl;
-          fileId = body.fileId;
-          fileSize = parseInt(body.fileSize) || 0;
-          binaryData = body._files.file.data;
-          
-          logInfo(`[BINARY] Binary file received: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
-          logInfo(`[BINARY] File name: ${fileName}`);
-          logInfo(`[BINARY] File ID: ${fileId}`);
-        } else {
-          logError(`[BINARY] No file data found`);
-          logError(`[BINARY] body keys: ${Object.keys(body).join(', ')}`);
-          logError(`[BINARY] body._files: ${body._files ? Object.keys(body._files).join(', ') : 'undefined'}`);
-          throw new Error('No file data provided in FormData');
-        }
+  // ★ JSON形式でBase64を受け取る
+  if (body && body.fileBase64) {
+    logInfo(`[BINARY] Using JSON with Base64`);
+    
+    fileName = body.fileName;
+    uploadUrl = body.uploadUrl;
+    fileId = body.fileId;
+    fileSize = body.fileSize;
+    
+    // ★ Base64をBufferに変換
+    binaryData = Buffer.from(body.fileBase64, 'base64');
+    
+    logInfo(`[BINARY] Base64 decoded: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
+    logInfo(`[BINARY] File name: ${fileName}`);
+    logInfo(`[BINARY] File ID: ${fileId}`);
+  } else {
+    logError(`[BINARY] No file data found`);
+    logError(`[BINARY] body keys: ${Object.keys(body).join(', ')}`);
+    throw new Error('No file data provided (fileBase64 missing)');
+  }
 
-        if (!fileName) throw new Error('fileName not found');
-        if (!uploadUrl) throw new Error('uploadUrl not found');
-        if (!binaryData || binaryData.length === 0) throw new Error('File data is empty');
+  // バリデーション
+  if (!fileName) throw new Error('fileName not found');
+  if (!uploadUrl) throw new Error('uploadUrl not found');
+  if (!binaryData || binaryData.length === 0) throw new Error('File data is empty');
 
-        logInfo(`[BINARY] Validated - File: ${fileName}, Size: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
-        logInfo(`[BINARY] Uploading to GitHub API...`);
-        
-        let cleanUrl = String(uploadUrl).trim();
-        cleanUrl = cleanUrl.replace('{?name,label}', '');
-        cleanUrl = cleanUrl.replace('{?name}', '');
-        cleanUrl = cleanUrl.replace(/\{[?&].*?\}/g, '');
+  logInfo(`[BINARY] Validated - File: ${fileName}, Size: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
+  
+  // ★ GitHub にバイナリアップロード
+  logInfo(`[BINARY] Uploading to GitHub API...`);
+  
+  let cleanUrl = String(uploadUrl).trim();
+  cleanUrl = cleanUrl.replace('{?name,label}', '');
+  cleanUrl = cleanUrl.replace('{?name}', '');
+  cleanUrl = cleanUrl.replace(/\{[?&].*?\}/g, '');
 
-        const encodedFileName = encodeURIComponent(fileName);
-        const assetUrl = `${cleanUrl}?name=${encodedFileName}`;
+  const encodedFileName = encodeURIComponent(fileName);
+  const assetUrl = `${cleanUrl}?name=${encodedFileName}`;
 
-        logInfo(`[BINARY] GitHub upload URL: ${assetUrl.substring(0, 100)}...`);
+  logInfo(`[BINARY] GitHub upload URL: ${assetUrl.substring(0, 100)}...`);
 
-        const assetResponse = await githubUploadRequest('POST', assetUrl, binaryData);
+  const assetResponse = await githubUploadRequest('POST', assetUrl, binaryData);
 
-        if (!assetResponse || !assetResponse.id) {
-          throw new Error('Asset upload response missing id field');
-        }
+  if (!assetResponse || !assetResponse.id) {
+    throw new Error('Asset upload response missing id field');
+  }
 
-        logInfo(`[BINARY] GitHub upload complete: Asset ID ${assetResponse.id}`);
+  logInfo(`[BINARY] GitHub upload complete: Asset ID ${assetResponse.id}`);
 
-        response = {
-          asset_id: assetResponse.id,
-          name: assetResponse.name,
-          size: assetResponse.size,
-          download_url: assetResponse.browser_download_url,
-        };
-        break;
-      }
+  const result = {
+    asset_id: assetResponse.id,
+    name: assetResponse.name,
+    size: assetResponse.size,
+    download_url: assetResponse.browser_download_url,
+  };
+
+  response = result;
+  break;
+}
 
       case 'get-github-json': {
         logInfo('Getting github.json');
