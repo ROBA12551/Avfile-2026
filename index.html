@@ -928,21 +928,16 @@ async function uploadMultiple(files) {
 
 async function loadAndDisplayView(viewId) {
   try {
-    const uploader = new SimpleUploadManager();
-    const github = uploader.githubUploader;
+    const res = await fetch(`/.netlify/functions/view?id=${viewId}`);
+    if (!res.ok) throw new Error('File not found');
 
-    const json = await github.getGithubJson();
-    const view = (json.views || []).find(v => v.viewId === viewId);
+    const data = await res.json();
 
-    if (!view) {
-      showErrorUI('File not found');
-      return;
-    }
-
-    if (view.password) {
-      const input = prompt('Enter password');
-      const hash = await sha256(input || '');
-      if (hash !== view.password) {
+    // 🔐 パスワード
+    if (data.password) {
+      const pw = prompt('Enter password');
+      const hash = await sha256(pw || '');
+      if (hash !== data.password) {
         showErrorUI('Invalid password');
         return;
       }
@@ -950,16 +945,14 @@ async function loadAndDisplayView(viewId) {
 
     fileViewerUI.innerHTML = '';
 
-    for (const fid of view.files) {
-      const file = (json.files || []).find(f => f.fileId === fid);
-      if (!file) continue;
+    for (const file of data.files) {
       fileViewerUI.innerHTML += renderFileBlock(file);
     }
 
     showViewerUI();
+
   } catch (e) {
-    console.error(e);
-    showErrorUI('Load failed');
+    showErrorUI('File not found');
   }
 }
 
@@ -968,16 +961,16 @@ async function loadAndDisplayView(viewId) {
 ===================== */
 function renderFileBlock(file) {
   const url = file.downloadUrl;
-  const name = escapeHtml(file.fileName);
 
   if (/\.(mp4|webm|ogg)$/i.test(url)) {
     return `
       <div style="margin:2rem;text-align:center">
-        <video controls style="max-width:95%;border-radius:12px">
+        <video controls preload="metadata" style="max-width:95%;border-radius:12px">
           <source src="${url}">
         </video>
         <a class="btn" href="${url}" download>Download</a>
-      </div>`;
+      </div>
+    `;
   }
 
   if (/\.(png|jpg|jpeg|gif|webp)$/i.test(url)) {
@@ -985,14 +978,16 @@ function renderFileBlock(file) {
       <div style="margin:2rem;text-align:center">
         <img src="${url}" style="max-width:95%;border-radius:12px">
         <a class="btn" href="${url}" download>Download</a>
-      </div>`;
+      </div>
+    `;
   }
 
   return `
     <div style="margin:2rem;text-align:center">
-      <p>${name}</p>
+      <p>${file.fileName}</p>
       <a class="btn" href="${url}" download>Download</a>
-    </div>`;
+    </div>
+  `;
 }
 
 /* =====================
