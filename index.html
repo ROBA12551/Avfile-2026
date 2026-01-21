@@ -1666,34 +1666,6 @@ async function uploadMultiple(files) {
   }
 }
 
-const uploadedFiles = await parallelLimit(uploadTasks, 5);
-console.log('[UPLOAD] ✓ Phase 2 完了 (' + (Date.now() - startTime) + 'ms)');
-
-    // ★ Phase 3: github.json 保存（1回だけ）
-    console.log('[UPLOAD] Phase 3: github.json 保存');
-
-    // キャッシュから取得、なければ新規取得
-    let githubJson = getGithubJsonCached();
-    if (!githubJson) {
-      const result = await uploader.getGithubJson();
-      githubJson = result;
-      setCacheGithubJson(githubJson);
-    }
-
-    githubJson.files = githubJson.files || [];
-    githubJson.files.push(...uploadedFiles);
-    githubJson.lastUpdated = new Date().toISOString();
-
-    try {
-      await uploader.saveGithubJson(githubJson);
-
-
-  } catch (e) {
-    console.error('[UPLOAD] ========== FAILED ==========');
-    console.error('[UPLOAD] Error:', e.message);
-    showError(e.message || 'Upload failed');
-  }
-
 
 // ビュー読み込み
 async function loadView(viewId) {
