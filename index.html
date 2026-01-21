@@ -387,12 +387,12 @@ function escapeHtml(t) {
 }
 
 function getFileIcon(filename) {
-  if (/\.(mp4|webm|ogg|mkv|avi|mov)$/i.test(filename)) return '🎬';
-  if (/\.(mp3|wav|flac|aac|m4a)$/i.test(filename)) return '🎵';
-  if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(filename)) return '🖼️';
-  if (/\.(pdf)$/i.test(filename)) return '📄';
-  if (/\.(zip|rar|7z|tar|gz)$/i.test(filename)) return '📦';
-  if (/\.(txt|doc|docx|xlsx|ppt)$/i.test(filename)) return '📃';
+  if (/\.(mp4|webm|ogg|mkv|avi|mov)$/i.test(filename)) return '';
+  if (/\.(mp3|wav|flac|aac|m4a)$/i.test(filename)) return '';
+  if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(filename)) return '';
+  if (/\.(pdf)$/i.test(filename)) return '';
+  if (/\.(zip|rar|7z|tar|gz)$/i.test(filename)) return '';
+  if (/\.(txt|doc|docx|xlsx|ppt)$/i.test(filename)) return '';
   return '📁';
 }
 
