@@ -735,7 +735,6 @@
   <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
 <!-- ファイルアップロード強化版 -->
 <script src="/js/universal-file-uploader-enhanced.js"></script>
-
 <script>
 // ★ グローバル変数定義（最初）
 const MAX_FILES = 10;
@@ -921,15 +920,10 @@ class Cache {
   }
 }
 
-// ★ 修正: GitHubUploader（ファイル名サニタイゼーション付き）
+// ★ GitHubUploader（github-upload.js を使用）
 class GitHubUploader {
   constructor() {
     this.functionUrl = '/.netlify/functions/github-upload';
-    // ★ GitHub Token（localStorage から取得、またはデフォルトは空）
-    this.githubToken = localStorage.getItem('github_token') || '';
-    if (!this.githubToken) {
-      console.warn('[GITHUB_TOKEN] Warning: GitHub token not found in localStorage');
-    }
   }
 
   sanitizeFileName(fileName) {
@@ -970,6 +964,7 @@ class GitHubUploader {
     }
   }
 
+  // ★ リリース作成（upload_url を取得）
   async createRelease(releaseTag, fileName) {
     const sanitizedFileName = this.sanitizeFileName(fileName);
 
@@ -982,102 +977,151 @@ class GitHubUploader {
         metadata: { title: sanitizedFileName, description: `File: ${sanitizedFileName}` },
       }),
     });
+    
     const data = await response.json();
     if (!data.success) throw new Error(data.error);
-    return
     
-    data.data;
-  }
-  // ★ バイナリをGitHubへ直接送信（Netlify Functions を経由しない）
-async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
-  const sanitizedFileName = this.sanitizeFileName(fileName);
-
-  console.log('[UPLOAD_BINARY] Original fileName:', fileName);
-  console.log('[UPLOAD_BINARY] Sanitized fileName:', sanitizedFileName);
-  console.log('[UPLOAD_BINARY] File size:', (fileSize / 1024 / 1024).toFixed(2), 'MB');
-
-  if (!fileObject) {
-    throw new Error('Invalid file object provided');
+    return data.data;
   }
 
-  if (!uploadUrl || typeof uploadUrl !== 'string') {
-    throw new Error('Invalid uploadUrl provided');
-  }
+  // ★ バイナリを GitHub へ直接アップロード（Netlify Functions を経由しない）
+  async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
+    const sanitizedFileName = this.sanitizeFileName(fileName);
 
-  let processedFile = fileObject;
-  
-  // ★ 動画ファイルで2.5MB以上なら圧縮
-  const MAX_SIZE = 2.5 * 1024 * 1024;
-  const isVideo = fileObject.type && fileObject.type.startsWith('video/');
-  
-  if (isVideo && fileObject.size > MAX_SIZE) {
-    console.log(`[UPLOAD_BINARY] 動画圧縮開始: ${(fileObject.size / 1024 / 1024).toFixed(2)} MB`);
-    
-    try {
-      const compressor = new VideoCompressionEngineLocal();
-      processedFile = await compressor.compress(fileObject, (progress, msg) => {
-        console.log(`[UPLOAD_BINARY] 圧縮中: ${progress}%`);
-        if (document.getElementById('statusMessage')) {
-          document.getElementById('statusMessage').textContent = `動画圧縮中: ${progress}%`;
-        }
-      });
-      
-      const originalMB = (fileObject.size / 1024 / 1024).toFixed(2);
-      const compressedMB = (processedFile.size / 1024 / 1024).toFixed(2);
-      const ratio = ((1 - processedFile.size / fileObject.size) * 100).toFixed(0);
-      
-      console.log(`[UPLOAD_BINARY] 圧縮完了: ${originalMB}MB → ${compressedMB}MB (${ratio}% 削減)`);
-    } catch (compressionError) {
-      console.warn(`[UPLOAD_BINARY] 圧縮失敗、元ファイルを使用:`, compressionError.message);
-      processedFile = fileObject;
+    console.log('[UPLOAD_BINARY] Original fileName:', fileName);
+    console.log('[UPLOAD_BINARY] Sanitized fileName:', sanitizedFileName);
+    console.log('[UPLOAD_BINARY] File size:', (fileSize / 1024 / 1024).toFixed(2), 'MB');
+
+    if (!fileObject) {
+      throw new Error('Invalid file object provided');
     }
-  } else {
-    console.log(`[UPLOAD_BINARY] 圧縮スキップ: ${(fileObject.size / 1024 / 1024).toFixed(2)} MB`);
+
+    if (!uploadUrl || typeof uploadUrl !== 'string') {
+      throw new Error('Invalid uploadUrl provided');
+    }
+
+    let processedFile = fileObject;
+    
+    // ★ 動画ファイルで2.5MB以上なら圧縮
+    const MAX_SIZE = 2.5 * 1024 * 1024;
+    const isVideo = fileObject.type && fileObject.type.startsWith('video/');
+    
+    if (isVideo && fileObject.size > MAX_SIZE) {
+      console.log(`[UPLOAD_BINARY] 動画圧縮開始: ${(fileObject.size / 1024 / 1024).toFixed(2)} MB`);
+      
+      try {
+        const compressor = new VideoCompressionEngineLocal();
+        processedFile = await compressor.compress(fileObject, (progress, msg) => {
+          console.log(`[UPLOAD_BINARY] 圧縮中: ${progress}%`);
+          if (document.getElementById('statusMessage')) {
+            document.getElementById('statusMessage').textContent = `動画圧縮中: ${progress}%`;
+          }
+        });
+        
+        const originalMB = (fileObject.size / 1024 / 1024).toFixed(2);
+        const compressedMB = (processedFile.size / 1024 / 1024).toFixed(2);
+        const ratio = ((1 - processedFile.size / fileObject.size) * 100).toFixed(0);
+        
+        console.log(`[UPLOAD_BINARY] 圧縮完了: ${originalMB}MB → ${compressedMB}MB (${ratio}% 削減)`);
+      } catch (compressionError) {
+        console.warn(`[UPLOAD_BINARY] 圧縮失敗、元ファイルを使用:`, compressionError.message);
+        processedFile = fileObject;
+      }
+    } else {
+      console.log(`[UPLOAD_BINARY] 圧縮スキップ: ${(fileObject.size / 1024 / 1024).toFixed(2)} MB`);
+    }
+
+    // ★ ArrayBuffer に変換
+    console.log('[UPLOAD_BINARY] Converting to ArrayBuffer...');
+    const arrayBuffer = await processedFile.arrayBuffer();
+    console.log('[UPLOAD_BINARY] ArrayBuffer size:', (arrayBuffer.byteLength / 1024 / 1024).toFixed(2), 'MB');
+
+    // ★ GitHub の upload_url から {?name,label} を削除してクリーンな URL に
+    const cleanUploadUrl = uploadUrl.replace(/\{\?.*\}$/, '');
+    
+    // ★ name パラメータを追加
+    const finalUrl = `${cleanUploadUrl}?name=${encodeURIComponent(sanitizedFileName)}`;
+
+    console.log('[UPLOAD_BINARY] Uploading directly to GitHub...');
+    console.log('[UPLOAD_BINARY] Target URL:', finalUrl);
+
+    // ★ GitHub へ直接バイナリアップロード
+    const response = await fetch(finalUrl, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/octet-stream',
+        'Content-Length': arrayBuffer.byteLength.toString()
+      },
+      body: arrayBuffer
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      console.error('[UPLOAD_BINARY] GitHub upload error:', response.status, errorText);
+      throw new Error(`GitHub upload failed: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    
+    console.log('[UPLOAD_BINARY] Complete - Asset uploaded to GitHub');
+    console.log('[UPLOAD_BINARY] Browser download URL:', data.browser_download_url);
+    
+    return {
+      success: true,
+      asset_id: data.id,
+      browser_download_url: data.browser_download_url,
+      name: data.name,
+      size: data.size
+    };
   }
 
-  // ★ ArrayBufferに変換
-  console.log('[UPLOAD_BINARY] Converting to ArrayBuffer...');
-  const arrayBuffer = await processedFile.arrayBuffer();
-  console.log('[UPLOAD_BINARY] ArrayBuffer size:', (arrayBuffer.byteLength / 1024 / 1024).toFixed(2), 'MB');
+  // ★ ファイル情報を github.json に即座に追加
+  async addFileToGithubJson(fileData) {
+    console.log('[ADD_FILE] Adding to github.json:', fileData.fileId);
+    
+    const response = await fetch(this.functionUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'add-file',
+        fileData: fileData
+      })
+    });
 
-  // ★ GitHubのupload_urlから {?name,label} を削除してクリーンなURLに
-  const cleanUploadUrl = uploadUrl.replace(/\{\?.*\}$/, '');
-  
-  // ★ nameパラメータを追加
-  const finalUrl = `${cleanUploadUrl}?name=${encodeURIComponent(sanitizedFileName)}`;
-
-  console.log('[UPLOAD_BINARY] Uploading directly to GitHub...');
-  console.log('[UPLOAD_BINARY] Target URL:', finalUrl);
-
-  // ★ GitHubへ直接バイナリアップロード
-  const response = await fetch(finalUrl, {
-    method: 'POST',
-    headers: { 
-      'Content-Type': 'application/octet-stream',
-      'Content-Length': arrayBuffer.byteLength.toString()
-    },
-    body: arrayBuffer
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => '');
-    console.error('[UPLOAD_BINARY] GitHub upload error:', response.status, errorText);
-    throw new Error(`GitHub upload failed: ${response.status} - ${errorText}`);
+    const data = await response.json();
+    if (!data.success) throw new Error(data.error);
+    
+    console.log('[ADD_FILE] ✓ Added to github.json');
+    return data.data;
   }
 
-  const data = await response.json();
-  
-  console.log('[UPLOAD_BINARY] Complete - Asset uploaded to GitHub');
-  console.log('[UPLOAD_BINARY] Browser download URL:', data.browser_download_url);
-  
-  return {
-    success: true,
-    asset_id: data.id,
-    browser_download_url: data.browser_download_url,
-    name: data.name
-  };
+  async getGithubJson() {
+    const response = await fetch(this.functionUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'get-github-json' })
+    });
+    const data = await response.json();
+    if (!data.success) throw new Error(data.error);
+    return data.data;
+  }
+
+  async createView(fileIds) {
+    const response = await fetch(this.functionUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'create-view',
+        fileIds: fileIds,
+        origin: window.location.origin
+      })
+    });
+    const data = await response.json();
+    if (!data.success) throw new Error(data.error);
+    return data.data;
+  }
 }
-}
+
 // カルーセル管理
 class Carousel {
   constructor(track, dots, prevBtn, nextBtn, info) {
@@ -1291,14 +1335,12 @@ document.getElementById('selectFileBtn').onclick = () => document.getElementById
 const uploadArea = document.getElementById('uploadArea');
 uploadArea.addEventListener('dragover', (e) => { 
   e.preventDefault();
-  // ドラッグ&ドロップは視覚的には反応するが、dropイベントは処理しない
   uploadArea.classList.add('drag-over'); 
 });
 uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag-over'));
 uploadArea.addEventListener('drop', (e) => {
   e.preventDefault();
   uploadArea.classList.remove('drag-over');
-  // ★ drop イベントを無視（ファイル選択のみ許可）
   console.log('[UPLOAD] Drag & drop は無効化されています。ファイル選択ボタンを使用してください。');
   showError('ドラッグ&ドロップは無効です。「Select Files to Upload」ボタンを使用してください。');
   return;
@@ -1325,71 +1367,32 @@ document.getElementById('retryBtn').onclick = () => { showUpload(); document.get
 document.getElementById('backBtn').onclick = () => showUpload();
 
 // ★ グローバル定数
-const MAX_SIZE_WITHOUT_COMPRESSION = 1.5 * 1024 * 1024; // ★ 4MB に変更
+const MAX_SIZE_WITHOUT_COMPRESSION = 1.5 * 1024 * 1024;
+
 async function uploadMultiple(files) {
   showStatus();
   const uploader = new GitHubUploader();
-  const fileUploader = new UniversalFileUploaderEnhanced();
-  const deviceInfo = fileUploader.getDeviceInfo();
-  const isMobile = deviceInfo.isMobile;
   const startTime = Date.now();
 
   try {
     console.log('[UPLOAD] ========== START ==========');
     console.log('[UPLOAD] Files: ' + files.length);
 
-    // ★ バリデーション
-    const { valid, errors } = await fileUploader.validateFiles(files);
+    // ★ Phase 1: Release 作成 + GitHub アップロード + github.json 追加（並列5個）
+    console.log('[UPLOAD] Phase 1: Release 作成 + アップロード + github.json 追加');
     
-    if (errors.length > 0) {
-      showError('Invalid files:\n' + errors.join('\n'));
-      return;
-    }
-
-    if (valid.length === 0) {
-      showError('No valid files');
-      return;
-    }
-
-    // ★ Phase 1: ファイル情報取得 + Release 作成（並列5個）
-    console.log('[UPLOAD] Phase 1: ファイル情報 + Release 作成');
-    
-    const fileDataTasks = valid.map((file, i) => async () => {
+    const uploadTasks = files.map((file, idx) => async () => {
       try {
-        const info = await getUnifiedFileInfo(file, fileUploader);
+        // ファイル情報取得
+        const info = await getUnifiedFileInfo(file, { getFileType: () => 'file' });
         const fileId = 'f_' + Math.random().toString(36).substr(2, 9);
         const fileName = sanitizeFileName(info.name);
+        const releaseTag = `file_${fileId}`;
 
-        const release = await uploader.createRelease(`file_${fileId}`, fileName);
+        console.log(`[FILE_${idx}] Creating release...`);
+        const release = await uploader.createRelease(releaseTag, fileName);
 
-        return { index: i, file, fileId, fileName, info, release };
-      } catch (e) {
-        console.error('[PHASE1_' + i + '] Error:', e.message);
-        throw e;
-      }
-    });
-
-    const fileDataList = await parallelLimit(fileDataTasks, 5);
-    console.log('[UPLOAD] ✓ Phase 1 完了 (' + (Date.now() - startTime) + 'ms)');
-
-    // ★ Phase 1.5 削除（圧縮はuploadAssetBinary内で実行）
-
-    // ★ Phase 2: Asset アップロード（並列5個）
-    console.log('[UPLOAD] Phase 2: Asset アップロード');
-
-    const uploadTasks = fileDataList.map((fileData, idx) => async () => {
-      try {
-        const { file, fileId, fileName, info, release } = fileData;
-
-        // プログレス更新
-        const percent = Math.round((idx / valid.length) * 100);
-        document.getElementById('statusMessage').textContent = `${idx + 1} / ${valid.length} (${percent}%)`;
-        document.getElementById('progressPercent').textContent = percent + '%';
-        document.getElementById('progressFill').style.width = percent + '%';
-
-        console.log('[ASSET_' + idx + '] 開始');
-        
-        // ★ Netlify Functions 経由でアップロード（圧縮込み）
+        console.log(`[FILE_${idx}] Uploading to GitHub...`);
         const assetData = await uploader.uploadAssetBinary(
           release.upload_url,
           fileName,
@@ -1397,65 +1400,45 @@ async function uploadMultiple(files) {
           fileId,
           file.size
         );
-        
-        console.log('[ASSET_' + idx + '] 完了');
 
-        return {
-          fileId,
-          fileName,
-          fileType: info.type,
-          downloadUrl: assetData.download_url,
-          fileSize: assetData.size, // ★ 圧縮後のサイズ
-          uploadedAt: new Date().toISOString(),
+        console.log(`[FILE_${idx}] Adding to github.json...`);
+        await uploader.addFileToGithubJson({
+          fileId: fileId,
+          fileName: fileName,
+          fileSize: assetData.size,
+          mimeType: info.mimeType,
+          releaseId: release.release_id,
+          releaseTag: releaseTag,
+          downloadUrl: assetData.browser_download_url,
           metadata: {
             extension: fileName.split('.').pop(),
-            mimeType: info.mimeType
+            originalName: file.name
           }
-        };
+        });
+
+        // プログレス更新
+        const percent = Math.round(((idx + 1) / files.length) * 100);
+        document.getElementById('statusMessage').textContent = `${idx + 1} / ${files.length} (${percent}%)`;
+        document.getElementById('progressPercent').textContent = percent + '%';
+        document.getElementById('progressFill').style.width = percent + '%';
+
+        console.log(`[FILE_${idx}] ✓ Complete`);
+
+        return { fileId, fileName };
       } catch (e) {
-        console.error('[PHASE2_' + idx + '] Error:', e.message);
+        console.error(`[FILE_${idx}] Error:`, e.message);
         throw e;
       }
     });
 
     const uploadedFiles = await parallelLimit(uploadTasks, 5);
-    console.log('[UPLOAD] ✓ Phase 2 完了 (' + (Date.now() - startTime) + 'ms)');
+    console.log('[UPLOAD] ✓ Phase 1 完了 (' + (Date.now() - startTime) + 'ms)');
 
-    // ★ Phase 3: github.json 保存（1回だけ）
-    console.log('[UPLOAD] Phase 3: github.json 保存');
-
-    let githubJson = getGithubJsonCached();
-    if (!githubJson) {
-      const result = await uploader.getGithubJson();
-      githubJson = result;
-      setCacheGithubJson(githubJson);
-    }
-
-    githubJson.files = githubJson.files || [];
-    githubJson.files.push(...uploadedFiles);
-    githubJson.lastUpdated = new Date().toISOString();
-
-    try {
-      await uploader.saveGithubJson(githubJson);
-    } catch (e) {
-      console.warn('[SAVE] リトライ');
-      clearCacheGithubJson();
-      const fresh = await uploader.getGithubJson();
-      fresh.files = fresh.files || [];
-      fresh.files.push(...uploadedFiles);
-      fresh.lastUpdated = new Date().toISOString();
-      await uploader.saveGithubJson(fresh);
-    }
-
-    console.log('[UPLOAD] ✓ Phase 3 完了 (' + (Date.now() - startTime) + 'ms)');
-
-    // ★ Phase 4: View 作成
-    console.log('[UPLOAD] Phase 4: View 作成');
-
+    // ★ Phase 2: View 作成
+    console.log('[UPLOAD] Phase 2: View 作成');
     const fileIds = uploadedFiles.map(f => f.fileId);
     const view = await uploader.createView(fileIds);
-
-    console.log('[UPLOAD] ✓ Phase 4 完了 (' + (Date.now() - startTime) + 'ms)');
+    console.log('[UPLOAD] ✓ Phase 2 完了 (' + (Date.now() - startTime) + 'ms)');
 
     // ★ 完了
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
