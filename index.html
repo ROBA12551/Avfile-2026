@@ -603,6 +603,12 @@
                     <button class="btn" id="selectFileBtn">Select File</button>
                     <p class="upload-info">Max 100MB • All formats supported</p>
                 </div>
+                <div style="margin-top:1rem">
+  <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+    <input type="checkbox" id="pwSwitch">
+    <span>Password protect</span>
+  </label>
+</div>
 
                 <div id="processingArea" style="display: none; text-align: center; color: #e0e0e0;">
                     <h3 id="processingTitle">Uploading...</h3>
@@ -827,23 +833,38 @@ function setupUploadHandlers() {
 }
 
 async function uploadMultiple(files) {
-  const uploader = new SimpleUploadManager();
-  const github = uploader.githubUploader;
+  const uploadManager = new SimpleUploadManager();
+  const github = uploadManager.githubUploader;
+
   const uploadedIds = [];
 
   for (const file of files) {
-    const res = await uploader.uploadFile(file, file.name);
-    uploadedIds.push(res.fileId);
+    const result = await uploadManager.uploadFile(file, file.name);
+    uploadedIds.push(result.fileId);
   }
 
-  const shortId = generateShortId(6);
-  const password = prompt('Set password (optional)');
-  const passwordHash = password ? await sha256(password) : null;
+  // short url
+  const viewId = generateShortId(6);
 
+  // 🔐 pw switch
+  const pwEnabled = document.getElementById('pwSwitch')?.checked;
+  let passwordHash = null;
+
+  if (pwEnabled) {
+    const pw = prompt('Set password');
+    if (!pw) {
+      alert('Password required');
+      return;
+    }
+    passwordHash = await sha256(pw);
+  }
+
+  // ✅ json は必ずここで取得
   const json = await github.getGithubJson();
+
   json.views = json.views || [];
   json.views.push({
-    viewId: shortId,
+    viewId,
     files: uploadedIds,
     password: passwordHash,
     createdAt: new Date().toISOString()
@@ -851,22 +872,21 @@ async function uploadMultiple(files) {
 
   await github.saveGithubJson(json);
 
-  const shareUrl = `${location.origin}/d/${shortId}`;
+  const shareUrl = `${location.origin}/d/${viewId}`;
   const input = document.getElementById('shareUrl');
   if (input) input.value = shareUrl;
+
   navigator.clipboard.writeText(shareUrl);
 }
 
-/* =====================
-   View
-===================== */
 async function loadAndDisplayView(viewId) {
   try {
     const uploader = new SimpleUploadManager();
     const github = uploader.githubUploader;
-    const json = await github.getGithubJson();
 
+    const json = await github.getGithubJson();
     const view = (json.views || []).find(v => v.viewId === viewId);
+
     if (!view) {
       showErrorUI('File not found');
       return;
@@ -882,6 +902,7 @@ async function loadAndDisplayView(viewId) {
     }
 
     fileViewerUI.innerHTML = '';
+
     for (const fid of view.files) {
       const file = (json.files || []).find(f => f.fileId === fid);
       if (!file) continue;
