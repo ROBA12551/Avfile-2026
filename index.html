@@ -6,31 +6,12 @@
     <meta charset="UTF-8">
     <meta name="google-adsense-account" content="ca-pub-9788086433456762">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Avfile - Fast File Sharing | Free Online File Upload</title>
-    
-    <meta name="description" content="Avfile - Fast, simple, and secure file sharing. Upload files instantly, get a shareable link. No login required, unlimited downloads, files never expire.">
-    <meta name="keywords" content="file sharing, upload files, free file transfer, fast upload, secure sharing, document sharing, video sharing">
-    <meta name="author" content="Avfile">
-    <meta name="robots" content="index, follow">
-    <meta name="language" content="English">
-    <meta name="revisit-after" content="7 days">
+    <title>Avfile - Fast File Sharing</title>
     
     <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin-allow-popups">
     <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
     
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://avfile.netlify.app">
-    <meta property="og:title" content="Avfile - Fast File Sharing">
-    <meta property="og:description" content="Upload files instantly and get a shareable link. No login required, no limits, files never expire. Simple, fast, and secure.">
-    <meta property="og:image" content="https://avfile.netlify.app/images/folder.png">
-    
-    <meta property="twitter:card" content="summary_large_image">
-    <meta property="twitter:url" content="https://avfile.netlify.app">
-    <meta property="twitter:title" content="Avfile - Fast File Sharing">
-    <meta property="twitter:description" content="Upload files instantly and get a shareable link. No login required, files never expire.">
-    
     <link rel="icon" type="image/png" href="images/folder.png">
-    <link rel="shortcut icon" type="image/png" href="images/folder.png">
     <link rel="canonical" href="https://avfile.netlify.app">
     
     <style>
@@ -93,7 +74,6 @@
         .nav-links a {
             color: #e0e0e0;
             text-decoration: none;
-            font-size: 0.95rem;
             transition: color 0.3s;
         }
 
@@ -107,66 +87,42 @@
             padding: 0 1rem;
         }
 
-        .banner-container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin: 2rem auto !important;
-            padding: 1rem;
-            width: 100%;
-            flex-direction: column;
-        }
-
-        .banner-slot {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            width: 100%;
-            max-width: 320px;
-            margin: 0 auto !important;
-        }
-
         .hero {
-            padding: clamp(2rem, 8vw, 6rem) 0;
+            padding: 4rem 0;
             text-align: center;
         }
 
         .hero h1 {
-            font-size: clamp(2rem, 5vw, 3.5rem);
+            font-size: 2.5rem;
             margin-bottom: 1rem;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-            line-height: 1.2;
         }
 
         .hero-desc {
-            font-size: clamp(0.95rem, 2vw, 1.1rem);
+            font-size: 1.1rem;
             color: #b0b0b0;
             margin-bottom: 2rem;
-            max-width: 700px;
-            margin-left: auto;
-            margin-right: auto;
-            line-height: 1.6;
         }
 
         .upload-section {
             background: rgba(255, 255, 255, 0.02);
             border: 1px solid rgba(102, 126, 234, 0.3);
             border-radius: 16px;
-            padding: clamp(2rem, 5vw, 4rem);
-            margin: clamp(2rem, 8vw, 4rem) 0;
+            padding: 3rem;
+            margin: 3rem 0;
             backdrop-filter: blur(10px);
         }
 
         .upload-area {
             border: 2px dashed rgba(102, 126, 234, 0.5);
             border-radius: 12px;
-            padding: clamp(2rem, 8vw, 4rem);
+            padding: 3rem;
             text-align: center;
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: all 0.3s;
             min-height: 250px;
             display: flex;
             flex-direction: column;
@@ -182,13 +138,6 @@
         .upload-area.drag-over {
             border-color: #667eea;
             background: rgba(102, 126, 234, 0.15);
-        }
-
-        .upload-area svg {
-            width: 60px;
-            height: 60px;
-            color: #667eea;
-            margin-bottom: 1rem;
         }
 
         .upload-area h2 {
@@ -213,9 +162,9 @@
             border-radius: 8px;
             cursor: pointer;
             font-size: 0.95rem;
-            transition: transform 0.2s, box-shadow 0.2s;
-            margin-top: 1rem;
             font-weight: 500;
+            transition: all 0.3s;
+            margin-top: 1rem;
         }
 
         .btn:hover {
@@ -228,205 +177,269 @@
             cursor: not-allowed;
         }
 
+        input[type="checkbox"] {
+            cursor: pointer;
+        }
+
         .upload-info {
             font-size: 0.85rem;
             color: #707070;
             margin-top: 1rem;
         }
 
-        .modal {
+        /* =============== UPLOAD STATUS SCREEN =============== */
+        .upload-status-screen {
             display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.8);
-            backdrop-filter: blur(5px);
-        }
-
-        .modal-content {
-            background: linear-gradient(135deg, #0f0f1e 0%, #1a1a2e 100%);
-            margin: 5% auto;
-            padding: 2rem;
+            background: rgba(255, 255, 255, 0.02);
             border: 1px solid rgba(102, 126, 234, 0.3);
-            border-radius: 12px;
-            width: 90%;
-            max-width: 600px;
-            max-height: 80vh;
-            display: flex;
-            flex-direction: column;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            border-radius: 16px;
+            padding: 4rem 2rem;
+            margin: 3rem 0;
+            backdrop-filter: blur(10px);
+            text-align: center;
         }
 
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1.5rem;
-            border-bottom: 1px solid rgba(102, 126, 234, 0.2);
-            padding-bottom: 1rem;
+        .upload-status-screen.show {
+            display: block;
         }
 
-        .modal-header h2 {
-            margin: 0;
-            font-size: 1.5rem;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+        .upload-status-header {
+            margin-bottom: 2rem;
         }
 
-        .close-btn {
-            color: #e0e0e0;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-            border: none;
-            background: none;
-            transition: color 0.3s;
-        }
-
-        .close-btn:hover {
-            color: #667eea;
-        }
-
-        .spinner {
-            width: 50px;
-            height: 50px;
+        .upload-status-spinner {
+            width: 60px;
+            height: 60px;
             border: 4px solid rgba(102, 126, 234, 0.2);
             border-top-color: #667eea;
             border-radius: 50%;
             animation: spin 1s linear infinite;
-            margin: 2rem auto;
+            margin: 0 auto 1.5rem;
         }
 
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
 
-        .progress-container {
-            width: 100%;
-            max-width: 400px;
-            margin: 1rem auto;
+        .upload-status-title {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 0.5rem;
         }
 
-        .progress-bar {
+        .upload-status-message {
+            font-size: 1rem;
+            color: #e0e0e0;
+            margin-bottom: 0.5rem;
+        }
+
+        .upload-status-file {
+            font-size: 0.95rem;
+            color: #909090;
+            margin-bottom: 2rem;
+            word-break: break-word;
+        }
+
+        .upload-progress-wrapper {
+            max-width: 500px;
+            margin: 0 auto 2rem;
+        }
+
+        .upload-progress-bar {
             width: 100%;
-            height: 10px;
+            height: 14px;
             background: rgba(102, 126, 234, 0.2);
-            border-radius: 5px;
+            border-radius: 7px;
             overflow: hidden;
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            margin-bottom: 0.8rem;
         }
 
-        .progress-fill {
+        .upload-progress-fill {
             height: 100%;
             background: linear-gradient(90deg, #667eea, #764ba2);
             width: 0%;
-            transition: width 0.3s ease;
+            transition: width 0.4s ease;
         }
 
-        .success-box {
-            background: rgba(102, 126, 234, 0.1);
-            border: 1px solid rgba(102, 126, 234, 0.3);
-            border-radius: 12px;
-            padding: clamp(1.5rem, 4vw, 3rem);
+        .upload-progress-text {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        /* =============== SUCCESS SCREEN =============== */
+        .success-screen {
+            display: none;
+            background: rgba(76, 175, 80, 0.08);
+            border: 1px solid rgba(76, 175, 80, 0.3);
+            border-radius: 16px;
+            padding: 4rem 2rem;
+            margin: 3rem 0;
             text-align: center;
-            margin: 2rem 0;
+        }
+
+        .success-screen.show {
+            display: block;
         }
 
         .success-icon {
-            font-size: 3rem;
-            margin-bottom: 1rem;
+            font-size: 4rem;
+            color: #4caf50;
+            margin-bottom: 1.5rem;
         }
 
-        .url-container {
+        .success-title {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #4caf50;
+            margin-bottom: 0.5rem;
+        }
+
+        .success-message {
+            font-size: 1rem;
+            color: #b0b0b0;
+            margin-bottom: 2rem;
+        }
+
+        .share-url-box {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .share-url-label {
+            font-size: 0.9rem;
+            color: #909090;
+            margin-bottom: 0.8rem;
+        }
+
+        .share-url-input-group {
             display: flex;
             gap: 0.5rem;
-            margin: 1.5rem 0;
             flex-direction: column;
         }
 
-        @media (min-width: 640px) {
-            .url-container {
+        @media (min-width: 600px) {
+            .share-url-input-group {
                 flex-direction: row;
             }
         }
 
-        .url-input {
+        .share-url-input {
             flex: 1;
-            background: rgba(255, 255, 255, 0.05);
+            background: rgba(0, 0, 0, 0.2);
             border: 1px solid rgba(102, 126, 234, 0.3);
             border-radius: 8px;
-            padding: 0.75rem 1rem;
+            padding: 0.8rem;
             color: #e0e0e0;
             font-size: 0.9rem;
             word-break: break-all;
         }
 
-        .error-box {
-            background: rgba(255, 107, 107, 0.1);
+        .copy-btn {
+            background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+            color: white;
+            border: none;
+            padding: 0.8rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+
+        .copy-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(76, 175, 80, 0.3);
+        }
+
+        .success-actions {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .action-button {
+            background: rgba(102, 126, 234, 0.15);
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            color: #667eea;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .action-button:hover {
+            background: rgba(102, 126, 234, 0.25);
+            border-color: rgba(102, 126, 234, 0.5);
+        }
+
+        /* =============== ERROR SCREEN =============== */
+        .error-screen {
+            display: none;
+            background: rgba(255, 107, 107, 0.08);
             border: 1px solid rgba(255, 107, 107, 0.3);
-            border-radius: 12px;
-            padding: clamp(1.5rem, 4vw, 3rem);
+            border-radius: 16px;
+            padding: 4rem 2rem;
+            margin: 3rem 0;
             text-align: center;
+        }
+
+        .error-screen.show {
+            display: block;
+        }
+
+        .error-icon {
+            font-size: 4rem;
             color: #ff6b6b;
+            margin-bottom: 1.5rem;
+        }
+
+        .error-title {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #ff6b6b;
+            margin-bottom: 0.5rem;
         }
 
         .error-message {
+            font-size: 1rem;
             color: #b0b0b0;
-            margin: 1rem 0;
+            margin-bottom: 2rem;
         }
 
-        .features {
-            margin: clamp(3rem, 10vw, 6rem) 0;
+        .error-actions {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            justify-content: center;
         }
 
-        .features h2 {
-            font-size: clamp(1.5rem, 4vw, 2rem);
-            text-align: center;
-            margin-bottom: 3rem;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+        .error-btn {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s;
         }
 
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 2rem;
+        .error-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(255, 107, 107, 0.3);
         }
 
-        .feature-card {
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(102, 126, 234, 0.2);
-            border-radius: 12px;
-            padding: 2rem;
-            transition: all 0.3s ease;
-            backdrop-filter: blur(10px);
-        }
-
-        .feature-card:hover {
-            border-color: rgba(102, 126, 234, 0.5);
-            background: rgba(102, 126, 234, 0.05);
-            transform: translateY(-5px);
-        }
-
-        .feature-card h3 {
-            font-size: 1.1rem;
-            margin-bottom: 0.5rem;
-            color: #e0e0e0;
-        }
-
-        .feature-card p {
-            color: #909090;
-            font-size: 0.9rem;
-            line-height: 1.5;
-        }
-
-        .file-viewer-gofile {
+        .file-viewer {
+            display: none;
             background: rgba(102, 126, 234, 0.08);
             border: 1px solid rgba(102, 126, 234, 0.2);
             border-radius: 12px;
@@ -434,13 +447,19 @@
             margin: 2rem 0;
         }
 
+        .file-viewer.show {
+            display: block;
+        }
+
         .file-viewer-header {
             display: flex;
-            align-items: center;
             justify-content: space-between;
+            align-items: center;
             margin-bottom: 1.5rem;
             padding-bottom: 1rem;
             border-bottom: 1px solid rgba(102, 126, 234, 0.2);
+            flex-wrap: wrap;
+            gap: 1rem;
         }
 
         .file-info {
@@ -450,7 +469,6 @@
         }
 
         .file-icon {
-            font-size: 2rem;
             width: 50px;
             height: 50px;
             display: flex;
@@ -458,19 +476,21 @@
             justify-content: center;
             background: rgba(102, 126, 234, 0.15);
             border-radius: 8px;
+            font-size: 1.5rem;
         }
 
         .file-details h3 {
-            font-size: 1.2rem;
+            font-size: 1.1rem;
             color: #667eea;
             margin-bottom: 0.3rem;
             word-break: break-word;
-            margin: 0;
+            text-align: left;
         }
 
         .file-details p {
             font-size: 0.85rem;
             color: #909090;
+            text-align: left;
         }
 
         .file-actions {
@@ -479,7 +499,7 @@
             flex-wrap: wrap;
         }
 
-        .action-btn {
+        .file-action-btn {
             background: rgba(102, 126, 234, 0.15);
             border: 1px solid rgba(102, 126, 234, 0.3);
             color: #667eea;
@@ -490,7 +510,7 @@
             transition: all 0.3s;
         }
 
-        .action-btn:hover {
+        .file-action-btn:hover {
             background: rgba(102, 126, 234, 0.25);
             border-color: rgba(102, 126, 234, 0.5);
         }
@@ -514,8 +534,53 @@
             border-radius: 8px;
         }
 
+        .features {
+            margin: 4rem 0;
+        }
+
+        .features h2 {
+            font-size: 2rem;
+            text-align: center;
+            margin-bottom: 3rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+        }
+
+        .feature-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(102, 126, 234, 0.2);
+            border-radius: 12px;
+            padding: 2rem;
+            transition: all 0.3s;
+        }
+
+        .feature-card:hover {
+            border-color: rgba(102, 126, 234, 0.5);
+            background: rgba(102, 126, 234, 0.05);
+            transform: translateY(-5px);
+        }
+
+        .feature-card h3 {
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+            color: #e0e0e0;
+        }
+
+        .feature-card p {
+            color: #909090;
+            font-size: 0.9rem;
+        }
+
         .footer {
-            margin-top: clamp(3rem, 8vw, 6rem);
+            margin-top: 4rem;
             padding: 2rem;
             border-top: 1px solid rgba(102, 126, 234, 0.2);
             text-align: center;
@@ -533,27 +598,25 @@
         }
 
         @media (max-width: 768px) {
-            .navbar-content {
-                flex-direction: column;
-                gap: 1rem;
+            .hero h1 {
+                font-size: 1.8rem;
             }
 
-            .nav-links {
-                gap: 1rem;
-                font-size: 0.85rem;
+            .upload-status-title {
+                font-size: 1.3rem;
             }
 
-            .features-grid {
-                grid-template-columns: 1fr;
+            .success-title {
+                font-size: 1.3rem;
+            }
+
+            .error-title {
+                font-size: 1.3rem;
             }
 
             .file-viewer-header {
                 flex-direction: column;
                 align-items: flex-start;
-            }
-
-            .file-actions {
-                width: 100%;
             }
         }
     </style>
@@ -573,20 +636,16 @@
     </nav>
 
     <main class="container">
-        <div class="banner-container">
-            <div class="banner-slot" id="banner1"></div>
-        </div>
-
         <section class="hero">
             <h1>Fast & Simple File Sharing</h1>
             <p class="hero-desc">Upload your files instantly and get a shareable link. No login required, no limits, files never expire.</p>
         </section>
 
         <div id="mainContainer">
-            <!-- Upload UI -->
+            <!-- UPLOAD UI -->
             <section class="upload-section" id="uploadUI">
                 <div class="upload-area" id="uploadArea">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 60px; height: 60px; color: #667eea; margin-bottom: 1rem;">
                         <polyline points="16 16 12 12 8 16"></polyline>
                         <line x1="12" y1="12" x2="12" y2="21"></line>
                         <path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"></path>
@@ -597,105 +656,71 @@
                     <button class="btn" id="selectFileBtn">Select Files</button>
                     <p class="upload-info">Max 100MB per file • All formats supported</p>
                 </div>
-                <div style="margin-top:1rem">
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                <div style="margin-top: 1rem;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; justify-content: center;">
                         <input type="checkbox" id="pwSwitch">
                         <span>Password protect</span>
                     </label>
                 </div>
-
-                <!-- Processing Area -->
-                <div id="processingArea" style="display: none;">
-                    <div class="file-viewer-gofile">
-                        <div class="file-viewer-header">
-                            <div class="file-info">
-                                <div class="file-icon">
-                                    <div class="spinner" style="width: 40px; height: 40px; margin: 0; border-width: 3px;"></div>
-                                </div>
-                                <div class="file-details">
-                                    <h3 id="processingTitle">Uploading now</h3>
-                                    <p id="processingMessage">Preparing file...</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="progress-container">
-                            <div class="progress-bar">
-                                <div id="progressFill" class="progress-fill"></div>
-                            </div>
-                            <p id="progressText" style="text-align: center; margin-top: 0.5rem; color: #909090; font-weight: 500;">0%</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Success Area -->
-                <div id="successArea" style="display: none;">
-                    <div class="file-viewer-gofile">
-                        <div class="file-viewer-header">
-                            <div class="file-info">
-                                <div class="file-icon" style="background: rgba(76, 175, 80, 0.2); color: #4caf50;">
-                                    OK
-                                </div>
-                                <div class="file-details">
-                                    <h3 style="color: #4caf50;">Upload Complete</h3>
-                                    <p>Your file is ready to share</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="url-container">
-                            <input id="shareUrl" type="text" readonly class="url-input" placeholder="Share URL" />
-                            <button class="btn" id="copyUrlBtn">Copy Link</button>
-                        </div>
-                        <div class="file-actions" style="margin-top: 1rem;">
-                            <button class="action-btn" id="uploadMoreBtn">Upload Another</button>
-                            <button class="action-btn" id="fileHistoryBtn">File History</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Error Area -->
-                <div id="errorArea" style="display: none;">
-                    <div class="error-box">
-                        <h2>Upload Failed</h2>
-                        <p id="errorMessage" class="error-message"></p>
-                        <button class="btn" id="retryBtn" style="background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%); margin-top: 1rem;">Try Again</button>
-                    </div>
-                </div>
             </section>
 
-            <!-- Loading UI -->
-            <div id="loadingUI" style="display: none; text-align: center; padding: 3rem;">
-                <div class="spinner"></div>
+            <!-- UPLOAD STATUS SCREEN -->
+            <div class="upload-status-screen" id="uploadStatusScreen">
+                <div class="upload-status-header">
+                    <div class="upload-status-spinner"></div>
+                    <div class="upload-status-title" id="statusTitle">Uploading...</div>
+                    <div class="upload-status-message" id="statusMessage">0 / 0 files</div>
+                    <div class="upload-status-file" id="statusFileName">file.txt</div>
+                </div>
+
+                <div class="upload-progress-wrapper">
+                    <div class="upload-progress-bar">
+                        <div class="upload-progress-fill" id="progressFill"></div>
+                    </div>
+                    <div class="upload-progress-text" id="progressPercent">0%</div>
+                </div>
+            </div>
+
+            <!-- SUCCESS SCREEN -->
+            <div class="success-screen" id="successScreen">
+                <div class="success-icon">OK</div>
+                <div class="success-title">Upload Complete</div>
+                <div class="success-message">Your files are ready to share</div>
+
+                <div class="share-url-box">
+                    <div class="share-url-label">Share this link:</div>
+                    <div class="share-url-input-group">
+                        <input type="text" id="shareUrl" readonly class="share-url-input" placeholder="Share URL..." />
+                        <button class="copy-btn" id="copyUrlBtn">Copy Link</button>
+                    </div>
+                </div>
+
+                <div class="success-actions">
+                    <button class="action-button" id="uploadMoreBtn">Upload Another</button>
+                    <button class="action-button" id="viewHistoryBtn">View History</button>
+                </div>
+            </div>
+
+            <!-- ERROR SCREEN -->
+            <div class="error-screen" id="errorScreen">
+                <div class="error-icon">FAILED</div>
+                <div class="error-title">Upload Failed</div>
+                <div class="error-message" id="errorMsg">Something went wrong</div>
+
+                <div class="error-actions">
+                    <button class="error-btn" id="retryBtn">Try Again</button>
+                    <button class="action-button" id="backBtn">Back</button>
+                </div>
+            </div>
+
+            <!-- FILE VIEWER -->
+            <div class="file-viewer" id="fileViewer"></div>
+
+            <!-- LOADING UI -->
+            <div style="display: none; text-align: center; padding: 4rem;" id="loadingUI">
+                <div class="upload-status-spinner"></div>
                 <p style="margin-top: 1rem; color: #909090;">Loading file...</p>
             </div>
-
-            <!-- File Viewer UI -->
-            <div id="fileViewerUI" style="display: none;"></div>
-
-            <!-- Error UI -->
-            <div id="errorUI" style="display: none; padding: 3rem;">
-                <div class="error-box">
-                    <h2>File Not Found</h2>
-                    <p id="errorMsg" class="error-message">The file you're looking for doesn't exist.</p>
-                    <a href="/" style="color: #667eea; text-decoration: none; display: inline-block; margin-top: 1rem; padding: 0.75rem 1.5rem; border: 1px solid #667eea; border-radius: 8px;">Back to Home</a>
-                </div>
-            </div>
-
-            <!-- File History Modal -->
-            <div id="fileHistoryModal" class="modal">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h2>File History</h2>
-                        <button class="close-btn" id="closeModalBtn">&times;</button>
-                    </div>
-                    <div id="fileList" style="flex: 1; overflow-y: auto;">
-                        <div style="text-align: center; color: #909090; padding: 2rem;">No files uploaded yet</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="banner-container">
-            <div class="banner-slot" id="banner2"></div>
         </div>
 
         <section class="features">
@@ -733,10 +758,6 @@
         <p>&copy; 2025 Avfile. <a href="/policy">Privacy & Terms</a> • Fast File Sharing</p>
     </footer>
 
-    <div class="banner-container">
-        <div class="banner-slot" id="banner3"></div>
-    </div>
-
     <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.10.1/dist/ffmpeg.min.js"></script>
     <script src="js/storage.js?v=16"></script>
     <script src="js/video-compression.js?v=16"></script>
@@ -745,12 +766,10 @@
 
 <script>
 const MAX_FILES = 5;
-const urlParams = new URLSearchParams(location.search);
 const pathMatch = location.pathname.match(/^\/d\/([a-zA-Z0-9]+)/);
-const viewId = pathMatch?.[1] || urlParams.get('id') || null;
+const viewId = pathMatch?.[1] || new URLSearchParams(location.search).get('id') || null;
 
 async function initApp() {
-  console.log('App initialized. ViewId:', viewId);
   if (!viewId) {
     showUploadUI();
     setupUploadHandlers();
@@ -760,63 +779,39 @@ async function initApp() {
   }
 }
 
+function hideAllScreens() {
+  document.getElementById('uploadUI').style.display = 'none';
+  document.getElementById('uploadStatusScreen').classList.remove('show');
+  document.getElementById('successScreen').classList.remove('show');
+  document.getElementById('errorScreen').classList.remove('show');
+  document.getElementById('fileViewer').classList.remove('show');
+  document.getElementById('loadingUI').style.display = 'none';
+}
+
 function showUploadUI() {
-  const uploadUI = document.getElementById('uploadUI');
-  const loadingUI = document.getElementById('loadingUI');
-  const fileViewerUI = document.getElementById('fileViewerUI');
-  const errorUI = document.getElementById('errorUI');
-  
-  if (uploadUI) uploadUI.style.display = 'block';
-  if (loadingUI) loadingUI.style.display = 'none';
-  if (fileViewerUI) fileViewerUI.style.display = 'none';
-  if (errorUI) errorUI.style.display = 'none';
+  hideAllScreens();
+  document.getElementById('uploadUI').style.display = 'block';
+}
+
+function showUploadStatus() {
+  hideAllScreens();
+  document.getElementById('uploadStatusScreen').classList.add('show');
+}
+
+function showSuccessScreen() {
+  hideAllScreens();
+  document.getElementById('successScreen').classList.add('show');
+}
+
+function showErrorScreen(msg) {
+  hideAllScreens();
+  document.getElementById('errorMsg').textContent = msg;
+  document.getElementById('errorScreen').classList.add('show');
 }
 
 function showLoadingUI() {
-  const uploadUI = document.getElementById('uploadUI');
-  const loadingUI = document.getElementById('loadingUI');
-  const fileViewerUI = document.getElementById('fileViewerUI');
-  const errorUI = document.getElementById('errorUI');
-  
-  if (uploadUI) uploadUI.style.display = 'none';
-  if (loadingUI) loadingUI.style.display = 'block';
-  if (fileViewerUI) fileViewerUI.style.display = 'none';
-  if (errorUI) errorUI.style.display = 'none';
-}
-
-function showViewerUI() {
-  const uploadUI = document.getElementById('uploadUI');
-  const loadingUI = document.getElementById('loadingUI');
-  const fileViewerUI = document.getElementById('fileViewerUI');
-  const errorUI = document.getElementById('errorUI');
-  
-  if (uploadUI) uploadUI.style.display = 'none';
-  if (loadingUI) loadingUI.style.display = 'none';
-  if (fileViewerUI) fileViewerUI.style.display = 'block';
-  if (errorUI) errorUI.style.display = 'none';
-}
-
-function showErrorUI(msg) {
-  const uploadUI = document.getElementById('uploadUI');
-  const loadingUI = document.getElementById('loadingUI');
-  const fileViewerUI = document.getElementById('fileViewerUI');
-  const errorUI = document.getElementById('errorUI');
-  const errorMsg = document.getElementById('errorMsg');
-  
-  if (uploadUI) uploadUI.style.display = 'none';
-  if (loadingUI) loadingUI.style.display = 'none';
-  if (fileViewerUI) fileViewerUI.style.display = 'none';
-  if (errorUI) errorUI.style.display = 'block';
-  if (errorMsg) errorMsg.textContent = msg;
-}
-
-function generateShortId(len = 6) {
-  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let out = '';
-  for (let i = 0; i < len; i++) {
-    out += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return out;
+  hideAllScreens();
+  document.getElementById('loadingUI').style.display = 'block';
 }
 
 async function sha256(text) {
@@ -853,134 +848,77 @@ function setupUploadHandlers() {
   const fileInput = document.getElementById('fileInput');
   const selectFileBtn = document.getElementById('selectFileBtn');
   const uploadArea = document.getElementById('uploadArea');
-  const uploadMoreBtn = document.getElementById('uploadMoreBtn');
-  const retryBtn = document.getElementById('retryBtn');
   const copyUrlBtn = document.getElementById('copyUrlBtn');
   const shareUrl = document.getElementById('shareUrl');
-  const fileHistoryBtn = document.getElementById('fileHistoryBtn');
-  const fileHistoryModal = document.getElementById('fileHistoryModal');
-  const closeModalBtn = document.getElementById('closeModalBtn');
+  const uploadMoreBtn = document.getElementById('uploadMoreBtn');
+  const viewHistoryBtn = document.getElementById('viewHistoryBtn');
+  const retryBtn = document.getElementById('retryBtn');
+  const backBtn = document.getElementById('backBtn');
 
-  // ファイル選択ボタン
-  if (fileInput && selectFileBtn) {
-    fileInput.multiple = true;
-    selectFileBtn.onclick = () => fileInput.click();
-  }
+  fileInput.multiple = true;
+  selectFileBtn.onclick = () => fileInput.click();
 
-  // ファイル選択時 - 自動アップロード開始
-  if (fileInput) {
-    fileInput.onchange = async (e) => {
-      const files = [...e.target.files];
-      if (!files.length) return;
-      if (files.length > MAX_FILES) {
-        alert(`You can upload up to ${MAX_FILES} files. Selected: ${files.length}`);
-        return;
-      }
-      await uploadMultiple(files);
-    };
-  }
-
-  // ドラッグ&ドロップ対応
-  if (uploadArea) {
-    uploadArea.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      uploadArea.classList.add('drag-over');
-    });
-    uploadArea.addEventListener('dragleave', () => {
-      uploadArea.classList.remove('drag-over');
-    });
-    uploadArea.addEventListener('drop', async (e) => {
-      e.preventDefault();
-      uploadArea.classList.remove('drag-over');
-      const files = [...e.dataTransfer.files];
-      if (files.length > MAX_FILES) {
-        alert(`You can upload up to ${MAX_FILES} files. Selected: ${files.length}`);
-        return;
-      }
-      await uploadMultiple(files);
-    });
-  }
-
-  // URLコピー
-  if (copyUrlBtn && shareUrl) {
-    copyUrlBtn.onclick = async () => {
-      try {
-        await navigator.clipboard.writeText(shareUrl.value);
-        copyUrlBtn.textContent = 'OK Copied!';
-        setTimeout(() => { copyUrlBtn.textContent = 'Copy Link'; }, 2000);
-      } catch {
-        alert('Copy failed');
-      }
-    };
-  }
-
-  // 別ファイルをアップロード
-  if (uploadMoreBtn) {
-    uploadMoreBtn.onclick = () => {
-      showUploadUI();
-      if (fileInput) fileInput.value = '';
-    };
-  }
-
-  // リトライ
-  if (retryBtn) {
-    retryBtn.onclick = () => {
-      showUploadUI();
-      if (fileInput) fileInput.value = '';
-    };
-  }
-
-  // ファイル履歴
-  if (fileHistoryBtn) {
-    fileHistoryBtn.onclick = () => {
-      if (fileHistoryModal) fileHistoryModal.style.display = 'block';
-    };
-  }
-
-  if (closeModalBtn) {
-    closeModalBtn.onclick = () => {
-      if (fileHistoryModal) fileHistoryModal.style.display = 'none';
-    };
-  }
-
-  window.onclick = (event) => {
-    if (event.target === fileHistoryModal && fileHistoryModal) {
-      fileHistoryModal.style.display = 'none';
+  fileInput.onchange = async (e) => {
+    const files = [...e.target.files];
+    if (!files.length) return;
+    if (files.length > MAX_FILES) {
+      alert(`Max ${MAX_FILES} files allowed. You selected ${files.length}`);
+      return;
     }
+    await uploadMultiple(files);
+  };
+
+  uploadArea.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    uploadArea.classList.add('drag-over');
+  });
+
+  uploadArea.addEventListener('dragleave', () => {
+    uploadArea.classList.remove('drag-over');
+  });
+
+  uploadArea.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    uploadArea.classList.remove('drag-over');
+    const files = [...e.dataTransfer.files];
+    if (files.length > MAX_FILES) {
+      alert(`Max ${MAX_FILES} files allowed`);
+      return;
+    }
+    await uploadMultiple(files);
+  });
+
+  copyUrlBtn.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl.value);
+      copyUrlBtn.textContent = 'OK Copied!';
+      setTimeout(() => { copyUrlBtn.textContent = 'Copy Link'; }, 2000);
+    } catch (e) {
+      alert('Copy failed');
+    }
+  };
+
+  uploadMoreBtn.onclick = () => {
+    showUploadUI();
+    fileInput.value = '';
+  };
+
+  viewHistoryBtn.onclick = () => {
+    alert('History feature coming soon');
+  };
+
+  retryBtn.onclick = () => {
+    showUploadUI();
+    fileInput.value = '';
+  };
+
+  backBtn.onclick = () => {
+    showUploadUI();
   };
 }
 
 async function uploadMultiple(files) {
-  console.log('=== UPLOAD START ===', files);
-
-  const uploadUI = document.getElementById('uploadUI');
-  const processingArea = document.getElementById('processingArea');
-  const successArea = document.getElementById('successArea');
-  const errorArea = document.getElementById('errorArea');
-  const progressFill = document.getElementById('progressFill');
-  const progressText = document.getElementById('progressText');
-  const processingTitle = document.getElementById('processingTitle');
-  const processingMessage = document.getElementById('processingMessage');
-  const shareUrlInput = document.getElementById('shareUrl');
-  const errorMessage = document.getElementById('errorMessage');
-
-  if (!processingArea || !uploadUI || !successArea || !errorArea) {
-    console.error('Missing UI elements');
-    return;
-  }
-
-  uploadUI.style.display = 'none';
-  successArea.style.display = 'none';
-  errorArea.style.display = 'none';
-  processingArea.style.display = 'block';
-
-  if (processingTitle) processingTitle.textContent = 'Uploading now';
-  if (processingMessage) processingMessage.textContent = 'Preparing upload...';
-  if (progressFill) progressFill.style.width = '0%';
-  if (progressText) progressText.textContent = '0%';
-
-  await new Promise(requestAnimationFrame);
-  await new Promise(r => setTimeout(r, 250));
+  showUploadStatus();
 
   const uploadManager = new SimpleUploadManager();
   const uploadedIds = [];
@@ -998,9 +936,8 @@ async function uploadMultiple(files) {
       const file = files[i];
       const total = files.length;
 
-      if (processingMessage) {
-        processingMessage.textContent = `Uploading ${i + 1} / ${total}: ${file.name}`;
-      }
+      document.getElementById('statusMessage').textContent = `${i + 1} / ${total} files`;
+      document.getElementById('statusFileName').textContent = file.name;
 
       const result = await uploadManager.uploadFile(
         file,
@@ -1009,26 +946,27 @@ async function uploadMultiple(files) {
           const overall = ((i + Math.max(0, Math.min(100, progress)) / 100) / total) * 100;
           const p = Math.max(0, Math.min(100, overall));
 
-          if (progressFill) progressFill.style.width = p + '%';
-          if (progressText) progressText.textContent = Math.round(p) + '%';
+          document.getElementById('progressFill').style.width = p + '%';
+          document.getElementById('progressPercent').textContent = Math.round(p) + '%';
 
-          if (processingTitle) {
-            if (p < 40) processingTitle.textContent = 'Uploading now';
-            else if (p < 80) processingTitle.textContent = 'Processing';
-            else processingTitle.textContent = 'Finalizing';
+          if (p < 40) {
+            document.getElementById('statusTitle').textContent = 'Uploading...';
+          } else if (p < 80) {
+            document.getElementById('statusTitle').textContent = 'Processing...';
+          } else {
+            document.getElementById('statusTitle').textContent = 'Finalizing...';
           }
         }
       );
 
       if (!result || !result.fileId) {
-        throw new Error('Upload result missing fileId');
+        throw new Error('Upload failed');
       }
 
       uploadedIds.push(result.fileId);
     }
 
-    if (processingMessage) processingMessage.textContent = 'Creating share link...';
-    if (processingTitle) processingTitle.textContent = 'Finalizing';
+    document.getElementById('statusTitle').textContent = 'Creating share link...';
 
     const viewData = await uploadManager.githubUploader.createView(
       uploadedIds,
@@ -1037,28 +975,13 @@ async function uploadMultiple(files) {
     );
 
     const shareLink = viewData.shareUrl || `${window.location.origin}${viewData.viewPath}`;
+    document.getElementById('shareUrl').value = shareLink;
 
-    processingArea.style.display = 'none';
-    successArea.style.display = 'block';
-
-    if (shareUrlInput) shareUrlInput.value = shareLink;
-
-    if (progressFill) progressFill.style.width = '100%';
-    if (progressText) progressText.textContent = '100%';
-
-    console.log('OK Share link:', shareLink);
+    showSuccessScreen();
 
   } catch (e) {
     console.error('Upload error:', e);
-
-    processingArea.style.display = 'none';
-    errorArea.style.display = 'block';
-
-    if (errorMessage) {
-      errorMessage.textContent = e.message || 'Upload failed. Please try again.';
-    } else {
-      alert(e.message || 'Upload failed');
-    }
+    showErrorScreen(e.message || 'Upload failed');
   }
 }
 
@@ -1073,75 +996,52 @@ async function loadAndDisplayView(viewId) {
       const pw = prompt('Enter password');
       const hash = await sha256(pw || '');
       if (hash !== data.password) {
-        showErrorUI('Invalid password');
+        showErrorScreen('Invalid password');
         return;
       }
     }
 
-    const fileViewerUI = document.getElementById('fileViewerUI');
-    if (fileViewerUI) {
-      fileViewerUI.innerHTML = '';
+    let html = '';
+    for (const file of data.files) {
+      const icon = getFileIcon(file.fileName);
+      const size = formatFileSize(file.fileSize || 0);
+      const url = file.downloadUrl;
 
-      for (const file of data.files) {
-        fileViewerUI.innerHTML += renderFileBlockGofile(file);
+      let preview = '';
+      if (/\.(mp4|webm|ogg)$/i.test(url)) {
+        preview = `<div class="file-preview"><video controls style="max-width: 100%; max-height: 500px;" crossorigin="anonymous"><source src="${url}" type="video/mp4"><p>Video not supported</p></video></div>`;
+      } else if (/\.(jpg|jpeg|png|gif|webp)$/i.test(url)) {
+        preview = `<div class="file-preview"><img src="${url}" alt="${escapeHtml(file.fileName)}" crossorigin="anonymous" /></div>`;
       }
+
+      html += `
+        <div class="file-viewer">
+          <div class="file-viewer-header">
+            <div class="file-info">
+              <div class="file-icon">${icon}</div>
+              <div class="file-details">
+                <h3>${escapeHtml(file.fileName)}</h3>
+                <p>${size}</p>
+              </div>
+            </div>
+            <div class="file-actions">
+              <a class="file-action-btn" href="${url}" download>Download</a>
+              <button class="file-action-btn" onclick="navigator.clipboard.writeText('${url}'); this.textContent='Link Copied!'; setTimeout(()=>this.textContent='Link Copy URL', 2000);">Link Copy URL</button>
+            </div>
+          </div>
+          ${preview}
+        </div>
+      `;
     }
 
-    showViewerUI();
+    document.getElementById('fileViewer').innerHTML = html;
+    hideAllScreens();
+    document.getElementById('fileViewer').classList.add('show');
 
   } catch (e) {
     console.error(e);
-    showErrorUI('File not found');
+    showErrorScreen('File not found');
   }
-}
-
-function renderFileBlockGofile(file) {
-  const url = file.downloadUrl;
-  const filename = file.fileName || 'file';
-  const icon = getFileIcon(filename);
-  const size = formatFileSize(file.fileSize || 0);
-
-  let preview = '';
-
-  if (/\.(mp4|webm|ogg|mkv|avi|mov)$/i.test(url)) {
-    preview = `
-      <div class="file-preview">
-        <video controls style="max-width: 100%; max-height: 500px;" crossorigin="anonymous">
-          <source src="${url}" type="video/mp4" crossorigin="anonymous">
-          Your browser does not support video playback.
-        </video>
-      </div>
-    `;
-  } else if (/\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(url)) {
-    preview = `
-      <div class="file-preview">
-        <img src="${url}" alt="${escapeHtml(filename)}" crossorigin="anonymous" />
-      </div>
-    `;
-  }
-
-  return `
-    <div class="file-viewer-gofile">
-      <div class="file-viewer-header">
-        <div class="file-info">
-          <div class="file-icon">${icon}</div>
-          <div class="file-details">
-            <h3>${escapeHtml(filename)}</h3>
-            <p>${size}</p>
-          </div>
-        </div>
-        <div class="file-actions">
-          <a class="action-btn" href="${url}" download>Download Download</a>
-          <button class="action-btn" onclick="
-            navigator.clipboard.writeText('${url}');
-            this.textContent = 'OK Copied!';
-            setTimeout(() => { this.textContent = 'Link Copy URL'; }, 2000);
-          ">Link Copy URL</button>
-        </div>
-      </div>
-      ${preview}
-    </div>
-  `;
 }
 
 initApp();
