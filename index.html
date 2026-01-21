@@ -31,8 +31,6 @@
         .btn { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 8px; cursor: pointer; font-size: 0.95rem; font-weight: 500; transition: all 0.3s; margin-top: 1rem; }
         .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3); }
         .btn:disabled { opacity: 0.6; cursor: not-allowed; }
-        input[type="checkbox"] { cursor: pointer; }
-        .upload-info { font-size: 0.85rem; color: #707070; margin-top: 1rem; }
         .upload-status-screen { display: none; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(102, 126, 234, 0.3); border-radius: 16px; padding: 4rem 2rem; margin: 3rem 0; backdrop-filter: blur(10px); text-align: center; }
         .upload-status-screen.show { display: block; }
         .upload-status-spinner { width: 60px; height: 60px; border: 4px solid rgba(102, 126, 234, 0.2); border-top-color: #667eea; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 1.5rem; }
@@ -128,12 +126,6 @@
                     <button class="btn" id="selectFileBtn">Select Files</button>
                     <p class="upload-info">Max 100MB per file • All formats supported</p>
                 </div>
-                <div style="margin-top: 1rem;">
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; justify-content: center;">
-                        <input type="checkbox" id="pwSwitch">
-                        <span>Password protect</span>
-                    </label>
-                </div>
             </section>
 
             <div class="upload-status-screen" id="uploadStatusScreen">
@@ -152,7 +144,7 @@
             </div>
 
             <div class="success-screen" id="successScreen">
-                <div class="success-icon">OK</div>
+                <div class="success-icon">✓</div>
                 <div class="success-title">Upload Complete</div>
                 <div class="success-message">Your files are ready to share</div>
                 <div class="share-url-box">
@@ -169,7 +161,7 @@
             </div>
 
             <div class="error-screen" id="errorScreen">
-                <div class="error-icon">FAILED</div>
+                <div class="error-icon">✗</div>
                 <div class="error-title">Upload Failed</div>
                 <div class="error-message" id="errorMsg">Upload error details will appear here</div>
                 <div class="error-actions">
@@ -244,7 +236,8 @@ class GitHubUploader {
     }
   }
 
-  async uploadAsset(uploadUrl, fileName, base64Data) {
+  // ★ 修正: fileId と fileSize を受け取る
+  async uploadAsset(uploadUrl, fileName, base64Data, fileId, fileSize) {
     try {
       const response = await fetch(this.functionUrl, {
         method: 'POST',
@@ -254,6 +247,8 @@ class GitHubUploader {
           uploadUrl: uploadUrl,
           fileName: fileName,
           fileBase64: base64Data,
+          fileId,        // ★ 追加
+          fileSize,      // ★ 追加
         }),
       });
 
@@ -414,7 +409,14 @@ class SimpleUploadManager {
       const releaseData = await this.githubUploader.createRelease(releaseTag, fileName, `File ID: ${fileId}\nOriginal Name: ${fileName}\nType: ${processedBlob.type}\nUploaded: ${new Date().toISOString()}`);
 
       onProgress(65);
-      const assetData = await this.githubUploader.uploadAsset(releaseData.upload_url, assetFileName, base64);
+      // ★ 修正: fileId と fileSize を渡す
+      const assetData = await this.githubUploader.uploadAsset(
+        releaseData.upload_url,
+        assetFileName,
+        base64,
+        fileId,              // ★ 追加
+        processedBlob.size   // ★ 追加
+      );
 
       onProgress(80);
       const res = await this.githubUploader.getGithubJson();
@@ -481,13 +483,13 @@ function escapeHtml(t) {
 }
 
 function getFileIcon(filename) {
-  if (/\.(mp4|webm|ogg|mkv|avi|mov)$/i.test(filename)) return '[VIDEO]';
-  if (/\.(mp3|wav|flac|aac|m4a)$/i.test(filename)) return '[AUDIO]';
-  if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(filename)) return '[IMAGE]';
-  if (/\.(pdf)$/i.test(filename)) return '[PDF]';
-  if (/\.(zip|rar|7z|tar|gz)$/i.test(filename)) return '[ZIP]';
-  if (/\.(txt|doc|docx|xlsx|ppt)$/i.test(filename)) return '[DOC]';
-  return '[FILE]';
+  if (/\.(mp4|webm|ogg|mkv|avi|mov)$/i.test(filename)) return '🎬';
+  if (/\.(mp3|wav|flac|aac|m4a)$/i.test(filename)) return '🎵';
+  if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(filename)) return '🖼️';
+  if (/\.(pdf)$/i.test(filename)) return '📄';
+  if (/\.(zip|rar|7z|tar|gz)$/i.test(filename)) return '📦';
+  if (/\.(txt|doc|docx|xlsx|ppt)$/i.test(filename)) return '📃';
+  return '📁';
 }
 
 function formatFileSize(bytes) {
@@ -571,7 +573,7 @@ function setupUploadHandlers() {
   copyUrlBtn.onclick = async () => {
     try {
       await navigator.clipboard.writeText(shareUrl.value);
-      copyUrlBtn.textContent = 'OK Copied!';
+      copyUrlBtn.textContent = 'Copied!';
       setTimeout(() => { copyUrlBtn.textContent = 'Copy Link'; }, 2000);
     } catch (e) {
       alert('Copy failed');
