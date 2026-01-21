@@ -4,6 +4,11 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_OWNER = process.env.GITHUB_OWNER;
 const GITHUB_REPO  = process.env.GITHUB_REPO;
 
+// 非同期処理用の保留ファイル
+let pendingFiles = [];
+let lastGithubJsonUpdate = 0;
+const GITHUB_JSON_UPDATE_INTERVAL = 30000; // 30秒ごと
+
 function logInfo(msg) {
   console.log(`[INFO] ${new Date().toISOString()} ${msg}`);
 }
@@ -29,6 +34,7 @@ async function githubRequest(method, path, body = null, headers = {}) {
       port: 443,
       path,
       method,
+      timeout: 15000, // 15秒タイムアウト
       headers: {
         'Authorization': `token ${GITHUB_TOKEN}`,
         'Accept': 'application/vnd.github+json',
@@ -71,6 +77,12 @@ async function githubRequest(method, path, body = null, headers = {}) {
       logError(`Request error: ${err.message}`);
       reject(err);
     });
+
+    req.on('timeout', () => {
+      logError('GitHub API Request timeout');
+      req.destroy();
+      reject(new Error('GitHub API Request timeout'));
+    });
     
     if (body) req.write(body);
     req.end();
@@ -79,7 +91,6 @@ async function githubRequest(method, path, body = null, headers = {}) {
 
 /**
  * GitHub アセットアップロード用リクエスト
- * FIX: タイムアウトとエラーハンドリングを改善
  */
 async function githubUploadRequest(method, fullUrl, body, headers = {}) {
   return new Promise((resolve, reject) => {
@@ -117,12 +128,12 @@ async function githubUploadRequest(method, fullUrl, body, headers = {}) {
         port: 443,
         path: parsed.pathname + parsed.search,
         method,
-        timeout: 30000, // FIX: タイムアウトを追加
+        timeout: 30000, // 30秒タイムアウト
         headers: {
           'Authorization': `token ${GITHUB_TOKEN}`,
           'User-Agent': 'Avfile-Netlify',
           'Content-Type': 'application/octet-stream',
-          'Content-Length': body.length, // FIX: 整数値として設定
+          'Content-Length': body.length,
           ...headers,
         },
       };
@@ -185,7 +196,6 @@ async function createRelease(tag, metadata) {
 
   logInfo(`[CREATE_RELEASE] Attempting to create release with tag: ${tag}`);
   logInfo(`[CREATE_RELEASE] Repo: ${GITHUB_OWNER}/${GITHUB_REPO}`);
-  logInfo(`[CREATE_RELEASE] Body: ${JSON.stringify(body)}`);
 
   try {
     const data = await githubRequest('POST', path, body);
@@ -210,7 +220,6 @@ async function createRelease(tag, metadata) {
 
 /**
  * Asset (ファイル) をアップロード
- * FIX: base64デコード時のエラーハンドリング強化
  */
 async function uploadAsset(uploadUrl, fileName, fileData) {
   try {
@@ -233,7 +242,7 @@ async function uploadAsset(uploadUrl, fileName, fileData) {
 
     logInfo(`Asset URL: ${assetUrl.substring(0, 100)}...`);
 
-    // fileData を Buffer に変換 (FIX: エラーハンドリング強化)
+    // fileData を Buffer に変換
     let fileBuffer;
     
     if (Buffer.isBuffer(fileData)) {
@@ -355,6 +364,47 @@ async function saveGithubJson(jsonData, sha = null) {
   } catch (error) {
     logError(`Failed to save github.json: ${error.message}`);
     throw error;
+  }
+}
+
+/**
+ * github.json を非同期で更新（タイムアウト対策）
+ */
+async function updateGithubJsonAsync(fileId, fileName, downloadUrl, fileSize) {
+  try {
+    pendingFiles.push({
+      fileId,
+      fileName,
+      downloadUrl,
+      fileSize,
+      uploadedAt: new Date().toISOString(),
+    });
+
+    const now = Date.now();
+    const timeSinceLastUpdate = now - lastGithubJsonUpdate;
+
+    // 一定時間経過したか、保留中のファイルが多い場合は更新
+    if (timeSinceLastUpdate >= GITHUB_JSON_UPDATE_INTERVAL || pendingFiles.length >= 10) {
+      logInfo(`[ASYNC] Flushing ${pendingFiles.length} pending files to github.json`);
+      
+      const current = await getGithubJson();
+      const json = current.data;
+      json.files = json.files || [];
+      json.files.push(...pendingFiles);
+      json.lastUpdated = new Date().toISOString();
+      
+      await saveGithubJson(json, current.sha);
+      
+      lastGithubJsonUpdate = Date.now();
+      pendingFiles = [];
+      
+      logInfo(`[ASYNC] github.json updated successfully`);
+    } else {
+      logInfo(`[ASYNC] File queued for batch update (${pendingFiles.length} pending)`);
+    }
+  } catch (error) {
+    logError(`[ASYNC] github.json update failed: ${error.message}`);
+    // エラーでも処理は続行（critical ではない）
   }
 }
 
@@ -537,30 +587,22 @@ exports.handler = async (event) => {
 
         logInfo(`File: ${body.fileName}, Base64 length: ${body.fileBase64.length}`);
 
-        // Asset をアップロード
+        // Asset をアップロード（同期的に完了を待つ）
         const assetResponse = await uploadAsset(
           body.uploadUrl,
           body.fileName,
           body.fileBase64
         );
 
-        // github.json を更新
-        const current = await getGithubJson();
-        const json = current.data;
-        json.files = json.files || [];
+        // github.json 更新は非同期で実行（レスポンスを待たない）
+        updateGithubJsonAsync(
+          body.fileId,
+          body.fileName,
+          assetResponse.download_url,
+          body.fileSize
+        ).catch(err => logError(`Async update error: ${err.message}`));
 
-        const fileInfo = {
-          fileId: body.fileId,
-          fileName: body.fileName,
-          downloadUrl: assetResponse.download_url,
-          fileSize: body.fileSize,
-          uploadedAt: new Date().toISOString(),
-        };
-
-        json.files.push(fileInfo);
-        logInfo(`File saved to github.json: ${body.fileName}`);
-        await saveGithubJson(json, current.sha);
-
+        // Asset アップロード結果を即座に返す
         response = assetResponse;
         break;
       }
