@@ -4,13 +4,8 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_OWNER = process.env.GITHUB_OWNER;
 const GITHUB_REPO  = process.env.GITHUB_REPO;
 
-let pendingFiles = [];
-let lastGithubJsonUpdate = 0;
-const GITHUB_JSON_UPDATE_INTERVAL = 30000;
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 500;
-
-// ★ リクエストサイズ制限を追加（50MB）
 const MAX_REQUEST_SIZE = 50 * 1024 * 1024; // 50MB
 
 function logInfo(msg) {
@@ -119,7 +114,6 @@ async function githubUploadRequest(method, fullUrl, body, headers = {}) {
         throw new Error(`Invalid URL format: ${e.message}`);
       }
 
-      // ★ バイナリデータはBufferとして受け取る
       let uploadBody = body;
       let contentLength = 0;
 
@@ -136,7 +130,7 @@ async function githubUploadRequest(method, fullUrl, body, headers = {}) {
         port: 443,
         path: parsed.pathname + parsed.search,
         method,
-        timeout: 120000, // ★ 120秒に延長（大きなファイル対応）
+        timeout: 120000,
         headers: {
           'Authorization': `token ${GITHUB_TOKEN}`,
           'User-Agent': 'Avfile-Netlify',
@@ -351,44 +345,51 @@ async function createViewOnServer(fileIds, passwordHash, origin) {
   }
 }
 
-// ★ FormData パーサー（改善版）
 function parseFormData(buffer, boundary) {
   const fields = {};
   const files = {};
   
   try {
-    const bodyString = buffer.toString('binary');
-    const parts = bodyString.split(`--${boundary}`);
+    const cleanBoundary = boundary.replace(/^-+|-+$/g, '');
+    const delimiter = `--${cleanBoundary}`;
+    const endDelimiter = `--${cleanBoundary}--`;
     
-    logInfo(`[FORMDATA] Parsing ${parts.length} parts with boundary: ${boundary}`);
+    const bodyString = buffer.toString('binary');
+    const parts = bodyString.split(delimiter);
+    
+    logInfo(`[FORMDATA] Boundary: ${cleanBoundary}`);
+    logInfo(`[FORMDATA] Total parts: ${parts.length}`);
     
     for (let i = 0; i < parts.length; i++) {
-      const part = parts[i];
+      let part = parts[i];
       
-      if (!part || part.trim() === '' || part.trim() === '--') {
+      if (!part || part.trim() === '' || part.includes(endDelimiter)) {
+        continue;
+      }
+      
+      part = part.replace(/^\r?\n/, '');
+      
+      const doubleNewline = part.indexOf('\r\n\r\n');
+      if (doubleNewline === -1) {
+        logWarn(`[FORMDATA] Part ${i}: No header/body separator found`);
         continue;
       }
 
-      // ヘッダーとボディを分割
-      const headerEndIndex = part.indexOf('\r\n\r\n');
-      if (headerEndIndex === -1) continue;
-
-      const headerSection = part.substring(0, headerEndIndex);
-      const bodyContent = part.substring(headerEndIndex + 4);
+      const headerSection = part.substring(0, doubleNewline);
+      const bodyContent = part.substring(doubleNewline + 4);
       
-      // 最後の \r\n を削除
-      const cleanBody = bodyContent.replace(/\r\n$/, '');
+      const cleanBody = bodyContent.replace(/\r?\n$/, '');
 
-      // Content-Disposition をパース
       const nameMatch = headerSection.match(/name="([^"]+)"/);
-      const filenameMatch = headerSection.match(/filename="([^"]+)"/);
-      
-      if (!nameMatch) continue;
+      if (!nameMatch) {
+        logWarn(`[FORMDATA] Part ${i}: No name field found`);
+        continue;
+      }
       
       const fieldName = nameMatch[1];
+      const filenameMatch = headerSection.match(/filename="([^"]+)"/);
       
       if (filenameMatch) {
-        // ファイルフィールド
         const filename = filenameMatch[1];
         const fileData = Buffer.from(cleanBody, 'binary');
         
@@ -397,18 +398,18 @@ function parseFormData(buffer, boundary) {
           data: fileData
         };
         
-        logInfo(`[FORMDATA] File field: ${fieldName} = ${filename} (${fileData.length} bytes)`);
+        logInfo(`[FORMDATA] File: ${fieldName} = ${filename} (${(fileData.length / 1024 / 1024).toFixed(2)} MB)`);
       } else {
-        // テキストフィールド
         fields[fieldName] = cleanBody.trim();
-        logInfo(`[FORMDATA] Text field: ${fieldName} = ${fields[fieldName].substring(0, 50)}...`);
+        logInfo(`[FORMDATA] Field: ${fieldName} = ${fields[fieldName].substring(0, 100)}...`);
       }
     }
     
-    logInfo(`[FORMDATA] Parsing complete: ${Object.keys(fields).length} fields, ${Object.keys(files).length} files`);
+    logInfo(`[FORMDATA] Parse complete: ${Object.keys(fields).length} fields, ${Object.keys(files).length} files`);
     
   } catch (error) {
     logError(`[FORMDATA] Parse error: ${error.message}`);
+    logError(`[FORMDATA] Stack: ${error.stack}`);
     throw error;
   }
   
@@ -444,7 +445,6 @@ exports.handler = async (event) => {
       };
     }
 
-    // ★ リクエストサイズチェック
     const requestSize = event.body ? Buffer.byteLength(event.body, event.isBase64Encoded ? 'base64' : 'utf8') : 0;
     logInfo(`Request size: ${(requestSize / 1024 / 1024).toFixed(2)} MB`);
     
@@ -455,7 +455,6 @@ exports.handler = async (event) => {
     let body;
     const contentType = event.headers['content-type'] || event.headers['Content-Type'] || '';
     
-    // ★ FormData の場合（バイナリ直接送信）
     if (contentType.includes('multipart/form-data')) {
       logInfo('[FORMDATA] Detected multipart/form-data');
       
@@ -479,7 +478,6 @@ exports.handler = async (event) => {
       
       logInfo(`[FORMDATA] Parsed: action=${body.action}, fields=${Object.keys(fields).length}, files=${Object.keys(files).length}`);
     } else {
-      // JSON の場合
       try {
         body = JSON.parse(event.body || '{}');
       } catch (e) {
@@ -500,13 +498,21 @@ exports.handler = async (event) => {
     let response;
 
     switch (body.action) {
+      case 'get-token': {
+        logInfo('[TOKEN] Providing GitHub token');
+        response = {
+          token: GITHUB_TOKEN,
+          owner: GITHUB_OWNER,
+          repo: GITHUB_REPO
+        };
+        break;
+      }
+
       case 'create-release': {
         logInfo(`Creating release: ${body.releaseTag}`);
-        
         if (!body.releaseTag) {
           throw new Error('releaseTag is required');
         }
-
         response = await createRelease(body.releaseTag, body.metadata);
         break;
       }
@@ -517,7 +523,6 @@ exports.handler = async (event) => {
         let fileName, uploadUrl, fileId, fileSize;
         let binaryData = null;
 
-        // ★ FormData の場合（圧縮済みバイナリ直接送信）
         if (body._files && body._files.file) {
           logInfo(`[BINARY] Using FormData with binary file`);
           
@@ -530,24 +535,18 @@ exports.handler = async (event) => {
           logInfo(`[BINARY] Binary file received: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
           logInfo(`[BINARY] File name: ${fileName}`);
           logInfo(`[BINARY] File ID: ${fileId}`);
-          logInfo(`[BINARY] Upload URL present: ${uploadUrl ? 'Yes' : 'No'}`);
-        }
-        // ★ どちらもない場合
-        else {
+        } else {
           logError(`[BINARY] No file data found`);
           logError(`[BINARY] body keys: ${Object.keys(body).join(', ')}`);
           logError(`[BINARY] body._files: ${body._files ? Object.keys(body._files).join(', ') : 'undefined'}`);
           throw new Error('No file data provided in FormData');
         }
 
-        // バリデーション
         if (!fileName) throw new Error('fileName not found');
         if (!uploadUrl) throw new Error('uploadUrl not found');
         if (!binaryData || binaryData.length === 0) throw new Error('File data is empty');
 
         logInfo(`[BINARY] Validated - File: ${fileName}, Size: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
-        
-        // ★ GitHub にバイナリアップロード
         logInfo(`[BINARY] Uploading to GitHub API...`);
         
         let cleanUrl = String(uploadUrl).trim();
@@ -568,14 +567,12 @@ exports.handler = async (event) => {
 
         logInfo(`[BINARY] GitHub upload complete: Asset ID ${assetResponse.id}`);
 
-        const result = {
+        response = {
           asset_id: assetResponse.id,
           name: assetResponse.name,
           size: assetResponse.size,
           download_url: assetResponse.browser_download_url,
         };
-
-        response = result;
         break;
       }
 
@@ -588,11 +585,9 @@ exports.handler = async (event) => {
 
       case 'save-github-json': {
         logInfo('Saving github.json');
-        
         if (!body.jsonData) {
           throw new Error('jsonData is required');
         }
-
         const current = await getGithubJson();
         await saveGithubJson(body.jsonData, current.sha, 0);
         response = { success: true };
@@ -601,12 +596,10 @@ exports.handler = async (event) => {
 
       case 'create-view': {
         logInfo(`Creating view with ${body.fileIds ? body.fileIds.length : 0} files`);
-        
         const fileIds = Array.isArray(body.fileIds) ? body.fileIds : [];
         if (fileIds.length === 0) {
           throw new Error('fileIds is required and must be non-empty array');
         }
-
         response = await createViewOnServer(
           fileIds,
           body.passwordHash || null,
