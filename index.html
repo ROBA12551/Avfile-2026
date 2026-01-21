@@ -1042,9 +1042,7 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   const metadata = {
     action: 'upload-asset-binary',
     uploadUrl: uploadUrl,
-    fileName: sanitizedFileName,
-    fileId: fileId,
-    fileSize: processedFile.size
+
   };
 
   // ★ メタデータをクエリパラメータに、バイナリをbodyに
