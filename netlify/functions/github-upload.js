@@ -297,7 +297,8 @@ exports.handler = async (event) => {
 
       case 'get-github-json':
         logInfo('Action: get-github-json');
-        response = await getGithubJson();
+        const result = await getGithubJson();
+        response = result.data;  // ★ FIX: data だけを返す
         break;
 
       case 'save-github-json': {
