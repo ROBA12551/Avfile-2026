@@ -730,10 +730,10 @@
 
 <!-- ★ 修正: ローカル圧縮対応のスクリプトを読み込む（順序重要） -->
 <!-- ローカル圧縮エンジン -->
-<script src="/js/video-compression.js"></script>
+<script src="/js/video-compression-local.js"></script>
 
 <!-- ファイルアップロード強化版 -->
-<script src="/js/universal-file-uploader.js"></script>
+<script src="/js/universal-file-uploader-enhanced.js"></script>
 
 <script>
 // ★ グローバル変数定義（最初）
@@ -1014,6 +1014,53 @@ class GitHubUploader {
     });
     const data = await response.json();
     if (!data.success) throw new Error(data.error);
+    return data.data;
+  }
+
+  // ★ Blob を直接アップロード（圧縮と Base64 をスキップ）
+  async uploadAssetDirect(uploadUrl, fileName, blob, fileId, fileSize) {
+    const sanitizedFileName = this.sanitizeFileName(fileName);
+
+    console.log('[UPLOAD_DIRECT] Original fileName:', fileName);
+    console.log('[UPLOAD_DIRECT] Sanitized fileName:', sanitizedFileName);
+    console.log('[UPLOAD_DIRECT] Blob size:', blob.size);
+
+    if (!blob) {
+      throw new Error('Invalid blob provided');
+    }
+
+    if (!uploadUrl || typeof uploadUrl !== 'string') {
+      throw new Error('Invalid uploadUrl provided');
+    }
+
+    // ★ FormData で Blob を直接送信
+    console.log('[UPLOAD_DIRECT] Creating FormData...');
+    
+    const formData = new FormData();
+    formData.append('action', 'upload-asset-direct');
+    formData.append('uploadUrl', uploadUrl);
+    formData.append('fileName', sanitizedFileName);
+    formData.append('fileId', fileId);
+    formData.append('fileSize', fileSize);
+    formData.append('file', blob, sanitizedFileName);
+
+    console.log('[UPLOAD_DIRECT] Sending FormData to Netlify Function...');
+
+    const response = await fetch(this.functionUrl, {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      console.error('[UPLOAD_DIRECT] Error:', response.status, errorText);
+      throw new Error(`Asset upload failed: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    if (!data.success) throw new Error(data.error || 'Asset upload failed');
+    
+    console.log('[UPLOAD_DIRECT] Complete - Asset ID:', data.data.asset_id);
     return data.data;
   }
 
@@ -1568,35 +1615,15 @@ async function uploadMultiple(files) {
 
         let uploadFile = file;
 
-        // ★ すべての動画ファイルを圧縮（圧縮失敗時は元ファイルそのまま）
-        if (info.type === 'video' && window.VideoCompressionEngineLocal) {
-          try {
-            console.log('[COMPRESS_' + idx + '] 圧縮開始（ファイルサイズ: ' + fileUploader.formatSize(file.size) + '）');
-            const engine = new VideoCompressionEngineLocal();
-            uploadFile = await engine.compress(file, (progress, message) => {
-              console.log('[COMPRESS_' + idx + '] ' + message);
-              document.getElementById('statusMessage').textContent = `${idx + 1} / ${valid.length} - ${message}`;
-            });
-            console.log('[COMPRESS_' + idx + '] 圧縮完了（圧縮後: ' + fileUploader.formatSize(uploadFile.size) + '）');
-          } catch (err) {
-            console.warn('[COMPRESS_' + idx + '] 圧縮失敗: ' + err.message);
-            // ★ 圧縮失敗時は元ファイルをそのまま使用
-          }
-        }
+        // ★ 圧縮をスキップ
+        console.log('[COMPRESS_' + idx + '] スキップ');
 
-        // ★ ファイルサイズをチェック（10MB以上なら警告）
-        if (uploadFile.size > 10 * 1024 * 1024) {
-          console.warn('[FILE_SIZE] ファイルが大きい: ' + fileUploader.formatSize(uploadFile.size));
-          console.warn('[FILE_SIZE] JSON body が Netlify の制限を超える可能性があります');
-        }
-
-        // ★ Asset アップロード（既存方式）
+        // ★ Asset アップロード（Blob を直接送信）
         console.log('[ASSET_' + idx + '] 開始');
-        const base64 = await toBase64Fast(uploadFile);
-        const assetData = await uploader.uploadAsset(
+        const assetData = await uploader.uploadAssetDirect(
           release.upload_url,
           fileName,
-          base64,
+          uploadFile,  // ★ Blob/File をそのまま送信
           fileId,
           uploadFile.size
         );
