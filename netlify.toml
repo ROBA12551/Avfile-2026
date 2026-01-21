@@ -16,26 +16,51 @@
   GITHUB_REPO = "avfile-storage"
   DISCORD_WEBHOOK_URL = ""
 
-# HTTP Headers
+# HTTP Headers for JavaScript files - MOST SPECIFIC FIRST
 [[headers]]
   for = "/js/*.js"
   [headers.values]
     Content-Type = "application/javascript; charset=utf-8"
+    X-Content-Type-Options = "nosniff"
 
 [[headers]]
-  for = "/*.js"
+  for = "/js/video-compression.js"
   [headers.values]
     Content-Type = "application/javascript; charset=utf-8"
+    X-Content-Type-Options = "nosniff"
+    Cache-Control = "public, max-age=3600"
 
 [[headers]]
-  for = "*.js"
+  for = "/js/github-api.js"
   [headers.values]
     Content-Type = "application/javascript; charset=utf-8"
+    X-Content-Type-Options = "nosniff"
+    Cache-Control = "public, max-age=3600"
 
 [[headers]]
-  for = "/js/**"
+  for = "/js/simple-upload.js"
   [headers.values]
     Content-Type = "application/javascript; charset=utf-8"
+    X-Content-Type-Options = "nosniff"
+    Cache-Control = "public, max-age=3600"
+
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Content-Type = "text/html; charset=utf-8"
+    X-Content-Type-Options = "nosniff"
+
+[[headers]]
+  for = "/images/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "SAMEORIGIN"
+    X-XSS-Protection = "1; mode=block"
 
 # Redirects - Specific pages
 [[redirects]]
