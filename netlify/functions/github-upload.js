@@ -583,9 +583,9 @@ exports.handler = async (event) => {
         break;
       }
 
-      // ★ バイナリ直接アップロード（カメラ動画対応）
+      // ★ バイナリ直接アップロード（FormData 対応）
       case 'upload-asset-binary': {
-        logInfo(`[BINARY] Uploading asset: ${body.fileName}`);
+        logInfo(`[BINARY] Uploading asset: ${body.fileName || 'unknown'}`);
         
         if (!body.fileName || typeof body.fileName !== 'string') {
           throw new Error('Invalid fileName: must be a non-empty string');
@@ -595,20 +595,24 @@ exports.handler = async (event) => {
           throw new Error('Invalid uploadUrl: must be a non-empty string');
         }
 
-        // ★ Base64 またはバイナリを処理
         let binaryData;
-        if (body.fileBase64 && typeof body.fileBase64 === 'string') {
-          // Base64 文字列を Buffer に変換
+
+        // ★ FormData からファイルを取得
+        if (event.body && event.isBase64Encoded) {
+          // FormData の場合、body は base64 エンコードされている
+          binaryData = Buffer.from(event.body, 'base64');
+          logInfo(`[BINARY] FormData → Buffer: ${binaryData.length} bytes`);
+        } else if (body.fileBase64 && typeof body.fileBase64 === 'string') {
+          // JSON の場合（互換性のため）
           binaryData = Buffer.from(body.fileBase64, 'base64');
           logInfo(`[BINARY] Base64 → Buffer: ${body.fileBase64.length} chars → ${binaryData.length} bytes`);
         } else if (body.fileBinary) {
-          // 既に Buffer の場合
           binaryData = Buffer.isBuffer(body.fileBinary) 
             ? body.fileBinary 
             : Buffer.from(body.fileBinary);
           logInfo(`[BINARY] Using binary data: ${binaryData.length} bytes`);
         } else {
-          throw new Error('fileBase64 or fileBinary is required');
+          throw new Error('No file data found');
         }
 
         logInfo(`[BINARY] File: ${body.fileName}, Size: ${binaryData.length} bytes`);

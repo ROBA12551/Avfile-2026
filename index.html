@@ -1052,7 +1052,7 @@ class GitHubUploader {
     return data.data;
   }
 
-  // ★ バイナリ直接アップロード（Netlify Function 経由）
+  // ★ バイナリ直接アップロード（FormData 使用）
   async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
     const sanitizedFileName = this.sanitizeFileName(fileName);
 
@@ -1068,38 +1068,33 @@ class GitHubUploader {
       throw new Error('Invalid uploadUrl provided');
     }
 
-    // ★ ファイルを ArrayBuffer に変換
-    console.log('[UPLOAD_BINARY] Converting file to ArrayBuffer...');
-    const arrayBuffer = await fileObject.arrayBuffer();
-    console.log('[UPLOAD_BINARY] ArrayBuffer size:', arrayBuffer.byteLength, 'bytes');
+    // ★ FormData でバイナリを送信（スタック溢れなし）
+    console.log('[UPLOAD_BINARY] Creating FormData...');
+    const formData = new FormData();
+    formData.append('action', 'upload-asset-binary');
+    formData.append('uploadUrl', uploadUrl);
+    formData.append('fileName', sanitizedFileName);
+    formData.append('fileId', fileId);
+    formData.append('fileSize', fileSize);
+    formData.append('file', fileObject);  // ★ File オブジェクトをそのまま追加
 
-    // ★ ArrayBuffer を Base64 に変換（Netlify Function で処理するため）
-    const binaryString = String.fromCharCode.apply(null, new Uint8Array(arrayBuffer));
-    const base64Data = btoa(binaryString);
-    console.log('[UPLOAD_BINARY] Base64 size:', base64Data.length, 'chars');
+    console.log('[UPLOAD_BINARY] Sending FormData to Netlify Function...');
 
-    // ★ Netlify Function に送信
     const response = await fetch(this.functionUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'upload-asset-binary',  // ★ バイナリアップロード用アクション
-        uploadUrl: uploadUrl,
-        fileName: sanitizedFileName,
-        fileBase64: base64Data,  // ★ Base64（Netlify で Buffer に変換）
-        fileId,
-        fileSize,
-        isPreCompressed: true
-      }),
+      body: formData  // ★ FormData でバイナリを直接送信
     });
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => '');
-      throw new Error(`Binary upload failed: ${response.statusText} - ${errorText}`);
+      console.error('[UPLOAD_BINARY] Error:', response.status, errorText);
+      throw new Error(`Binary upload failed: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
     if (!data.success) throw new Error(data.error || 'Binary upload failed');
+    
+    console.log('[UPLOAD_BINARY] Complete - Asset ID:', data.data.asset_id);
     return data.data;
   }
 
