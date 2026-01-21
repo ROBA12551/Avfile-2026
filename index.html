@@ -842,9 +842,9 @@ async function toBase64Fast(file) {
 /**
  * 統一 ファイル情報取得（ファイル選択 ≈ フォトライブラリ）
  */
-// ★ ランダムな7桁文字列を生成
+// ★ ランダムなアルファベット7桁文字列を生成（数字なし）
 function generateRandomFileName() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
   let result = '';
   for (let i = 0; i < 7; i++) {
     result += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -1049,6 +1049,51 @@ class GitHubUploader {
 
     const data = await response.json();
     if (!data.success) throw new Error(data.error || 'Asset upload failed');
+    return data.data;
+  }
+
+  // ★ バイナリ直接アップロード（Base64 スキップ）
+  async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
+    const sanitizedFileName = this.sanitizeFileName(fileName);
+
+    console.log('[UPLOAD_BINARY] Original fileName:', fileName);
+    console.log('[UPLOAD_BINARY] Sanitized fileName:', sanitizedFileName);
+    console.log('[UPLOAD_BINARY] File size:', fileSize);
+
+    if (!fileObject) {
+      throw new Error('Invalid file object provided');
+    }
+
+    if (!uploadUrl || typeof uploadUrl !== 'string') {
+      throw new Error('Invalid uploadUrl provided');
+    }
+
+    // File オブジェクトを Base64 に変換
+    console.log('[UPLOAD_BINARY] Converting file to Base64...');
+    const base64Data = await toBase64Fast(fileObject);
+    console.log('[UPLOAD_BINARY] Base64 conversion complete: ' + base64Data.length + ' chars');
+
+    const response = await fetch(this.functionUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'upload-asset-binary',  // ★ 新しいアクション
+        uploadUrl: uploadUrl,
+        fileName: sanitizedFileName,
+        fileBase64: base64Data,
+        fileId,
+        fileSize,
+        isPreCompressed: true
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      throw new Error(`Binary upload failed: ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    if (!data.success) throw new Error(data.error || 'Binary upload failed');
     return data.data;
   }
 
@@ -1488,21 +1533,16 @@ async function uploadMultiple(files) {
           }
         }
 
-        // Base64 変換
-        console.log('[BASE64_' + idx + '] 開始');
-        const base64 = await toBase64Fast(uploadFile);
-        console.log('[BASE64_' + idx + '] 完了');
-
-        // Asset アップロード
-        console.log('[ASSET_' + idx + '] 開始');
-        const assetData = await uploader.uploadAsset(
+        // ★ バイナリ直接アップロード（Base64 スキップ）
+        console.log('[UPLOAD_BINARY_' + idx + '] 開始');
+        const assetData = await uploader.uploadAssetBinary(
           release.upload_url,
           fileName,
-          base64,
+          uploadFile,
           fileId,
           uploadFile.size
         );
-        console.log('[ASSET_' + idx + '] 完了');
+        console.log('[UPLOAD_BINARY_' + idx + '] 完了');
 
         return {
           fileId,
