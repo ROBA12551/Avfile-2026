@@ -986,7 +986,7 @@ class GitHubUploader {
     if (!data.success) throw new Error(data.error);
     return data.data;
   }
-  // ★ バイナリを直接Netlify Functions経由でGitHubへ送信
+  // ★ バイナリを直接Netlify Functions経由でGitHubへ送信（軽量版）
 async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   const sanitizedFileName = this.sanitizeFileName(fileName);
 
@@ -1038,16 +1038,14 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   const arrayBuffer = await processedFile.arrayBuffer();
   console.log('[UPLOAD_BINARY] ArrayBuffer size:', (arrayBuffer.byteLength / 1024 / 1024).toFixed(2), 'MB');
 
-  // ★ メタデータを準備
-  const metadata = {
+  // ★ 最小限のメタデータ（URLパラメータに直接）
+  const params = new URLSearchParams({
     action: 'upload-asset-binary',
-    uploadUrl: uploadUrl,
+    url: uploadUrl,
+    name: sanitizedFileName
+  });
 
-  };
-
-  // ★ メタデータをクエリパラメータに、バイナリをbodyに
-  const metadataParam = encodeURIComponent(JSON.stringify(metadata));
-  const finalUrl = `${this.functionUrl}?metadata=${metadataParam}`;
+  const finalUrl = `${this.functionUrl}?${params.toString()}`;
 
   console.log('[UPLOAD_BINARY] Sending binary to Netlify Functions...');
 
