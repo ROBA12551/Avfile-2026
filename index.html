@@ -726,304 +726,195 @@
     <script src="js/video-compression.js?v=16"></script>
     <script src="js/github-api.js?v=16"></script>
     <script src="js/simple-upload.js?v=16"></script>
-    <script>
-        const urlParams = new URLSearchParams(window.location.search);
-        const fileId = urlParams.get('id');
-        let currentFile = null;
+<script>
+/* =====================
+   Config
+===================== */
+const MAX_FILES = 10;
+const urlParams = new URLSearchParams(window.location.search);
+const viewId = urlParams.get('id');
 
-        async function initApp() {
-            if (!fileId) {
-                showUploadUI();
-                setupUploadHandlers();
-            } else {
-                showLoadingUI();
-                await loadAndDisplayFile();
-            }
-        }
+/* =====================
+   Init
+===================== */
+async function initApp() {
+  if (!viewId) {
+    showUploadUI();
+    setupUploadHandlers();
+  } else {
+    showLoadingUI();
+    await loadAndDisplayView(viewId);
+  }
+}
 
-        function showUploadUI() {
-            document.getElementById('uploadUI').style.display = 'block';
-            document.getElementById('loadingUI').style.display = 'none';
-            document.getElementById('fileViewerUI').style.display = 'none';
-            document.getElementById('errorUI').style.display = 'none';
-            document.getElementById('viewerControls').style.display = 'none';
-        }
+/* =====================
+   UI State
+===================== */
+function showUploadUI() {
+  uploadUI.style.display = 'block';
+  loadingUI.style.display = 'none';
+  fileViewerUI.style.display = 'none';
+  errorUI.style.display = 'none';
+  viewerControls.style.display = 'none';
+}
 
-        function showLoadingUI() {
-            document.getElementById('uploadUI').style.display = 'none';
-            document.getElementById('loadingUI').style.display = 'block';
-        }
+function showLoadingUI() {
+  uploadUI.style.display = 'none';
+  loadingUI.style.display = 'block';
+}
 
-        function showFileViewerUI() {
-            document.getElementById('uploadUI').style.display = 'none';
-            document.getElementById('loadingUI').style.display = 'none';
-            document.getElementById('fileViewerUI').style.display = 'block';
-            document.getElementById('errorUI').style.display = 'none';
-            document.getElementById('viewerControls').style.display = 'flex';
-        }
+function showViewerUI() {
+  uploadUI.style.display = 'none';
+  loadingUI.style.display = 'none';
+  fileViewerUI.style.display = 'block';
+  viewerControls.style.display = 'flex';
+}
 
-        function showErrorUI(message) {
-            document.getElementById('uploadUI').style.display = 'none';
-            document.getElementById('loadingUI').style.display = 'none';
-            document.getElementById('fileViewerUI').style.display = 'none';
-            document.getElementById('errorUI').style.display = 'block';
-            document.getElementById('errorMsg').textContent = message;
-        }
+function showErrorUI(msg) {
+  uploadUI.style.display = 'none';
+  loadingUI.style.display = 'none';
+  fileViewerUI.style.display = 'none';
+  errorUI.style.display = 'block';
+  errorMsg.textContent = msg;
+}
 
-        async function loadAndDisplayFile() {
-            try {
-                const uploadManager = new SimpleUploadManager();
-                const fileData = await uploadManager.getFileInfo(fileId);
+/* =====================
+   Upload
+===================== */
+function setupUploadHandlers() {
+  fileInput.multiple = true;
 
-                if (!fileData) {
-                    showErrorUI('File not found');
-                    return;
-                }
+  selectFileBtn.onclick = () => fileInput.click();
 
-                currentFile = fileData;
-                const fileViewerUI = document.getElementById('fileViewerUI');
-                const isVideo = fileData.type?.startsWith('video/') || fileData.downloadUrl?.endsWith('.mp4');
-                const isImage = fileData.type?.startsWith('image/') || /\.(png|jpg|jpeg|gif|webp)$/i.test(fileData.fileName);
+  fileInput.onchange = async (e) => {
+    const files = [...e.target.files];
+    if (files.length === 0) return;
 
-                if (isVideo) {
-                    fileViewerUI.innerHTML = `<video controls style="max-width: 90%; max-height: 80vh; border-radius: 8px;">
-                        <source src="${fileData.downloadUrl}" type="video/mp4" />
-                    </video>`;
-                } else if (isImage) {
-                    fileViewerUI.innerHTML = `<img src="${fileData.downloadUrl}" alt="${escapeHtml(fileData.fileName)}" style="max-width: 90%; max-height: 80vh; border-radius: 8px;" />`;
-                } else {
-                    const sizeMB = ((fileData.fileSize || 0) / 1024 / 1024).toFixed(1);
-                    fileViewerUI.innerHTML = `<div>
-                        <h2>${escapeHtml(fileData.fileName)}</h2>
-                        <p style="color: #909090; margin: 1rem 0;">Size: ${sizeMB} MB</p>
-                        <button class="btn" id="downloadBtnLarge">Download</button>
-                    </div>`;
-                    document.getElementById('downloadBtnLarge')?.addEventListener('click', () => window.open(fileData.downloadUrl, '_blank'));
-                }
+    if (files.length > MAX_FILES) {
+      alert('You can upload up to 5 files');
+      return;
+    }
 
-                setupViewerButtons(fileData);
-                showFileViewerUI();
-            } catch (error) {
-                showErrorUI(error.message);
-            }
-        }
+    await uploadMultiple(files);
+  };
+}
 
-        function setupUploadHandlers() {
-            const uploadArea = document.getElementById('uploadArea');
-            const selectFileBtn = document.getElementById('selectFileBtn');
-            const fileInput = document.getElementById('fileInput');
+async function uploadMultiple(files) {
+  const uploader = new SimpleUploadManager();
+  const github = uploader.githubUploader;
 
-            selectFileBtn.addEventListener('click', () => fileInput.click());
-            fileInput.addEventListener('change', (e) => {
-                if (e.target.files.length > 0) handleFileUpload(e.target.files[0]);
-            });
+  uploadArea.style.display = 'none';
+  processingArea.style.display = 'block';
 
-            uploadArea.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                uploadArea.style.borderColor = '#667eea';
-                uploadArea.style.background = 'rgba(102, 126, 234, 0.1)';
-            });
+  const viewId = crypto.randomUUID();
+  const uploadedFileIds = [];
 
-            uploadArea.addEventListener('dragleave', () => {
-                uploadArea.style.borderColor = 'rgba(102, 126, 234, 0.5)';
-                uploadArea.style.background = 'transparent';
-            });
+  for (let i = 0; i < files.length; i++) {
+    const result = await uploader.uploadFile(
+      files[i],
+      files[i].name,
+      (p) => {
+        progressFill.style.width = p + '%';
+        progressText.textContent = `Uploading ${i + 1}/${files.length} (${Math.round(p)}%)`;
+      }
+    );
+    uploadedFileIds.push(result.fileId);
+  }
 
-            uploadArea.addEventListener('drop', (e) => {
-                e.preventDefault();
-                uploadArea.style.borderColor = 'rgba(102, 126, 234, 0.5)';
-                uploadArea.style.background = 'transparent';
-                if (e.dataTransfer.files.length > 0) handleFileUpload(e.dataTransfer.files[0]);
-            });
+  const json = await github.getGithubJson();
+  json.views = json.views || [];
+  json.views.push({
+    viewId,
+    files: uploadedFileIds,
+    createdAt: new Date().toISOString()
+  });
 
-            document.getElementById('uploadMoreBtn')?.addEventListener('click', () => location.reload());
-            document.getElementById('retryBtn')?.addEventListener('click', () => location.reload());
-            document.getElementById('copyUrlBtn')?.addEventListener('click', () => {
-                navigator.clipboard.writeText(document.getElementById('shareUrl').value);
-                alert('Link copied to clipboard');
-            });
+  await github.saveGithubJson(json);
 
-            // File History Modal Handlers
-            const modal = document.getElementById('fileHistoryModal');
-            const closeBtn = document.getElementById('closeModalBtn');
-            const fileHistoryBtn = document.getElementById('fileHistoryBtn');
+  const shareUrl = `${location.origin}/?id=${viewId}`;
+  shareUrlInput.value = shareUrl;
 
-            fileHistoryBtn?.addEventListener('click', showFileHistory);
-            closeBtn?.addEventListener('click', () => {
-                modal.style.display = 'none';
-            });
+  processingArea.style.display = 'none';
+  successArea.style.display = 'block';
+}
 
-            // モーダルの外側をクリックで閉じる
-            window.addEventListener('click', (e) => {
-                if (e.target === modal) {
-                    modal.style.display = 'none';
-                }
-            });
-        }
+/* =====================
+   View Page (Multi)
+===================== */
+async function loadAndDisplayView(viewId) {
+  try {
+    const uploader = new SimpleUploadManager();
+    const github = uploader.githubUploader;
 
-        async function handleFileUpload(file) {
-            try {
-                const uploadArea = document.getElementById('uploadArea');
-                const processingArea = document.getElementById('processingArea');
-                const successArea = document.getElementById('successArea');
-                const errorArea = document.getElementById('errorArea');
+    const json = await github.getGithubJson();
+    const view = (json.views || []).find(v => v.viewId === viewId);
 
-                uploadArea.style.display = 'none';
-                processingArea.style.display = 'block';
+    if (!view) {
+      showErrorUI('File not found');
+      return;
+    }
 
-                const uploadManager = new SimpleUploadManager();
-                const result = await uploadManager.uploadFile(file, file.name, (progress) => {
-                    document.getElementById('progressFill').style.width = progress + '%';
-                    // 小数点を2桁に制限
-                    document.getElementById('progressText').textContent = Math.round(progress * 100) / 100 + '%';
-                });
+    fileViewerUI.innerHTML = '';
 
-                const shareUrl = result.viewUrl;
-                document.getElementById('shareUrl').value = shareUrl;
+    for (const fid of view.files) {
+      const file = json.files.find(f => f.fileId === fid);
+      if (!file) continue;
 
-                processingArea.style.display = 'none';
-                successArea.style.display = 'block';
+      fileViewerUI.innerHTML += renderFileBlock(file);
+    }
 
-                // ファイルを履歴に保存
-                saveFileToHistory(file.name, shareUrl);
+    showViewerUI();
+  } catch (e) {
+    showErrorUI(e.message);
+  }
+}
 
-                navigator.clipboard.writeText(shareUrl);
-            } catch (error) {
-                document.getElementById('processingArea').style.display = 'none';
-                document.getElementById('errorArea').style.display = 'block';
-                document.getElementById('errorMessage').textContent = error.message;
-            }
-        }
+/* =====================
+   Render
+===================== */
+function renderFileBlock(file) {
+  const url = file.downloadUrl;
+  const name = escapeHtml(file.fileName);
 
-        function setupViewerButtons(fileData) {
-            document.getElementById('downloadBtn')?.addEventListener('click', () => downloadFile(fileData));
-            document.getElementById('shareBtn')?.addEventListener('click', () => {
-                navigator.clipboard.writeText(window.location.href);
-                alert('Link copied to clipboard');
-            });
-        }
+  if (/\.(png|jpg|jpeg|gif|webp)$/i.test(url)) {
+    return `
+      <div style="margin:2rem">
+        <img src="${url}" style="max-width:90%;border-radius:8px">
+        <a class="btn" href="${url}" download>Download</a>
+      </div>`;
+  }
 
-        function downloadFile(fileData) {
-            const link = document.createElement('a');
-            link.href = fileData.downloadUrl || fileData.github_url;
-            link.download = fileData.fileName || 'file';
-            link.target = '_blank';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
+  if (/\.(mp4|webm|ogg)$/i.test(url)) {
+    return `
+      <div style="margin:2rem">
+        <video controls style="max-width:90%;border-radius:8px">
+          <source src="${url}">
+        </video>
+        <a class="btn" href="${url}" download>Download</a>
+      </div>`;
+  }
 
-        /**
-         * ファイル履歴を Local Storage に保存
-         */
-        function saveFileToHistory(fileName, fileUrl) {
-            const history = JSON.parse(localStorage.getItem('avfile_history') || '[]');
-            
-            // 重複排除
-            const existing = history.findIndex(f => f.url === fileUrl);
-            if (existing !== -1) {
-                history.splice(existing, 1);
-            }
-            
-            // 新しいファイルを最前に追加
-            history.unshift({
-                name: fileName,
-                url: fileUrl,
-                timestamp: new Date().toISOString(),
-                date: new Date().toLocaleString('ja-JP')
-            });
-            
-            // 最新 50 件のみ保持
-            if (history.length > 50) {
-                history.pop();
-            }
-            
-            localStorage.setItem('avfile_history', JSON.stringify(history));
-        }
+  return `
+    <div style="margin:2rem">
+      <p>${name}</p>
+      <a class="btn" href="${url}" download>Download</a>
+    </div>`;
+}
 
-        /**
-         * ファイル履歴をモーダルに表示
-         */
-        function showFileHistory() {
-            const history = JSON.parse(localStorage.getItem('avfile_history') || '[]');
-            const fileListDiv = document.getElementById('fileList');
-            const modal = document.getElementById('fileHistoryModal');
-            
-            if (history.length === 0) {
-                fileListDiv.innerHTML = '<div class="empty-message">No files uploaded yet</div>';
-                modal.style.display = 'block';
-                return;
-            }
-            
-            let html = '';
-            history.forEach((file, index) => {
-                const fileNameEscaped = escapeHtml(file.name);
-                const fileUrlEscaped = escapeHtml(file.url);
-                
-                html += `
-                    <div class="file-item">
-                        <div class="file-item-name">📄 ${fileNameEscaped}</div>
-                        <div class="file-item-url">${fileUrlEscaped}</div>
-                        <div class="file-item-date">📅 ${file.date}</div>
-                        <div class="file-item-actions">
-                            <button onclick="copyToClipboard('${fileUrlEscaped.replace(/'/g, "\\'")}')" title="Copy URL">Copy</button>
-                            <button onclick="openFileLink('${fileUrlEscaped.replace(/'/g, "\\'")}')" title="Open">Open</button>
-                            <button onclick="removeFileFromHistory(${index})" title="Remove" style="background: rgba(255, 107, 107, 0.1); color: #ff6b6b; border-color: rgba(255, 107, 107, 0.3);">Delete</button>
-                        </div>
-                    </div>
-                `;
-            });
-            
-            fileListDiv.innerHTML = html;
-            modal.style.display = 'block';
-        }
+/* =====================
+   Utils
+===================== */
+function escapeHtml(t) {
+  const d = document.createElement('div');
+  d.textContent = t;
+  return d.innerHTML;
+}
 
-        /**
-         * ファイル履歴から削除
-         */
-        function removeFileFromHistory(index) {
-            const history = JSON.parse(localStorage.getItem('avfile_history') || '[]');
-            history.splice(index, 1);
-            localStorage.setItem('avfile_history', JSON.stringify(history));
-            showFileHistory(); // 再表示
-        }
+/* =====================
+   Init
+===================== */
+initApp();
+</script>
 
-        /**
-         * クリップボードにコピー
-         */
-        function copyToClipboard(text) {
-            navigator.clipboard.writeText(text).then(() => {
-                alert('Link copied to clipboard!');
-            });
-        }
-
-        /**
-         * ファイルリンクを開く
-         */
-        function openFileLink(url) {
-            window.open(url, '_blank');
-        }
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        // FFmpeg.wasm 確認
-        console.log(' FFmpeg.wasm チェック:');
-        console.log('  - window.FFmpeg:', typeof window.FFmpeg);
-        console.log('  - window.FFmpeg.createFFmpeg:', typeof window.FFmpeg?.createFFmpeg);
-        console.log('  - window.FFmpeg.fetchFile:', typeof window.FFmpeg?.fetchFile);
-        
-        if (window.FFmpeg && window.FFmpeg.createFFmpeg) {
-            console.log('✅ FFmpeg.wasm ロード完了！');
-        } else {
-            console.error('❌ FFmpeg.wasm がロードされていません');
-        }
-
-        // アプリを初期化
-        initApp();
-    </script>
 </body>
 </html>
