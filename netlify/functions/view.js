@@ -25,7 +25,7 @@ function githubGet(path) {
         if (res.statusCode >= 200 && res.statusCode < 300) {
           resolve(JSON.parse(data));
         } else {
-          reject(new Error('GitHub API error'));
+          reject(new Error('GitHub API error: ' + res.statusCode));
         }
       });
     });
@@ -41,7 +41,7 @@ exports.handler = async (event) => {
   try {
     const viewId = event.queryStringParameters?.id;
     if (!viewId) {
-      return { statusCode: 400, body: 'Missing id' };
+      return { statusCode: 400, body: JSON.stringify({ error: 'Missing id' }) };
     }
 
     // github.json を取得
@@ -57,17 +57,29 @@ exports.handler = async (event) => {
 
     const view = (data.views || []).find(v => v.viewId === viewId);
     if (!view) {
-      return { statusCode: 404, body: 'Not found' };
+      return { statusCode: 404, body: JSON.stringify({ error: 'View not found' }) };
     }
 
     // fileId → file情報に変換
     const files = view.files
       .map(fid => data.files.find(f => f.fileId === fid))
-      .filter(Boolean);
+      .filter(Boolean)
+      .map(f => ({
+        fileId: f.fileId,
+        fileName: f.fileName,
+        fileSize: f.fileSize,
+        // ✅ ダウンロードURLをGitHub Rawに変更（ストリーミング対応）
+        downloadUrl: `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main/uploads/${f.fileId}-${f.fileName}`
+      }));
 
     return {
       statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Range'
+      },
       body: JSON.stringify({
         success: true,
         password: view.password || null,
@@ -76,8 +88,10 @@ exports.handler = async (event) => {
     };
 
   } catch (e) {
+    console.error('Error:', e);
     return {
       statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ error: e.message })
     };
   }

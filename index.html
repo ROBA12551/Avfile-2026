@@ -8,7 +8,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Avfile - Fast File Sharing | Free Online File Upload</title>
     
-    <!-- SEO Meta Tags -->
     <meta name="description" content="Avfile - Fast, simple, and secure file sharing. Upload files instantly, get a shareable link. No login required, unlimited downloads, files never expire.">
     <meta name="keywords" content="file sharing, upload files, free file transfer, fast upload, secure sharing, document sharing, video sharing">
     <meta name="author" content="Avfile">
@@ -16,31 +15,22 @@
     <meta name="language" content="English">
     <meta name="revisit-after" content="7 days">
     
-    <!-- CORS Meta Tag -->
     <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin-allow-popups">
     <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
     
-    <!-- Open Graph Tags (Social Media) -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://avfile.netlify.app">
     <meta property="og:title" content="Avfile - Fast File Sharing">
     <meta property="og:description" content="Upload files instantly and get a shareable link. No login required, no limits, files never expire. Simple, fast, and secure.">
     <meta property="og:image" content="https://avfile.netlify.app/images/folder.png">
-    <meta property="og:site_name" content="Avfile">
-    <meta property="og:locale" content="en_US">
     
-    <!-- Twitter Tags -->
     <meta property="twitter:card" content="summary_large_image">
     <meta property="twitter:url" content="https://avfile.netlify.app">
     <meta property="twitter:title" content="Avfile - Fast File Sharing">
     <meta property="twitter:description" content="Upload files instantly and get a shareable link. No login required, files never expire.">
-    <meta property="twitter:image" content="https://avfile.netlify.app/images/folder.png">
     
-    <!-- Favicon -->
     <link rel="icon" type="image/png" href="images/folder.png">
     <link rel="shortcut icon" type="image/png" href="images/folder.png">
-    
-    <!-- Canonical -->
     <link rel="canonical" href="https://avfile.netlify.app">
     
     <style>
@@ -189,6 +179,11 @@
             background: rgba(102, 126, 234, 0.05);
         }
 
+        .upload-area.drag-over {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.15);
+        }
+
         .upload-area svg {
             width: 60px;
             height: 60px;
@@ -226,6 +221,11 @@
         .btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
         }
 
         .upload-info {
@@ -290,12 +290,6 @@
 
         .close-btn:hover {
             color: #667eea;
-        }
-
-        .file-list {
-            flex: 1;
-            overflow-y: auto;
-            padding-right: 0.5rem;
         }
 
         .spinner {
@@ -432,25 +426,6 @@
             line-height: 1.5;
         }
 
-        .footer {
-            margin-top: clamp(3rem, 8vw, 6rem);
-            padding: 2rem;
-            border-top: 1px solid rgba(102, 126, 234, 0.2);
-            text-align: center;
-            color: #707070;
-            font-size: 0.9rem;
-        }
-
-        .footer a {
-            color: #667eea;
-            text-decoration: none;
-        }
-
-        .footer a:hover {
-            text-decoration: underline;
-        }
-
-        /* Gofile風ファイルビューアー */
         .file-viewer-gofile {
             background: rgba(102, 126, 234, 0.08);
             border: 1px solid rgba(102, 126, 234, 0.2);
@@ -490,6 +465,7 @@
             color: #667eea;
             margin-bottom: 0.3rem;
             word-break: break-word;
+            margin: 0;
         }
 
         .file-details p {
@@ -538,6 +514,24 @@
             border-radius: 8px;
         }
 
+        .footer {
+            margin-top: clamp(3rem, 8vw, 6rem);
+            padding: 2rem;
+            border-top: 1px solid rgba(102, 126, 234, 0.2);
+            text-align: center;
+            color: #707070;
+            font-size: 0.9rem;
+        }
+
+        .footer a {
+            color: #667eea;
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
         @media (max-width: 768px) {
             .navbar-content {
                 flex-direction: column;
@@ -579,7 +573,6 @@
     </nav>
 
     <main class="container">
-        <!-- Top Banner -->
         <div class="banner-container">
             <div class="banner-slot" id="banner1"></div>
         </div>
@@ -599,10 +592,10 @@
                         <path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"></path>
                     </svg>
                     <h2>Drop Files or Click to Upload</h2>
-                    <p>Fast upload • Unlimited downloads • No expiry • All file types</p>
-                    <input type="file" id="fileInput" accept="*/*" />
-                    <button class="btn" id="selectFileBtn">Select File</button>
-                    <p class="upload-info">Max 100MB • All formats supported</p>
+                    <p>Upload up to 5 files • Fast upload • Unlimited downloads • No expiry</p>
+                    <input type="file" id="fileInput" multiple accept="*/*" />
+                    <button class="btn" id="selectFileBtn">Select Files</button>
+                    <p class="upload-info">Max 100MB per file • All formats supported</p>
                 </div>
                 <div style="margin-top:1rem">
                     <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
@@ -620,7 +613,7 @@
                                     <div class="spinner" style="width: 40px; height: 40px; margin: 0; border-width: 3px;"></div>
                                 </div>
                                 <div class="file-details">
-                                    <h3 id="processingTitle" style="margin: 0;">Uploading now</h3>
+                                    <h3 id="processingTitle">Uploading now</h3>
                                     <p id="processingMessage">Preparing file...</p>
                                 </div>
                             </div>
@@ -640,10 +633,10 @@
                         <div class="file-viewer-header">
                             <div class="file-info">
                                 <div class="file-icon" style="background: rgba(76, 175, 80, 0.2); color: #4caf50;">
-                                    ✓
+                                    OK
                                 </div>
                                 <div class="file-details">
-                                    <h3 style="margin: 0; color: #4caf50;">Upload Complete</h3>
+                                    <h3 style="color: #4caf50;">Upload Complete</h3>
                                     <p>Your file is ready to share</p>
                                 </div>
                             </div>
@@ -675,7 +668,7 @@
                 <p style="margin-top: 1rem; color: #909090;">Loading file...</p>
             </div>
 
-            <!-- File Viewer UI - Gofile風 -->
+            <!-- File Viewer UI -->
             <div id="fileViewerUI" style="display: none;"></div>
 
             <!-- Error UI -->
@@ -694,14 +687,13 @@
                         <h2>File History</h2>
                         <button class="close-btn" id="closeModalBtn">&times;</button>
                     </div>
-                    <div id="fileList" class="file-list">
+                    <div id="fileList" style="flex: 1; overflow-y: auto;">
                         <div style="text-align: center; color: #909090; padding: 2rem;">No files uploaded yet</div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Middle Banner -->
         <div class="banner-container">
             <div class="banner-slot" id="banner2"></div>
         </div>
@@ -741,32 +733,22 @@
         <p>&copy; 2025 Avfile. <a href="/policy">Privacy & Terms</a> • Fast File Sharing</p>
     </footer>
 
-    <!-- Bottom Banner -->
     <div class="banner-container">
         <div class="banner-slot" id="banner3"></div>
     </div>
 
-    <!-- FFmpeg.wasm Library -->
     <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.10.1/dist/ffmpeg.min.js"></script>
-
-    <!-- App Scripts -->
     <script src="js/storage.js?v=16"></script>
     <script src="js/video-compression.js?v=16"></script>
     <script src="js/github-api.js?v=16"></script>
     <script src="js/simple-upload.js?v=16"></script>
 
 <script>
-/* =====================
-   Config
-===================== */
 const MAX_FILES = 5;
 const urlParams = new URLSearchParams(location.search);
 const pathMatch = location.pathname.match(/^\/d\/([a-zA-Z0-9]+)/);
 const viewId = pathMatch?.[1] || urlParams.get('id') || null;
 
-/* =====================
-   Init
-===================== */
 async function initApp() {
   console.log('App initialized. ViewId:', viewId);
   if (!viewId) {
@@ -778,9 +760,6 @@ async function initApp() {
   }
 }
 
-/* =====================
-   UI State
-===================== */
 function showUploadUI() {
   const uploadUI = document.getElementById('uploadUI');
   const loadingUI = document.getElementById('loadingUI');
@@ -831,9 +810,6 @@ function showErrorUI(msg) {
   if (errorMsg) errorMsg.textContent = msg;
 }
 
-/* =====================
-   Utils
-===================== */
 function generateShortId(len = 6) {
   const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let out = '';
@@ -856,13 +832,13 @@ function escapeHtml(t) {
 }
 
 function getFileIcon(filename) {
-  if (/\.(mp4|webm|ogg|mkv|avi|mov)$/i.test(filename)) return '🎬';
-  if (/\.(mp3|wav|flac|aac|m4a)$/i.test(filename)) return '🎵';
-  if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(filename)) return '🖼️';
-  if (/\.(pdf)$/i.test(filename)) return '📄';
-  if (/\.(zip|rar|7z|tar|gz)$/i.test(filename)) return '📦';
-  if (/\.(txt|doc|docx|xlsx|ppt)$/i.test(filename)) return '📑';
-  return '📁';
+  if (/\.(mp4|webm|ogg|mkv|avi|mov)$/i.test(filename)) return '[VIDEO]';
+  if (/\.(mp3|wav|flac|aac|m4a)$/i.test(filename)) return '[AUDIO]';
+  if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(filename)) return '[IMAGE]';
+  if (/\.(pdf)$/i.test(filename)) return '[PDF]';
+  if (/\.(zip|rar|7z|tar|gz)$/i.test(filename)) return '[ZIP]';
+  if (/\.(txt|doc|docx|xlsx|ppt)$/i.test(filename)) return '[DOC]';
+  return '[FILE]';
 }
 
 function formatFileSize(bytes) {
@@ -873,12 +849,10 @@ function formatFileSize(bytes) {
   return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
 }
 
-/* =====================
-   Setup Upload Handlers
-===================== */
 function setupUploadHandlers() {
   const fileInput = document.getElementById('fileInput');
   const selectFileBtn = document.getElementById('selectFileBtn');
+  const uploadArea = document.getElementById('uploadArea');
   const uploadMoreBtn = document.getElementById('uploadMoreBtn');
   const retryBtn = document.getElementById('retryBtn');
   const copyUrlBtn = document.getElementById('copyUrlBtn');
@@ -887,28 +861,52 @@ function setupUploadHandlers() {
   const fileHistoryModal = document.getElementById('fileHistoryModal');
   const closeModalBtn = document.getElementById('closeModalBtn');
 
+  // ファイル選択ボタン
   if (fileInput && selectFileBtn) {
     fileInput.multiple = true;
     selectFileBtn.onclick = () => fileInput.click();
   }
 
+  // ファイル選択時 - 自動アップロード開始
   if (fileInput) {
     fileInput.onchange = async (e) => {
       const files = [...e.target.files];
       if (!files.length) return;
       if (files.length > MAX_FILES) {
-        alert('You can upload up to 5 files');
+        alert(`You can upload up to ${MAX_FILES} files. Selected: ${files.length}`);
         return;
       }
       await uploadMultiple(files);
     };
   }
 
+  // ドラッグ&ドロップ対応
+  if (uploadArea) {
+    uploadArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      uploadArea.classList.add('drag-over');
+    });
+    uploadArea.addEventListener('dragleave', () => {
+      uploadArea.classList.remove('drag-over');
+    });
+    uploadArea.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      uploadArea.classList.remove('drag-over');
+      const files = [...e.dataTransfer.files];
+      if (files.length > MAX_FILES) {
+        alert(`You can upload up to ${MAX_FILES} files. Selected: ${files.length}`);
+        return;
+      }
+      await uploadMultiple(files);
+    });
+  }
+
+  // URLコピー
   if (copyUrlBtn && shareUrl) {
     copyUrlBtn.onclick = async () => {
       try {
         await navigator.clipboard.writeText(shareUrl.value);
-        copyUrlBtn.textContent = '✓ Copied!';
+        copyUrlBtn.textContent = 'OK Copied!';
         setTimeout(() => { copyUrlBtn.textContent = 'Copy Link'; }, 2000);
       } catch {
         alert('Copy failed');
@@ -916,6 +914,7 @@ function setupUploadHandlers() {
     };
   }
 
+  // 別ファイルをアップロード
   if (uploadMoreBtn) {
     uploadMoreBtn.onclick = () => {
       showUploadUI();
@@ -923,6 +922,7 @@ function setupUploadHandlers() {
     };
   }
 
+  // リトライ
   if (retryBtn) {
     retryBtn.onclick = () => {
       showUploadUI();
@@ -930,6 +930,7 @@ function setupUploadHandlers() {
     };
   }
 
+  // ファイル履歴
   if (fileHistoryBtn) {
     fileHistoryBtn.onclick = () => {
       if (fileHistoryModal) fileHistoryModal.style.display = 'block';
@@ -949,11 +950,8 @@ function setupUploadHandlers() {
   };
 }
 
-/* =====================
-   Upload Multiple Files
-===================== */
 async function uploadMultiple(files) {
-  console.log('=== UPLOAD START ===');
+  console.log('=== UPLOAD START ===', files);
 
   const uploadUI = document.getElementById('uploadUI');
   const processingArea = document.getElementById('processingArea');
@@ -1048,7 +1046,7 @@ async function uploadMultiple(files) {
     if (progressFill) progressFill.style.width = '100%';
     if (progressText) progressText.textContent = '100%';
 
-    console.log('✓ Share link:', shareLink);
+    console.log('OK Share link:', shareLink);
 
   } catch (e) {
     console.error('Upload error:', e);
@@ -1064,9 +1062,6 @@ async function uploadMultiple(files) {
   }
 }
 
-/* =====================
-   Load and Display View - Gofile風
-===================== */
 async function loadAndDisplayView(viewId) {
   try {
     const res = await fetch(`/.netlify/functions/view?id=${viewId}`);
@@ -1100,9 +1095,6 @@ async function loadAndDisplayView(viewId) {
   }
 }
 
-/* =====================
-   Render File Block - Gofile風
-===================== */
 function renderFileBlockGofile(file) {
   const url = file.downloadUrl;
   const filename = file.fileName || 'file';
@@ -1115,7 +1107,7 @@ function renderFileBlockGofile(file) {
     preview = `
       <div class="file-preview">
         <video controls style="max-width: 100%; max-height: 500px;" crossorigin="anonymous">
-          <source src="${url}" crossorigin="anonymous">
+          <source src="${url}" type="video/mp4" crossorigin="anonymous">
           Your browser does not support video playback.
         </video>
       </div>
@@ -1134,17 +1126,17 @@ function renderFileBlockGofile(file) {
         <div class="file-info">
           <div class="file-icon">${icon}</div>
           <div class="file-details">
-            <h3 style="margin: 0;">${escapeHtml(filename)}</h3>
+            <h3>${escapeHtml(filename)}</h3>
             <p>${size}</p>
           </div>
         </div>
         <div class="file-actions">
-          <a class="action-btn" href="${url}" download> Download</a>
+          <a class="action-btn" href="${url}" download>Download Download</a>
           <button class="action-btn" onclick="
             navigator.clipboard.writeText('${url}');
-            this.textContent = '✓ Copied!';
-            setTimeout(() => { this.textContent = ' Copy URL'; }, 2000);
-          "> Copy URL</button>
+            this.textContent = 'OK Copied!';
+            setTimeout(() => { this.textContent = 'Link Copy URL'; }, 2000);
+          ">Link Copy URL</button>
         </div>
       </div>
       ${preview}
@@ -1152,9 +1144,6 @@ function renderFileBlockGofile(file) {
   `;
 }
 
-/* =====================
-   Start
-===================== */
 initApp();
 </script>
 
