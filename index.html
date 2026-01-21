@@ -12,7 +12,7 @@
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #0f0f1e 0%, #1a1a2e 100%); color: #e0e0e0; min-height: 100vh; }
         .navbar { background: rgba(15, 15, 30, 0.95); backdrop-filter: blur(10px); padding: 1rem 2rem; border-bottom: 1px solid rgba(102, 126, 234, 0.2); position: sticky; top: 0; z-index: 100; }
         .navbar-content { max-width: 1400px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
-        .logo { font-size: 1.5rem; font-weight: bold; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .logo { font-size: 1.5rem; font-weight: bold; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; display: flex; align-items: center; gap: 0.5rem; }
         .container { max-width: 1400px; margin: 0 auto; padding: 0 1rem; }
         .hero { padding: 4rem 0; text-align: center; }
         .hero h1 { font-size: 2.5rem; margin-bottom: 1rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
@@ -27,13 +27,14 @@
         .btn { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 8px; cursor: pointer; font-size: 0.95rem; font-weight: 500; transition: all 0.3s; margin-top: 1rem; }
         .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3); }
         .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .upload-info { font-size: 0.85rem; color: #707070; margin-top: 1rem; }
         .upload-status-screen { display: none; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(102, 126, 234, 0.3); border-radius: 16px; padding: 4rem 2rem; margin: 3rem 0; text-align: center; }
         .upload-status-screen.show { display: block; }
         .upload-status-spinner { width: 60px; height: 60px; border: 4px solid rgba(102, 126, 234, 0.2); border-top-color: #667eea; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 1.5rem; }
         @keyframes spin { to { transform: rotate(360deg); } }
         .upload-status-title { font-size: 1.8rem; font-weight: bold; color: #667eea; margin-bottom: 0.5rem; }
         .upload-status-message { font-size: 1rem; color: #e0e0e0; margin-bottom: 0.5rem; }
-        .upload-status-file { font-size: 0.95rem; color: #909090; margin-bottom: 2rem; }
+        .upload-status-file { font-size: 0.95rem; color: #909090; margin-bottom: 2rem; word-break: break-word; }
         .upload-progress-bar { width: 100%; max-width: 500px; height: 14px; background: rgba(102, 126, 234, 0.2); border-radius: 7px; overflow: hidden; border: 1px solid rgba(102, 126, 234, 0.3); margin: 0 auto 0.8rem; }
         .upload-progress-fill { height: 100%; background: linear-gradient(90deg, #667eea, #764ba2); width: 0%; transition: width 0.4s ease; }
         .upload-progress-text { font-size: 1.1rem; font-weight: bold; color: #667eea; }
@@ -57,9 +58,10 @@
         .error-icon { font-size: 4rem; color: #ff6b6b; margin-bottom: 1.5rem; }
         .error-title { font-size: 1.8rem; font-weight: bold; color: #ff6b6b; margin-bottom: 0.5rem; }
         .error-message { font-size: 1rem; color: #b0b0b0; margin-bottom: 2rem; word-break: break-word; }
+        .error-actions { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
         .error-btn { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%); color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 8px; cursor: pointer; font-weight: 500; transition: all 0.3s; }
         .error-btn:hover { transform: translateY(-2px); }
-        .file-viewer-container { display: none; background: rgba(102, 126, 234, 0.08); border: 1px solid rgba(102, 126, 234, 0.2); border-radius: 12px; padding: 2rem; margin: 2rem 0; }
+        .file-viewer-container { display: none; }
         .file-viewer-container.show { display: block; }
         .file-viewer { background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(102, 126, 234, 0.2); border-radius: 12px; padding: 2rem; margin: 2rem 0; }
         .file-viewer-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid rgba(102, 126, 234, 0.2); flex-wrap: wrap; gap: 1rem; }
@@ -74,32 +76,37 @@
         .file-preview video, .file-preview img { max-width: 100%; max-height: 600px; border-radius: 8px; }
         .file-preview p { color: #ff6b6b; }
         .footer { margin-top: 4rem; padding: 2rem; border-top: 1px solid rgba(102, 126, 234, 0.2); text-align: center; color: #707070; font-size: 0.9rem; }
-        @media (max-width: 768px) { .hero h1 { font-size: 1.8rem; } }
+        .footer a { color: #667eea; text-decoration: none; }
+        .footer a:hover { text-decoration: underline; }
+        @media (max-width: 768px) { .hero h1 { font-size: 1.8rem; } .upload-status-title { font-size: 1.3rem; } .success-title { font-size: 1.3rem; } .error-title { font-size: 1.3rem; } .file-viewer-header { flex-direction: column; align-items: flex-start; } }
     </style>
 </head>
 <body>
     <nav class="navbar">
         <div class="navbar-content">
-            <div class="logo">Avfile</div>
+            <div class="logo">📁 Avfile</div>
         </div>
     </nav>
 
     <main class="container">
         <section class="hero">
             <h1>Fast & Simple File Sharing</h1>
-            <p class="hero-desc">Upload your files and get a shareable link instantly.</p>
+            <p class="hero-desc">Upload your files instantly and get a shareable link. No login required.</p>
         </section>
 
         <div id="mainContainer">
+            <!-- アップロード UI -->
             <section class="upload-section" id="uploadUI">
                 <div class="upload-area" id="uploadArea">
                     <h2>Drop Files or Click to Upload</h2>
-                    <p>Upload up to 5 files at once</p>
+                    <p>Upload up to 5 files • Fast & Secure • No Expiry</p>
                     <input type="file" id="fileInput" multiple accept="*/*" />
                     <button class="btn" id="selectFileBtn">Select Files</button>
+                    <p class="upload-info">Max 100MB per file • All formats supported</p>
                 </div>
             </section>
 
+            <!-- アップロード中 -->
             <div class="upload-status-screen" id="uploadStatusScreen">
                 <div class="upload-status-spinner"></div>
                 <div class="upload-status-title" id="statusTitle">Uploading...</div>
@@ -111,6 +118,7 @@
                 <div class="upload-progress-text" id="progressPercent">0%</div>
             </div>
 
+            <!-- 成功画面 -->
             <div class="success-screen" id="successScreen">
                 <div class="success-icon">✓</div>
                 <div class="success-title">Upload Complete!</div>
@@ -128,17 +136,23 @@
                 </div>
             </div>
 
+            <!-- エラー画面 -->
             <div class="error-screen" id="errorScreen">
                 <div class="error-icon">✗</div>
                 <div class="error-title">Upload Failed</div>
-                <div class="error-message" id="errorMsg"></div>
-                <button class="error-btn" id="retryBtn">Try Again</button>
+                <div class="error-message" id="errorMsg">An error occurred</div>
+                <div class="error-actions">
+                    <button class="error-btn" id="retryBtn">Try Again</button>
+                    <button class="action-button" id="backBtn">Back</button>
+                </div>
             </div>
 
+            <!-- ファイルビューア -->
             <div class="file-viewer-container" id="fileViewerContainer">
                 <div id="fileViewer"></div>
             </div>
 
+            <!-- ローディング -->
             <div style="display: none; text-align: center; padding: 4rem;" id="loadingUI">
                 <div class="upload-status-spinner"></div>
                 <p style="margin-top: 1rem; color: #909090;">Loading files...</p>
@@ -158,36 +172,60 @@ class GitHubUploader {
   }
 
   async createRelease(releaseTag, fileName, description) {
-    const response = await fetch(this.functionUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'create-release',
-        releaseTag: releaseTag,
-        metadata: { title: fileName, description: description },
-      }),
-    });
-    const data = await response.json();
-    if (!data.success) throw new Error(data.error || 'Release failed');
-    return data.data;
+    try {
+      const response = await fetch(this.functionUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create-release',
+          releaseTag: releaseTag,
+          metadata: { title: fileName, description: description },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Server response:', response.status, errorText);
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'Release failed');
+      return data.data;
+    } catch (error) {
+      console.error('Release creation error:', error.message);
+      throw error;
+    }
   }
 
   async uploadAsset(uploadUrl, fileName, base64Data, fileId, fileSize) {
-    const response = await fetch(this.functionUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'upload-asset',
-        uploadUrl: uploadUrl,
-        fileName: fileName,
-        fileBase64: base64Data,
-        fileId,
-        fileSize,
-      }),
-    });
-    const data = await response.json();
-    if (!data.success) throw new Error(data.error || 'Upload failed');
-    return data.data;
+    try {
+      const response = await fetch(this.functionUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'upload-asset',
+          uploadUrl: uploadUrl,
+          fileName: fileName,
+          fileBase64: base64Data,
+          fileId,
+          fileSize,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Server response:', response.status, errorText);
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'Upload failed');
+      return data.data;
+    } catch (error) {
+      console.error('Asset upload error:', error.message);
+      throw error;
+    }
   }
 
   async getGithubJson() {
@@ -197,6 +235,11 @@ class GitHubUploader {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'get-github-json' }),
       });
+
+      if (!response.ok) {
+        return { files: [], views: [] };
+      }
+
       const data = await response.json();
       return data.success ? data.data : { files: [], views: [] };
     } catch {
@@ -205,33 +248,58 @@ class GitHubUploader {
   }
 
   async saveGithubJson(jsonData) {
-    const response = await fetch(this.functionUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'save-github-json', jsonData: jsonData }),
-    });
-    const data = await response.json();
-    if (!data.success) throw new Error(data.error || 'Save failed');
-    return data.data;
+    try {
+      const response = await fetch(this.functionUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'save-github-json', jsonData: jsonData }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Server response:', response.status, errorText);
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'Save failed');
+      return data.data;
+    } catch (error) {
+      console.error('github.json save error:', error.message);
+      throw error;
+    }
   }
 
   async createView(fileIds, origin) {
-    const response = await fetch(this.functionUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'create-view',
-        fileIds,
-        passwordHash: null,
-        origin: origin || window.location.origin
-      })
-    });
-    const data = await response.json();
-    if (!data.success) throw new Error(data.error || 'View creation failed');
-    return data.data;
+    try {
+      const response = await fetch(this.functionUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create-view',
+          fileIds,
+          passwordHash: null,
+          origin: origin || window.location.origin
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Server response:', response.status, errorText);
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'View creation failed');
+      return data.data;
+    } catch (error) {
+      console.error('View creation error:', error.message);
+      throw error;
+    }
   }
 }
 
+// ===== SIMPLE UPLOAD MANAGER =====
 class SimpleUploadManager {
   constructor() {
     this.githubUploader = new GitHubUploader();
@@ -314,6 +382,30 @@ const viewId = pathMatch?.[1] || null;
 
 console.log('[APP] Initialized - viewId:', viewId);
 
+function escapeHtml(t) {
+  const d = document.createElement('div');
+  d.textContent = t;
+  return d.innerHTML;
+}
+
+function getFileIcon(filename) {
+  if (/\.(mp4|webm|ogg|mkv|avi|mov)$/i.test(filename)) return '🎬';
+  if (/\.(mp3|wav|flac|aac|m4a)$/i.test(filename)) return '🎵';
+  if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(filename)) return '🖼️';
+  if (/\.(pdf)$/i.test(filename)) return '📄';
+  if (/\.(zip|rar|7z|tar|gz)$/i.test(filename)) return '📦';
+  if (/\.(txt|doc|docx|xlsx|ppt)$/i.test(filename)) return '📃';
+  return '📁';
+}
+
+function formatFileSize(bytes) {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+}
+
 function hideAllScreens() {
   document.getElementById('uploadUI').style.display = 'none';
   document.getElementById('uploadStatusScreen').classList.remove('show');
@@ -326,40 +418,46 @@ function hideAllScreens() {
 function showUploadUI() { hideAllScreens(); document.getElementById('uploadUI').style.display = 'block'; }
 function showUploadStatus() { hideAllScreens(); document.getElementById('uploadStatusScreen').classList.add('show'); }
 function showSuccessScreen() { hideAllScreens(); document.getElementById('successScreen').classList.add('show'); }
-function showErrorScreen(msg) { 
-  hideAllScreens(); 
-  document.getElementById('errorMsg').textContent = msg; 
-  document.getElementById('errorScreen').classList.add('show'); 
-}
+function showErrorScreen(msg) { hideAllScreens(); document.getElementById('errorMsg').textContent = msg; document.getElementById('errorScreen').classList.add('show'); }
 function showLoadingUI() { hideAllScreens(); document.getElementById('loadingUI').style.display = 'block'; }
 
-// ===== FILE INPUT HANDLERS =====
 document.getElementById('selectFileBtn').onclick = () => {
   console.log('[UI] Select button clicked');
   document.getElementById('fileInput').click();
 };
 
-const fileInput = document.getElementById('fileInput');
 const uploadArea = document.getElementById('uploadArea');
+uploadArea.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  uploadArea.classList.add('drag-over');
+});
 
-// ★ ファイル選択時のハンドラ
-fileInput.addEventListener('change', async (e) => {
+uploadArea.addEventListener('dragleave', () => {
+  uploadArea.classList.remove('drag-over');
+});
+
+uploadArea.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  uploadArea.classList.remove('drag-over');
+  const files = Array.from(e.dataTransfer.files);
+  if (files.length > MAX_FILES) {
+    alert(`Max ${MAX_FILES} files`);
+    return;
+  }
+  await uploadMultiple(files);
+});
+
+document.getElementById('fileInput').addEventListener('change', async (e) => {
   console.log('[FILE] Changed - files count:', e.target.files.length);
   
   try {
-    // ★ Array.from() を使用してファイルをコピー
     const files = Array.from(e.target.files);
     
-    if (!files.length) {
-      console.log('[FILE] No files selected');
-      return;
-    }
-
-    console.log('[FILE] Selected files:', files.map(f => f.name).join(', '));
+    if (!files.length) return;
 
     if (files.length > MAX_FILES) {
       alert(`Max ${MAX_FILES} files allowed`);
-      fileInput.value = '';  // ★ リセット
+      document.getElementById('fileInput').value = '';
       return;
     }
 
@@ -370,43 +468,6 @@ fileInput.addEventListener('change', async (e) => {
   }
 }, false);
 
-// ===== DRAG & DROP =====
-uploadArea.addEventListener('dragover', (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  uploadArea.classList.add('drag-over');
-}, false);
-
-uploadArea.addEventListener('dragleave', (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  uploadArea.classList.remove('drag-over');
-}, false);
-
-uploadArea.addEventListener('drop', async (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  uploadArea.classList.remove('drag-over');
-  
-  console.log('[DROP] Dropped - files count:', e.dataTransfer.files.length);
-  
-  try {
-    // ★ Array.from() を使用してファイルをコピー
-    const files = Array.from(e.dataTransfer.files);
-    
-    if (files.length > MAX_FILES) {
-      alert(`Max ${MAX_FILES} files allowed`);
-      return;
-    }
-
-    await uploadMultiple(files);
-  } catch (error) {
-    console.error('[ERROR] Drop handler:', error);
-    showErrorScreen(error.message || 'Drop failed');
-  }
-}, false);
-
-// ===== BUTTONS =====
 document.getElementById('copyUrlBtn').onclick = async () => {
   const url = document.getElementById('shareUrl').value;
   try {
@@ -422,7 +483,7 @@ document.getElementById('copyUrlBtn').onclick = async () => {
 document.getElementById('uploadMoreBtn').onclick = () => {
   console.log('[UI] Upload more clicked');
   showUploadUI();
-  fileInput.value = '';
+  document.getElementById('fileInput').value = '';
 };
 
 document.getElementById('openLinkBtn').onclick = () => {
@@ -434,10 +495,14 @@ document.getElementById('openLinkBtn').onclick = () => {
 document.getElementById('retryBtn').onclick = () => {
   console.log('[UI] Retry clicked');
   showUploadUI();
-  fileInput.value = '';
+  document.getElementById('fileInput').value = '';
 };
 
-// ===== UPLOAD FUNCTION =====
+document.getElementById('backBtn').onclick = () => {
+  console.log('[UI] Back clicked');
+  showUploadUI();
+};
+
 async function uploadMultiple(files) {
   console.log('[UPLOAD] Starting - files count:', files.length);
   
@@ -478,14 +543,17 @@ async function uploadMultiple(files) {
   }
 }
 
-// ===== VIEW LOADING =====
 async function loadAndDisplayView(viewId) {
   console.log('[VIEW] Loading view:', viewId);
   
   try {
     const res = await fetch(`/.netlify/functions/view?id=${viewId}`);
     
-    if (!res.ok) throw new Error(`Server error: ${res.status}`);
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error('Server response:', res.status, errorText);
+      throw new Error(`Server error: ${res.status}`);
+    }
     
     const data = await res.json();
     console.log('[VIEW] Data received:', data);
@@ -493,29 +561,31 @@ async function loadAndDisplayView(viewId) {
     let html = '';
     
     for (const file of data.files || []) {
+      const icon = getFileIcon(file.fileName);
+      const size = formatFileSize(file.fileSize || 0);
       const url = file.downloadUrl;
-      let preview = '';
 
+      let preview = '';
       if (/\.(mp4|webm|ogg)$/i.test(file.fileName)) {
         preview = `<div class="file-preview"><video controls style="max-width: 100%; max-height: 500px;"><source src="${url}"></video></div>`;
       } else if (/\.(jpg|jpeg|png|gif|webp)$/i.test(file.fileName)) {
         preview = `<div class="file-preview"><img src="${url}" style="max-width: 100%; max-height: 500px;" /></div>`;
       } else if (/\.(pdf)$/i.test(file.fileName)) {
-        preview = `<div class="file-preview"><iframe src="${url}" style="width: 100%; height: 500px;"></iframe></div>`;
+        preview = `<div class="file-preview"><iframe src="${url}" style="width: 100%; height: 500px; border: none;"></iframe></div>`;
       }
 
       html += `<div class="file-viewer">
         <div class="file-viewer-header">
           <div class="file-info">
-            <div class="file-icon">📄</div>
+            <div class="file-icon">${icon}</div>
             <div class="file-details">
-              <h3>${file.fileName}</h3>
-              <p>${(file.fileSize / 1024 / 1024).toFixed(2)} MB</p>
+              <h3>${escapeHtml(file.fileName)}</h3>
+              <p>${size}</p>
             </div>
           </div>
           <div class="file-actions">
             <a href="${url}" download class="file-action-btn">📥 Download</a>
-            <button class="file-action-btn" onclick="navigator.clipboard.writeText('${url}'); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy Link', 2000);">🔗 Copy Link</button>
+            <button class="file-action-btn" onclick="navigator.clipboard.writeText('${url}'); this.textContent='Copied!'; setTimeout(()=>this.textContent='🔗 Copy Link', 2000);">🔗 Copy Link</button>
           </div>
         </div>
         ${preview}
@@ -532,7 +602,7 @@ async function loadAndDisplayView(viewId) {
   }
 }
 
-// ===== INIT =====
+// Initialize app
 if (viewId) {
   console.log('[INIT] View mode - loading view:', viewId);
   showLoadingUI();
