@@ -824,7 +824,9 @@ async function uploadMultiple(files) {
   const viewId = Math.random().toString(36).slice(2, 8);
 
   const github = uploadManager.githubUploader;
+async function loadAndDisplayView(viewId) {
   const json = await github.getGithubJson();
+}
 
   json.views = json.views || [];
   json.views.push({
