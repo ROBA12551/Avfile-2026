@@ -842,9 +842,10 @@ async function loadAndDisplayView(viewId) {
   navigator.clipboard.writeText(shareUrl);
 }
 
-  const viewId = generateShortId(6);
-  const github = uploadManager.githubUploader;
 async function loadAndDisplayView(viewId) {
+  const uploadManager = new SimpleUploadManager();
+  const github = uploadManager.githubUploader;
+
   const json = await github.getGithubJson();
 }
 
