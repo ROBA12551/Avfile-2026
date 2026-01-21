@@ -1,5 +1,3 @@
-
-
 class SimpleUploadManager {
   constructor() {
     this.githubUploader = new window.GitHubUploader();
@@ -80,7 +78,11 @@ class SimpleUploadManager {
       let processedBlob = fileBlob;
       let wasCompressed = false;
 
-      if (this.isVideoFile(fileBlob)) {
+      // ★ 修正: モバイルデバイス判定を追加
+      const isMobile = this.isMobileDevice();
+      console.log('[UPLOAD] isMobile:', isMobile);
+
+      if (this.isVideoFile(fileBlob) && !isMobile) {
         console.log('🎥 動画ファイルを検出 - 720p 30fps に圧縮開始...');
         
         if (window.VideoCompressionEngine) {
@@ -106,6 +108,8 @@ class SimpleUploadManager {
           console.warn('⚠️ 圧縮エンジンが利用できません - スクリプトのロードを確認してください');
           wasCompressed = false;
         }
+      } else if (this.isVideoFile(fileBlob) && isMobile) {
+        console.log('📱 モバイルデバイス検出 - 圧縮処理をスキップします');
       }
 
       onProgress(40, '📤 Base64 エンコード中...');
@@ -135,30 +139,65 @@ class SimpleUploadManager {
 
       onProgress(80, '📝 アップロード情報を記録中...');
 
-const res = await this.githubUploader.getGithubJson();
-const githubJson = res.data; // ← ★これが最重要
+      // ★ 修正: 完全なバリデーションとエラーハンドリング
+      let githubJson = null;
+      try {
+        const res = await this.githubUploader.getGithubJson();
+        
+        console.log('[UPLOAD] getGithubJson response:', res);
+        
+        // ★ 修正: レスポンス形式を複数パターン対応
+        if (res && res.data) {
+          githubJson = res.data;
+        } else if (res && res.files !== undefined) {
+          githubJson = res;
+        } else {
+          throw new Error('Invalid response format from getGithubJson');
+        }
 
-githubJson.files = Array.isArray(githubJson.files)
-  ? githubJson.files
-  : [];
+        // ★ 修正: githubJson が null/undefined の場合の対応
+        if (!githubJson || typeof githubJson !== 'object') {
+          throw new Error('githubJson is not an object');
+        }
 
-githubJson.files.push({
-  fileId: fileId,
-  fileName: fileName,
-  downloadUrl: assetData.download_url,
-  githubReleaseUrl: releaseData.html_url,
-  fileSize: processedBlob.size,
-  originalSize: fileBlob.size,
-  compressed: wasCompressed,
-  uploadedAt: new Date().toISOString(),
-  releaseTag: releaseTag,
-  assetId: assetData.asset_id,
-});
+        // ★ 修正: files 配列の安全な初期化
+        if (!Array.isArray(githubJson.files)) {
+          console.warn('[UPLOAD] files is not an array, reinitializing');
+          githubJson.files = [];
+        }
 
-githubJson.lastUpdated = new Date().toISOString();
+      } catch (error) {
+        console.error('[UPLOAD] Error fetching github.json:', error.message);
+        throw new Error(`Failed to fetch github.json: ${error.message}`);
+      }
 
-// ★ sha は Function 側で処理するので data だけ渡す
-await this.githubUploader.saveGithubJson(githubJson);
+      // ★ 修正: ファイル情報の追加
+      try {
+        const fileInfo = {
+          fileId: fileId,
+          fileName: fileName,
+          downloadUrl: assetData.download_url,
+          githubReleaseUrl: releaseData.html_url,
+          fileSize: processedBlob.size,
+          originalSize: fileBlob.size,
+          compressed: wasCompressed,
+          uploadedAt: new Date().toISOString(),
+          releaseTag: releaseTag,
+          assetId: assetData.asset_id,
+        };
+
+        console.log('[UPLOAD] Adding file info:', fileInfo);
+        githubJson.files.push(fileInfo);
+        githubJson.lastUpdated = new Date().toISOString();
+
+        // ★ 修正: saveGithubJson の呼び出し
+        await this.githubUploader.saveGithubJson(githubJson);
+        console.log('[UPLOAD] github.json saved successfully');
+
+      } catch (error) {
+        console.error('[UPLOAD] Error saving file info:', error.message);
+        throw new Error(`Failed to save file info: ${error.message}`);
+      }
 
       onProgress(90, '🔗 共有リンク生成中...');
       const viewUrl = `${window.location.origin}/?id=${fileId}`;
@@ -188,13 +227,45 @@ await this.githubUploader.saveGithubJson(githubJson);
   }
 
   /**
+   * モバイルデバイス判定
+   */
+  isMobileDevice() {
+    const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+    
+    if (/iPad|iPhone|iPod/.test(userAgent)) {
+      console.log('[MOBILE] iOS detected');
+      return true;
+    }
+    
+    if (/android/i.test(userAgent)) {
+      console.log('[MOBILE] Android detected');
+      return true;
+    }
+    
+    if (/mobile/i.test(userAgent)) {
+      console.log('[MOBILE] Mobile device detected');
+      return true;
+    }
+    
+    return false;
+  }
+
+  /**
    * GitHub から特定のファイルを取得
    */
   async getFileInfo(fileId) {
     try {
       const githubJson = await this.githubUploader.getGithubJson();
-      const files = githubJson.files || [];
-      return files.find(f => f.fileId === fileId) || null;
+      
+      // ★ 修正: レスポンス形式を処理
+      let files = [];
+      if (githubJson && githubJson.data && Array.isArray(githubJson.data.files)) {
+        files = githubJson.data.files;
+      } else if (githubJson && Array.isArray(githubJson.files)) {
+        files = githubJson.files;
+      }
+      
+      return files.find(f => f && f.fileId === fileId) || null;
     } catch (error) {
       console.error('❌ ファイル取得エラー:', error.message);
       return null;
@@ -207,7 +278,15 @@ await this.githubUploader.saveGithubJson(githubJson);
   async getAllFiles() {
     try {
       const githubJson = await this.githubUploader.getGithubJson();
-      return githubJson.files || [];
+      
+      // ★ 修正: レスポンス形式を処理
+      if (githubJson && githubJson.data && Array.isArray(githubJson.data.files)) {
+        return githubJson.data.files;
+      } else if (githubJson && Array.isArray(githubJson.files)) {
+        return githubJson.files;
+      }
+      
+      return [];
     } catch (error) {
       console.error('❌ ファイル一覧取得エラー:', error.message);
       return [];
