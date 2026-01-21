@@ -730,10 +730,10 @@
 
 <!-- ★ 修正: ローカル圧縮対応のスクリプトを読み込む（順序重要） -->
 <!-- ローカル圧縮エンジン -->
-<script src="/js/video-compression.js"></script>
+<script src="/js/video-compression-local.js"></script>
 
 <!-- ファイルアップロード強化版 -->
-<script src="/js/universal-file-uploader.js"></script>
+<script src="/js/universal-file-uploader-enhanced.js"></script>
 
 <script>
 // ★ グローバル変数定義（最初）
@@ -960,10 +960,10 @@ class Cache {
 class GitHubUploader {
   constructor() {
     this.functionUrl = '/.netlify/functions/github-upload';
-    // ★ GitHub Token（環境変数から取得、またはブラウザに保存）
-    this.githubToken = localStorage.getItem('github_token') || process.env.GITHUB_TOKEN || '';
+    // ★ GitHub Token（localStorage から取得、またはデフォルトは空）
+    this.githubToken = localStorage.getItem('github_token') || '';
     if (!this.githubToken) {
-      console.warn('[GITHUB_TOKEN] Warning: GitHub token not found');
+      console.warn('[GITHUB_TOKEN] Warning: GitHub token not found in localStorage');
     }
   }
 
@@ -1022,68 +1022,50 @@ class GitHubUploader {
     return data.data;
   }
 
-  // ★ ブラウザから直接 GitHub にアップロード（Netlify Function 不要）
-  async uploadAssetDirect(uploadUrl, fileName, blob, fileId, fileSize) {
+  // ★ Asset アップロード（Netlify Function 経由）
+  async uploadAsset(uploadUrl, fileName, base64Data, fileId, fileSize) {
     const sanitizedFileName = this.sanitizeFileName(fileName);
 
-    console.log('[UPLOAD_DIRECT] Original fileName:', fileName);
-    console.log('[UPLOAD_DIRECT] Sanitized fileName:', sanitizedFileName);
-    console.log('[UPLOAD_DIRECT] Blob size:', blob.size);
+    console.log('[UPLOAD_ASSET] Original fileName:', fileName);
+    console.log('[UPLOAD_ASSET] Sanitized fileName:', sanitizedFileName);
+    console.log('[UPLOAD_ASSET] Base64 length:', base64Data ? base64Data.length : 0);
 
-    if (!blob) {
-      throw new Error('Invalid blob provided');
+    if (!base64Data || typeof base64Data !== 'string') {
+      throw new Error('Invalid base64 data provided');
     }
 
     if (!uploadUrl || typeof uploadUrl !== 'string') {
       throw new Error('Invalid uploadUrl provided');
     }
 
-    // ★ ブラウザから直接 GitHub にアップロード
-    console.log('[UPLOAD_DIRECT] Uploading directly to GitHub...');
+    // ★ JSON で Netlify Function に送信
+    console.log('[UPLOAD_ASSET] Sending JSON to Netlify Function...');
 
-    let cleanUrl = String(uploadUrl).trim();
-    cleanUrl = cleanUrl.replace('{?name,label}', '');
-    cleanUrl = cleanUrl.replace('{?name}', '');
-    cleanUrl = cleanUrl.replace(/\{[?&].*?\}/g, '');
+    const response = await fetch(this.functionUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'upload-asset',
+        uploadUrl: uploadUrl,
+        fileName: sanitizedFileName,
+        fileBase64: base64Data,
+        fileId,
+        fileSize,
+      }),
+    });
 
-    const encodedFileName = encodeURIComponent(sanitizedFileName);
-    const assetUrl = `${cleanUrl}?name=${encodedFileName}`;
-
-    console.log('[UPLOAD_DIRECT] Asset URL:', assetUrl.substring(0, 100) + '...');
-
-    try {
-      const response = await fetch(assetUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `token ${this.githubToken}`,
-          'Accept': 'application/vnd.github+json',
-          'Content-Type': 'application/octet-stream',
-        },
-        body: blob,
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => '');
-        console.error('[UPLOAD_DIRECT] Error:', response.status, errorText);
-        throw new Error(`Asset upload failed: ${response.status} - ${errorText}`);
-      }
-
-      const data = await response.json();
-      
-      console.log('[UPLOAD_DIRECT] Complete - Asset ID:', data.id);
-      return {
-        asset_id: data.id,
-        name: data.name,
-        size: data.size,
-        download_url: data.browser_download_url,
-      };
-    } catch (e) {
-      console.error('[UPLOAD_DIRECT] Error:', e.message);
-      throw e;
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      console.error('[UPLOAD_ASSET] Error:', response.status, errorText);
+      throw new Error(`Asset upload failed: ${response.status} - ${errorText}`);
     }
-  }
 
-  async uploadAsset(uploadUrl, fileName, base64Data, fileId, fileSize) {
+    const data = await response.json();
+    if (!data.success) throw new Error(data.error || 'Asset upload failed');
+    
+    console.log('[UPLOAD_ASSET] Complete - Asset ID:', data.data.asset_id);
+    return data.data;
+  }
     const sanitizedFileName = this.sanitizeFileName(fileName);
 
     console.log('[UPLOAD_ASSET] Original fileName:', fileName);
@@ -1620,14 +1602,15 @@ async function uploadMultiple(files) {
 
         let uploadFile = file;
 
-        // ★ Asset アップロード（Base64 をスキップ、直接 GitHub にアップロード）
+        // ★ Asset アップロード（Netlify Function 経由で GitHub にアップロード）
         console.log('[ASSET_' + idx + '] 開始');
         
-        // ★ Blob を直接 GitHub にアップロード（Base64 変換なし）
-        const assetData = await uploader.uploadAssetDirect(
+        // ★ Base64 に変換して送信
+        const base64 = await toBase64Fast(uploadFile);
+        const assetData = await uploader.uploadAsset(
           release.upload_url,
           fileName,
-          uploadFile,  // ★ Blob をそのまま送信
+          base64,
           fileId,
           uploadFile.size
         );
