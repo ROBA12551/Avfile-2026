@@ -1017,53 +1017,6 @@ class GitHubUploader {
     return data.data;
   }
 
-  // ★ Blob を直接アップロード（圧縮と Base64 をスキップ）
-  async uploadAssetDirect(uploadUrl, fileName, blob, fileId, fileSize) {
-    const sanitizedFileName = this.sanitizeFileName(fileName);
-
-    console.log('[UPLOAD_DIRECT] Original fileName:', fileName);
-    console.log('[UPLOAD_DIRECT] Sanitized fileName:', sanitizedFileName);
-    console.log('[UPLOAD_DIRECT] Blob size:', blob.size);
-
-    if (!blob) {
-      throw new Error('Invalid blob provided');
-    }
-
-    if (!uploadUrl || typeof uploadUrl !== 'string') {
-      throw new Error('Invalid uploadUrl provided');
-    }
-
-    // ★ FormData で Blob を直接送信
-    console.log('[UPLOAD_DIRECT] Creating FormData...');
-    
-    const formData = new FormData();
-    formData.append('action', 'upload-asset-direct');
-    formData.append('uploadUrl', uploadUrl);
-    formData.append('fileName', sanitizedFileName);
-    formData.append('fileId', fileId);
-    formData.append('fileSize', fileSize);
-    formData.append('file', blob, sanitizedFileName);
-
-    console.log('[UPLOAD_DIRECT] Sending FormData to Netlify Function...');
-
-    const response = await fetch(this.functionUrl, {
-      method: 'POST',
-      body: formData
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '');
-      console.error('[UPLOAD_DIRECT] Error:', response.status, errorText);
-      throw new Error(`Asset upload failed: ${response.status} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    if (!data.success) throw new Error(data.error || 'Asset upload failed');
-    
-    console.log('[UPLOAD_DIRECT] Complete - Asset ID:', data.data.asset_id);
-    return data.data;
-  }
-
   async uploadAsset(uploadUrl, fileName, base64Data, fileId, fileSize) {
     const sanitizedFileName = this.sanitizeFileName(fileName);
 
