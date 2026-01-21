@@ -591,11 +591,11 @@
             <section class="upload-section">
                 <div class="upload-area" id="uploadArea">
                     <div class="upload-icon"></div>
-                    <h2>Drag & Drop Files Here</h2>
-                    <p>Or click to select files from your computer</p>
+                    <h2>Select Files to Upload</h2>
+                    <p>Click the button below to choose files from your device</p>
                     <input type="file" id="fileInput" multiple accept="*/*" />
                     <button class="btn" id="selectFileBtn">Select Files to Upload</button>
-                    <p class="upload-hint">You can upload up to 10 files at once • All file types supported</p>
+                    <p class="upload-hint">You can upload up to 10 files at once • All file types supported • File selection only</p>
                 </div>
             </section>
 
@@ -1344,17 +1344,24 @@ function isMobileDevice() {
 // イベントリスナー設定
 document.getElementById('selectFileBtn').onclick = () => document.getElementById('fileInput').click();
 
+// ★ ドラッグ&ドロップは無効化（写真フォルダアップロード防止）
 const uploadArea = document.getElementById('uploadArea');
-uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('drag-over'); });
+uploadArea.addEventListener('dragover', (e) => { 
+  e.preventDefault();
+  // ドラッグ&ドロップは視覚的には反応するが、dropイベントは処理しない
+  uploadArea.classList.add('drag-over'); 
+});
 uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag-over'));
-uploadArea.addEventListener('drop', async (e) => {
+uploadArea.addEventListener('drop', (e) => {
   e.preventDefault();
   uploadArea.classList.remove('drag-over');
-  const files = Array.from(e.dataTransfer.files);
-  if (files.length > MAX_FILES) { alert(`Max ${MAX_FILES} files`); return; }
-  await uploadMultiple(files);
+  // ★ drop イベントを無視（ファイル選択のみ許可）
+  console.log('[UPLOAD] Drag & drop は無効化されています。ファイル選択ボタンを使用してください。');
+  showError('ドラッグ&ドロップは無効です。「Select Files to Upload」ボタンを使用してください。');
+  return;
 });
 
+// ★ ファイル選択のみ有効
 document.getElementById('fileInput').addEventListener('change', async (e) => {
   const files = Array.from(e.target.files);
   if (!files.length) return;
