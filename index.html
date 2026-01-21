@@ -1022,50 +1022,107 @@ class GitHubUploader {
     return data.data;
   }
 
-  // ★ Asset アップロード（Netlify Function 経由）
-  async uploadAsset(uploadUrl, fileName, base64Data, fileId, fileSize) {
-    const sanitizedFileName = this.sanitizeFileName(fileName);
+// ★ Asset アップロード（FormData で直接送信）
+async uploadAsset(uploadUrl, fileName, base64Data, fileId, fileSize) {
+  const sanitizedFileName = this.sanitizeFileName(fileName);
 
-    console.log('[UPLOAD_ASSET] Original fileName:', fileName);
-    console.log('[UPLOAD_ASSET] Sanitized fileName:', sanitizedFileName);
-    console.log('[UPLOAD_ASSET] Base64 length:', base64Data ? base64Data.length : 0);
+  console.log('[UPLOAD_ASSET] Original fileName:', fileName);
+  console.log('[UPLOAD_ASSET] Sanitized fileName:', sanitizedFileName);
+  console.log('[UPLOAD_ASSET] Base64 length:', base64Data ? base64Data.length : 0);
 
-    if (!base64Data || typeof base64Data !== 'string') {
-      throw new Error('Invalid base64 data provided');
-    }
-
-    if (!uploadUrl || typeof uploadUrl !== 'string') {
-      throw new Error('Invalid uploadUrl provided');
-    }
-
-    // ★ JSON で Netlify Function に送信
-    console.log('[UPLOAD_ASSET] Sending JSON to Netlify Function...');
-
-    const response = await fetch(this.functionUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'upload-asset',
-        uploadUrl: uploadUrl,
-        fileName: sanitizedFileName,
-        fileBase64: base64Data,
-        fileId,
-        fileSize,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '');
-      console.error('[UPLOAD_ASSET] Error:', response.status, errorText);
-      throw new Error(`Asset upload failed: ${response.status} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    if (!data.success) throw new Error(data.error || 'Asset upload failed');
-    
-    console.log('[UPLOAD_ASSET] Complete - Asset ID:', data.data.asset_id);
-    return data.data;
+  if (!base64Data || typeof base64Data !== 'string') {
+    throw new Error('Invalid base64 data provided');
   }
+
+  if (!uploadUrl || typeof uploadUrl !== 'string') {
+    throw new Error('Invalid uploadUrl provided');
+  }
+
+  // ★ Base64 を Blob に変換
+  console.log('[UPLOAD_ASSET] Converting Base64 to Blob...');
+  const byteCharacters = atob(base64Data);
+  const byteNumbers = new Array(byteCharacters.length);
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  }
+  const byteArray = new Uint8Array(byteNumbers);
+  const blob = new Blob([byteArray], { type: 'application/octet-stream' });
+  
+  console.log('[UPLOAD_ASSET] Blob size:', blob.size, 'bytes');
+
+  // ★ FormData で送信
+  const formData = new FormData();
+  formData.append('action', 'upload-asset-binary');
+  formData.append('uploadUrl', uploadUrl);
+  formData.append('fileName', sanitizedFileName);
+  formData.append('fileId', fileId);
+  formData.append('fileSize', fileSize.toString());
+  formData.append('file', blob, sanitizedFileName);
+
+  console.log('[UPLOAD_ASSET] Sending FormData to Netlify Function...');
+
+  const response = await fetch(this.functionUrl, {
+    method: 'POST',
+    body: formData, // ★ FormData を直接送信
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    console.error('[UPLOAD_ASSET] Error:', response.status, errorText);
+    throw new Error(`Asset upload failed: ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  if (!data.success) throw new Error(data.error || 'Asset upload failed');
+  
+  console.log('[UPLOAD_ASSET] Complete - Asset ID:', data.data.asset_id);
+  return data.data;
+}
+
+// ★ バイナリ直接アップロード（FormData）
+async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
+  const sanitizedFileName = this.sanitizeFileName(fileName);
+
+  console.log('[UPLOAD_BINARY] Original fileName:', fileName);
+  console.log('[UPLOAD_BINARY] Sanitized fileName:', sanitizedFileName);
+  console.log('[UPLOAD_BINARY] File size:', fileSize);
+
+  if (!fileObject) {
+    throw new Error('Invalid file object provided');
+  }
+
+  if (!uploadUrl || typeof uploadUrl !== 'string') {
+    throw new Error('Invalid uploadUrl provided');
+  }
+
+  // ★ FormData で直接送信
+  const formData = new FormData();
+  formData.append('action', 'upload-asset-binary');
+  formData.append('uploadUrl', uploadUrl);
+  formData.append('fileName', sanitizedFileName);
+  formData.append('fileId', fileId);
+  formData.append('fileSize', fileSize.toString());
+  formData.append('file', fileObject, sanitizedFileName);
+
+  console.log('[UPLOAD_BINARY] Sending FormData to Netlify Function...');
+
+  const response = await fetch(this.functionUrl, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    console.error('[UPLOAD_BINARY] Error:', response.status, errorText);
+    throw new Error(`Binary upload failed: ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  if (!data.success) throw new Error(data.error || 'Binary upload failed');
+  
+  console.log('[UPLOAD_BINARY] Complete - Asset ID:', data.data.asset_id);
+  return data.data;
+}
 
   // ★ バイナリ直接アップロード（Base64 チャンク分割）
   async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
@@ -1545,55 +1602,52 @@ async function uploadMultiple(files) {
     const fileDataList = await parallelLimit(fileDataTasks, 5);
     console.log('[UPLOAD] ✓ Phase 1 完了 (' + (Date.now() - startTime) + 'ms)');
 
-    // ★ Phase 2: Base64 変換 + Asset アップロード（並列5個）
-    console.log('[UPLOAD] Phase 2: Base64 + Asset アップロード');
+// ★ Phase 2: Asset アップロード（並列5個）
+console.log('[UPLOAD] Phase 2: Asset アップロード');
 
-    const uploadTasks = fileDataList.map((fileData, idx) => async () => {
-      try {
-        const { file, fileId, fileName, info, release } = fileData;
+const uploadTasks = fileDataList.map((fileData, idx) => async () => {
+  try {
+    const { file, fileId, fileName, info, release } = fileData;
 
-        // プログレス更新
-        const percent = Math.round((idx / valid.length) * 100);
-        document.getElementById('statusMessage').textContent = `${idx + 1} / ${valid.length} (${percent}%)`;
-        document.getElementById('progressPercent').textContent = percent + '%';
-        document.getElementById('progressFill').style.width = percent + '%';
+    // プログレス更新
+    const percent = Math.round((idx / valid.length) * 100);
+    document.getElementById('statusMessage').textContent = `${idx + 1} / ${valid.length} (${percent}%)`;
+    document.getElementById('progressPercent').textContent = percent + '%';
+    document.getElementById('progressFill').style.width = percent + '%';
 
-        let uploadFile = file;
+    console.log('[ASSET_' + idx + '] 開始');
+    
+    // ★ FormData でバイナリ直接アップロード（Base64 変換をスキップ）
+    const assetData = await uploader.uploadAssetBinary(
+      release.upload_url,
+      fileName,
+      file, // ★ File オブジェクトを直接渡す
+      fileId,
+      file.size
+    );
+    
+    console.log('[ASSET_' + idx + '] 完了');
 
-        // ★ Asset アップロード（Netlify Function 経由で GitHub にアップロード）
-        console.log('[ASSET_' + idx + '] 開始');
-        
-        // ★ Base64 に変換して送信
-        const base64 = await toBase64Fast(uploadFile);
-        const assetData = await uploader.uploadAsset(
-          release.upload_url,
-          fileName,
-          base64,
-          fileId,
-          uploadFile.size
-        );
-        console.log('[ASSET_' + idx + '] 完了');
-
-        return {
-          fileId,
-          fileName,
-          fileType: info.type,
-          downloadUrl: assetData.download_url,
-          fileSize: uploadFile.size,
-          uploadedAt: new Date().toISOString(),
-          metadata: {
-            extension: fileName.split('.').pop(),
-            mimeType: info.mimeType
-          }
-        };
-      } catch (e) {
-        console.error('[PHASE2_' + idx + '] Error:', e.message);
-        throw e;
+    return {
+      fileId,
+      fileName,
+      fileType: info.type,
+      downloadUrl: assetData.download_url,
+      fileSize: file.size,
+      uploadedAt: new Date().toISOString(),
+      metadata: {
+        extension: fileName.split('.').pop(),
+        mimeType: info.mimeType
       }
-    });
+    };
+  } catch (e) {
+    console.error('[PHASE2_' + idx + '] Error:', e.message);
+    throw e;
+  }
+});
 
-    const uploadedFiles = await parallelLimit(uploadTasks, 5);
-    console.log('[UPLOAD] ✓ Phase 2 完了 (' + (Date.now() - startTime) + 'ms)');
+const uploadedFiles = await parallelLimit(uploadTasks, 5);
+console.log('[UPLOAD] ✓ Phase 2 完了 (' + (Date.now() - startTime) + 'ms)');
 
     // ★ Phase 3: github.json 保存（1回だけ）
     console.log('[UPLOAD] Phase 3: github.json 保存');
