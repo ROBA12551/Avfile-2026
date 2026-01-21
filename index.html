@@ -835,7 +835,10 @@ async function loadAndDisplayView(viewId) {
     createdAt: new Date().toISOString()
   });
 
+async function uploadMultiple(files) {
+  const json = await github.getGithubJson();
   await github.saveGithubJson(json);
+}
 
   const shareUrl = `${location.origin}/?id=${viewId}`;
   document.getElementById('shareUrl').value = shareUrl;
