@@ -583,6 +583,74 @@ exports.handler = async (event) => {
         break;
       }
 
+      // ★ バイナリ直接アップロード（カメラ動画対応）
+      case 'upload-asset-binary': {
+        logInfo(`[BINARY] Uploading asset: ${body.fileName}`);
+        
+        if (!body.fileName || typeof body.fileName !== 'string') {
+          throw new Error('Invalid fileName: must be a non-empty string');
+        }
+
+        if (!body.uploadUrl || typeof body.uploadUrl !== 'string') {
+          throw new Error('Invalid uploadUrl: must be a non-empty string');
+        }
+
+        // ★ Base64 またはバイナリを処理
+        let binaryData;
+        if (body.fileBase64 && typeof body.fileBase64 === 'string') {
+          // Base64 文字列を Buffer に変換
+          binaryData = Buffer.from(body.fileBase64, 'base64');
+          logInfo(`[BINARY] Base64 → Buffer: ${body.fileBase64.length} chars → ${binaryData.length} bytes`);
+        } else if (body.fileBinary) {
+          // 既に Buffer の場合
+          binaryData = Buffer.isBuffer(body.fileBinary) 
+            ? body.fileBinary 
+            : Buffer.from(body.fileBinary);
+          logInfo(`[BINARY] Using binary data: ${binaryData.length} bytes`);
+        } else {
+          throw new Error('fileBase64 or fileBinary is required');
+        }
+
+        logInfo(`[BINARY] File: ${body.fileName}, Size: ${binaryData.length} bytes`);
+
+        // ★ バイナリを直接アップロード
+        let cleanUrl = String(body.uploadUrl).trim();
+        cleanUrl = cleanUrl.replace('{?name,label}', '');
+        cleanUrl = cleanUrl.replace('{?name}', '');
+        cleanUrl = cleanUrl.replace(/\{[?&].*?\}/g, '');
+
+        const encodedFileName = encodeURIComponent(body.fileName);
+        const assetUrl = `${cleanUrl}?name=${encodedFileName}`;
+
+        logInfo(`[BINARY] Asset URL: ${assetUrl.substring(0, 100)}...`);
+
+        const binaryResponse = await githubUploadRequest('POST', assetUrl, binaryData);
+
+        if (!binaryResponse || !binaryResponse.id) {
+          throw new Error('Asset upload response missing id field');
+        }
+
+        logInfo(`[BINARY] Asset uploaded successfully: ${binaryResponse.id}`);
+
+        const assetResponse = {
+          asset_id: binaryResponse.id,
+          name: binaryResponse.name,
+          size: binaryResponse.size,
+          download_url: binaryResponse.browser_download_url,
+        };
+
+        // ★ 非同期で github.json を更新
+        updateGithubJsonAsync(
+          body.fileId,
+          body.fileName,
+          assetResponse.download_url,
+          body.fileSize
+        ).catch(err => logError(`[BINARY] Async update error: ${err.message}`));
+
+        response = assetResponse;
+        break;
+      }
+
       case 'get-github-json': {
         logInfo('Getting github.json');
         const result = await getGithubJson();
