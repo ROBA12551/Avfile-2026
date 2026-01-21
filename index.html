@@ -986,7 +986,7 @@ class GitHubUploader {
     if (!data.success) throw new Error(data.error);
     return data.data;
   }
-// ★ 修正版: Base64を使わず、バイナリデータを直接送信
+// ★ 修正版: 圧縮後、Base64なしでバイナリ送信
 async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   const sanitizedFileName = this.sanitizeFileName(fileName);
 
@@ -1002,12 +1002,37 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
     throw new Error('Invalid uploadUrl provided');
   }
 
-  // ★ ファイルを ArrayBuffer に変換（Base64不要）
-  console.log('[UPLOAD_BINARY] Converting to ArrayBuffer...');
-  const arrayBuffer = await fileObject.arrayBuffer();
-  console.log('[UPLOAD_BINARY] ArrayBuffer size:', (arrayBuffer.byteLength / 1024 / 1024).toFixed(2), 'MB');
+  let processedFile = fileObject;
+  
+  // ★ 動画ファイルで2.5MB以上なら圧縮
+  const MAX_SIZE = 2.5 * 1024 * 1024; // 2.5MB
+  const isVideo = fileObject.type && fileObject.type.startsWith('video/');
+  
+  if (isVideo && fileObject.size > MAX_SIZE) {
+    console.log(`[UPLOAD_BINARY] 動画圧縮開始: ${(fileObject.size / 1024 / 1024).toFixed(2)} MB`);
+    
+    try {
+      const compressor = new VideoCompressionEngineLocal();
+      processedFile = await compressor.compress(fileObject, (progress, msg) => {
+        console.log(`[UPLOAD_BINARY] 圧縮中: ${progress}%`);
+        // UI更新も可能
+        document.getElementById('statusMessage').textContent = `動画圧縮中: ${progress}%`;
+      });
+      
+      const originalMB = (fileObject.size / 1024 / 1024).toFixed(2);
+      const compressedMB = (processedFile.size / 1024 / 1024).toFixed(2);
+      const ratio = ((1 - processedFile.size / fileObject.size) * 100).toFixed(0);
+      
+      console.log(`[UPLOAD_BINARY] 圧縮完了: ${originalMB}MB → ${compressedMB}MB (${ratio}% 削減)`);
+    } catch (compressionError) {
+      console.warn(`[UPLOAD_BINARY] 圧縮失敗、元ファイルを使用:`, compressionError.message);
+      processedFile = fileObject;
+    }
+  } else {
+    console.log(`[UPLOAD_BINARY] 圧縮不要: ${isVideo ? '動画' : 'その他'}, ${(fileObject.size / 1024 / 1024).toFixed(2)} MB`);
+  }
 
-  // ★ FormData で Netlify Functions に送信
+  // ★ FormData で送信（Base64不要）
   console.log('[UPLOAD_BINARY] Sending to Netlify Functions via FormData...');
 
   const formData = new FormData();
@@ -1015,12 +1040,12 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   formData.append('uploadUrl', uploadUrl);
   formData.append('fileName', sanitizedFileName);
   formData.append('fileId', fileId);
-  formData.append('fileSize', fileSize.toString());
-  formData.append('file', fileObject, sanitizedFileName); // ★ ファイル本体
+  formData.append('fileSize', processedFile.size.toString());
+  formData.append('file', processedFile, sanitizedFileName); // ★ 圧縮後のファイル
 
   const response = await fetch(this.functionUrl, {
     method: 'POST',
-    body: formData, // ★ FormData として送信（Content-Typeは自動設定される）
+    body: formData,
   });
 
   if (!response.ok) {
@@ -1443,10 +1468,6 @@ document.getElementById('backBtn').onclick = () => showUpload();
 
 // ★ グローバル定数
 const MAX_SIZE_WITHOUT_COMPRESSION = 1.5 * 1024 * 1024; // ★ 4MB に変更
-
-/**
- * ★ 超高速化版 uploadMultiple（動画圧縮対応・修正版）
- */
 async function uploadMultiple(files) {
   showStatus();
   const uploader = new GitHubUploader();
@@ -1492,54 +1513,8 @@ async function uploadMultiple(files) {
 
     const fileDataList = await parallelLimit(fileDataTasks, 5);
     console.log('[UPLOAD] ✓ Phase 1 完了 (' + (Date.now() - startTime) + 'ms)');
-// ★ Phase 1.5: 動画圧縮（4MB 以上）
-console.log('[UPLOAD] Phase 1.5: 動画圧縮チェック');
 
-for (let i = 0; i < fileDataList.length; i++) {
-  const fileData = fileDataList[i];
-  const { file, info, fileName } = fileData;
-  
-  console.log(`[COMPRESS_CHECK_${i}] ===== ファイル情報 =====`);
-  console.log(`[COMPRESS_CHECK_${i}] fileName: ${fileName}`);
-  console.log(`[COMPRESS_CHECK_${i}] file.size: ${file.size} bytes (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
-  console.log(`[COMPRESS_CHECK_${i}] info.type: ${info.type}`);
-  console.log(`[COMPRESS_CHECK_${i}] MAX_SIZE_WITHOUT_COMPRESSION: ${MAX_SIZE_WITHOUT_COMPRESSION} bytes (${(MAX_SIZE_WITHOUT_COMPRESSION / 1024 / 1024).toFixed(2)} MB)`);
-  console.log(`[COMPRESS_CHECK_${i}] file.size > MAX_SIZE_WITHOUT_COMPRESSION: ${file.size > MAX_SIZE_WITHOUT_COMPRESSION}`);
-  console.log(`[COMPRESS_CHECK_${i}] info.type === 'video': ${info.type === 'video'}`);
-  
-  // 動画ファイルで MAX_SIZE_WITHOUT_COMPRESSION 以上なら圧縮
-  if (info.type === 'video' && file.size > MAX_SIZE_WITHOUT_COMPRESSION) {
-    console.log(`[COMPRESS_${i}] ✅ 圧縮条件に該当 - 圧縮開始`);
-    console.log(`[COMPRESS_${i}] ${fileName}: ${(file.size / 1024 / 1024).toFixed(2)} MB - 圧縮開始`);
-    
-    document.getElementById('statusMessage').textContent = 
-      `動画を圧縮中... (${i + 1}/${fileDataList.length})`;
-    
-    const compressor = new VideoCompressionEngineLocal();
-    const compressedFile = await compressor.compress(file, (progress, msg) => {
-      document.getElementById('statusMessage').textContent = 
-        `動画圧縮中 ${i + 1}/${fileDataList.length}: ${progress}%`;
-      document.getElementById('progressPercent').textContent = `${progress}%`;
-      document.getElementById('progressFill').style.width = `${progress}%`;
-    });
-    
-    const originalMB = (file.size / 1024 / 1024).toFixed(2);
-    const compressedMB = (compressedFile.size / 1024 / 1024).toFixed(2);
-    const ratio = ((1 - compressedFile.size / file.size) * 100).toFixed(0);
-    
-    console.log(`[COMPRESS_${i}] 完了: ${originalMB}MB → ${compressedMB}MB (${ratio}% 削減)`);
-    
-    fileDataList[i].file = compressedFile;
-  } else {
-    console.log(`[COMPRESS_${i}] ❌ スキップ - 圧縮条件に該当せず`);
-    if (info.type !== 'video') {
-      console.log(`[COMPRESS_${i}] 理由: 動画ファイルではない (type: ${info.type})`);
-    } else {
-      console.log(`[COMPRESS_${i}] 理由: サイズが閾値以下 (${(file.size / 1024 / 1024).toFixed(2)} MB <= ${(MAX_SIZE_WITHOUT_COMPRESSION / 1024 / 1024).toFixed(2)} MB)`);
-    }
-  }
-}
-    console.log('[UPLOAD] ✓ Phase 1.5 完了 (' + (Date.now() - startTime) + 'ms)');
+    // ★ Phase 1.5 削除（圧縮はuploadAssetBinary内で実行）
 
     // ★ Phase 2: Asset アップロード（並列5個）
     console.log('[UPLOAD] Phase 2: Asset アップロード');
@@ -1556,7 +1531,7 @@ for (let i = 0; i < fileDataList.length; i++) {
 
         console.log('[ASSET_' + idx + '] 開始');
         
-        // ★ Netlify Functions 経由でアップロード
+        // ★ Netlify Functions 経由でアップロード（圧縮込み）
         const assetData = await uploader.uploadAssetBinary(
           release.upload_url,
           fileName,
@@ -1572,7 +1547,7 @@ for (let i = 0; i < fileDataList.length; i++) {
           fileName,
           fileType: info.type,
           downloadUrl: assetData.download_url,
-          fileSize: file.size,
+          fileSize: assetData.size, // ★ 圧縮後のサイズ
           uploadedAt: new Date().toISOString(),
           metadata: {
             extension: fileName.split('.').pop(),
