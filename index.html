@@ -539,42 +539,36 @@
                 <h2 class="features-title">Why Choose Avfile?</h2>
                 <div class="features-grid">
                     <div class="feature-card">
-                        <div class="feature-icon">⚡</div>
                         <div class="feature-title">Lightning Fast</div>
                         <div class="feature-description">
                             Upload and share files instantly. Get your shareable link within seconds, even for large files.
                         </div>
                     </div>
                     <div class="feature-card">
-                        <div class="feature-icon">🔒</div>
                         <div class="feature-title">Secure & Reliable</div>
                         <div class="feature-description">
                             Your files are stored securely and reliably. Share with confidence knowing your content is safe.
                         </div>
                     </div>
                     <div class="feature-card">
-                        <div class="feature-icon">🌐</div>
                         <div class="feature-title">No Login Required</div>
                         <div class="feature-description">
                             Start sharing files immediately. No account, no password, no hassle. Just upload and share.
                         </div>
                     </div>
                     <div class="feature-card">
-                        <div class="feature-icon">♾️</div>
                         <div class="feature-title">No Expiration</div>
                         <div class="feature-description">
                             Your files never expire. Share links anytime, anywhere, and recipients can access them forever.
                         </div>
                     </div>
                     <div class="feature-card">
-                        <div class="feature-icon">🎬</div>
                         <div class="feature-title">Preview Support</div>
                         <div class="feature-description">
                             Preview videos, images, and PDFs directly. No need to download to see what you're sharing.
                         </div>
                     </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">📦</div>
+                    <div class="feature-card">                        <div class="feature-title">Multiple Files</div>
                         <div class="feature-title">Multiple Files</div>
                         <div class="feature-description">
                             Share up to 10 files with a single link. Browse through all files using the carousel viewer.
@@ -1009,11 +1003,11 @@ async function loadView(viewId) {
 
       let preview = '';
       if (videoRegex.test(file.fileName)) {
-        preview = `<div class="file-preview-area"><video controls style="max-width: 100%; max-height: 400px; border-radius: 8px;"><source src="${file.downloadUrl}" type="video/mp4"></video></div>`;
+        preview = `<div class="file-preview-area"><video controls style="max-width: 100%; max-height: 400px; border-radius: 8px;"><source src="/.netlify/functions/download?url=${encodeURIComponent(file.downloadUrl)}" type="video/mp4"></video></div>`;
       } else if (imageRegex.test(file.fileName)) {
-        preview = `<div class="file-preview-area"><img src="${file.downloadUrl}" style="max-width: 100%; max-height: 400px; border-radius: 8px;" /></div>`;
+        preview = `<div class="file-preview-area"><img src="/.netlify/functions/download?url=${encodeURIComponent(file.downloadUrl)}" style="max-width: 100%; max-height: 400px; border-radius: 8px;" /></div>`;
       } else if (pdfRegex.test(file.fileName)) {
-        preview = `<div class="file-preview-area"><iframe src="${file.downloadUrl}" style="width: 100%; height: 100%; border: none;"></iframe></div>`;
+        preview = `<div class="file-preview-area"><iframe src="/.netlify/functions/download?url=${encodeURIComponent(file.downloadUrl)}" style="width: 100%; height: 100%; border: none;"></iframe></div>`;
       } else {
         preview = `<div class="file-preview-area"><p style="color: rgba(255, 255, 255, 0.7);"><a href="${file.downloadUrl}" download style="color: #ffffff;">Download file</a></p></div>`;
       }
