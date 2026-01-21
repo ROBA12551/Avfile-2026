@@ -1,673 +1,245 @@
-const https = require('https');
-
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const GITHUB_OWNER = process.env.GITHUB_OWNER;
-const GITHUB_REPO  = process.env.GITHUB_REPO;
-
-// 非同期処理用の保留ファイル
-let pendingFiles = [];
-let lastGithubJsonUpdate = 0;
-const GITHUB_JSON_UPDATE_INTERVAL = 30000; // 30秒ごと
-
-function logInfo(msg) {
-  console.log(`[INFO] ${new Date().toISOString()} ${msg}`);
-}
-
-function logError(msg) {
-  console.error(`[ERROR] ${new Date().toISOString()} ${msg}`);
-}
-
-function generateShortId(len = 6) {
-  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let out = '';
-  for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
-  return out;
-}
-
 /**
- * GitHub APIにリクエストを送信
+ * js/client-upload.js
+ * ローカルで圧縮したファイルを Base64 エンコード後、サーバーにアップロード
+ * サーバーは単純に GitHub にアップロードするだけ
  */
-async function githubRequest(method, path, body = null, headers = {}) {
-  return new Promise((resolve, reject) => {
-    const options = {
-      hostname: 'api.github.com',
-      port: 443,
-      path,
-      method,
-      timeout: 15000, // 15秒タイムアウト
-      headers: {
-        'Authorization': `token ${GITHUB_TOKEN}`,
-        'Accept': 'application/vnd.github+json',
-        'User-Agent': 'Avfile-Netlify',
-        ...headers,
-      },
-    };
 
-    if (body && typeof body !== 'string' && !Buffer.isBuffer(body)) {
-      body = JSON.stringify(body);
-    }
-    if (body) {
-      options.headers['Content-Type'] = options.headers['Content-Type'] || 'application/json';
-      options.headers['Content-Length'] = Buffer.byteLength(body);
-    }
+class ClientVideoUploader {
+  constructor() {
+    this.compressionEngine = new VideoCompressionEngineLocal();
+  }
 
-    logInfo(`GitHub API Request: ${method} ${path}`);
+  /**
+   * Blob を Base64 文字列に変換（ローカル側）
+   * これはクライアント側で高速に実行される
+   */
+  async blobToBase64(blob) {
+    console.log('[BASE64] Starting blob to base64 conversion...');
+    console.log('[BASE64] Blob size:', blob.size, 'bytes');
 
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', (c) => (data += c));
-      res.on('end', () => {
-        logInfo(`GitHub Response: ${res.statusCode}`);
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          try {
-            resolve(data ? JSON.parse(data) : {});
-          } catch (e) {
-            logError(`JSON parse error: ${e.message}`);
-            resolve({});
-          }
-        } else {
-          const errorMsg = `GitHub API Error ${res.statusCode}: ${data || 'Unknown'}`;
-          logError(errorMsg);
-          reject(new Error(errorMsg));
-        }
-      });
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      const startTime = Date.now();
+
+      reader.onload = () => {
+        const endTime = Date.now();
+        const duration = endTime - startTime;
+        console.log(`[BASE64] Conversion completed in ${duration}ms`);
+
+        // データ URL から "data:video/mp4;base64," プレフィックスを削除
+        const base64String = reader.result.split(',')[1];
+        console.log('[BASE64] Base64 string length:', base64String.length);
+
+        resolve(base64String);
+      };
+
+      reader.onerror = () => {
+        console.error('[BASE64] Conversion error:', reader.error);
+        reject(reader.error);
+      };
+
+      reader.readAsDataURL(blob);
     });
+  }
 
-    req.on('error', (err) => {
-      logError(`Request error: ${err.message}`);
-      reject(err);
-    });
-
-    req.on('timeout', () => {
-      logError('GitHub API Request timeout');
-      req.destroy();
-      reject(new Error('GitHub API Request timeout'));
-    });
-    
-    if (body) req.write(body);
-    req.end();
-  });
-}
-
-/**
- * GitHub アセットアップロード用リクエスト
- */
-async function githubUploadRequest(method, fullUrl, body, headers = {}) {
-  return new Promise((resolve, reject) => {
+  /**
+   * 圧縮されたビデオをアップロード
+   * @param {Blob} compressedVideoBlob - FFmpeg.wasm で圧縮されたビデオ
+   * @param {Object} releaseData - GitHub Release のデータ
+   * @param {Function} onProgress - プログレスコールバック
+   */
+  async uploadCompressedVideo(compressedVideoBlob, releaseData, onProgress = () => {}) {
     try {
-      // URLをバリデーション
-      if (!fullUrl || typeof fullUrl !== 'string') {
-        throw new Error('Invalid uploadUrl: empty or not a string');
+      console.log('[UPLOAD] Starting upload process');
+      console.log('[UPLOAD] Video blob:', {
+        size: compressedVideoBlob.size,
+        type: compressedVideoBlob.type,
+        sizeMB: (compressedVideoBlob.size / 1024 / 1024).toFixed(2)
+      });
+
+      if (!releaseData || !releaseData.upload_url) {
+        throw new Error('Invalid release data - missing upload_url');
       }
 
-      // URI Templateを削除
-      let cleanUrl = fullUrl.trim();
-      cleanUrl = cleanUrl.replace('{?name,label}', '');
-      cleanUrl = cleanUrl.replace('{?name}', '');
-      cleanUrl = cleanUrl.replace(/\{[?&].*?\}/g, '');
+      // ========================================
+      // Step 1: Base64 エンコード（ローカル側）
+      // ========================================
+      onProgress(10, '📦 ファイルをBase64エンコード中...');
+      console.log('[UPLOAD] Step 1: Base64 encoding...');
 
-      logInfo(`Clean Upload URL: ${cleanUrl.substring(0, 80)}...`);
+      const startEncode = Date.now();
+      const base64String = await this.blobToBase64(compressedVideoBlob);
+      const encodeTime = Date.now() - startEncode;
 
-      // URL形式をチェック
-      let parsed;
-      try {
-        parsed = new URL(cleanUrl);
-      } catch (e) {
-        throw new Error(`Invalid URL format: ${e.message}`);
-      }
+      console.log(`[UPLOAD] Base64 encoding completed in ${encodeTime}ms`);
+      console.log('[UPLOAD] Base64 string length:', base64String.length);
 
-      // Buffer 検証
-      if (!Buffer.isBuffer(body)) {
-        throw new Error('Body must be a Buffer');
-      }
+      // ========================================
+      // Step 2: サーバーに送信（JSON で POST）
+      // ========================================
+      onProgress(30, '📤 サーバーにアップロード中...');
+      console.log('[UPLOAD] Step 2: Sending to server...');
 
-      logInfo(`Upload body size: ${body.length} bytes`);
+      const startUpload = Date.now();
 
-      const options = {
-        hostname: parsed.hostname,
-        port: 443,
-        path: parsed.pathname + parsed.search,
-        method,
-        timeout: 30000, // 30秒タイムアウト
+      const response = await fetch('/.netlify/functions/github-upload', {
+        method: 'POST',
         headers: {
-          'Authorization': `token ${GITHUB_TOKEN}`,
-          'User-Agent': 'Avfile-Netlify',
-          'Content-Type': 'application/octet-stream',
-          'Content-Length': body.length,
-          ...headers,
+          'Content-Type': 'application/json'
         },
-      };
-
-      logInfo(`Upload Request: ${method} ${parsed.hostname}${parsed.pathname.substring(0, 50)}...`);
-
-      const req = https.request(options, (res) => {
-        let data = '';
-        res.on('data', (c) => (data += c));
-        res.on('end', () => {
-          logInfo(`Upload Response: ${res.statusCode}`);
-          
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            try {
-              resolve(data ? JSON.parse(data) : {});
-            } catch (e) {
-              logError(`JSON parse error: ${e.message}`);
-              resolve({});
-            }
-          } else {
-            const errorMsg = `Upload Error ${res.statusCode}: ${data || 'Unknown'}`;
-            logError(errorMsg);
-            reject(new Error(errorMsg));
-          }
-        });
+        body: JSON.stringify({
+          action: 'upload-asset',
+          fileBase64: base64String,        // クライアント側でエンコード済み
+          fileName: 'video.mp4',
+          uploadUrl: releaseData.upload_url,
+          fileId: 'file_' + Date.now(),
+          fileSize: compressedVideoBlob.size,
+          isPreCompressed: true             // ローカルで既に圧縮済みであることを示す
+        })
       });
 
-      req.on('error', (err) => {
-        logError(`Upload request error: ${err.message}`);
-        reject(err);
-      });
+      const uploadTime = Date.now() - startUpload;
+      console.log(`[UPLOAD] Network upload completed in ${uploadTime}ms`);
 
-      req.on('timeout', () => {
-        logError('Upload request timeout');
-        req.destroy();
-        reject(new Error('Upload request timeout'));
-      });
-      
-      if (body) req.write(body);
-      req.end();
-    } catch (e) {
-      logError(`Upload Request Error: ${e.message}`);
-      reject(e);
-    }
-  });
-}
+      // ========================================
+      // Step 3: レスポンス解析
+      // ========================================
+      onProgress(80, '✅ レスポンス処理中...');
+      console.log('[UPLOAD] Step 3: Processing response...');
 
-/**
- * Release を作成
- */
-async function createRelease(tag, metadata) {
-  const path = `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases`;
-  const body = {
-    tag_name: tag,
-    name: metadata?.title || 'Uploaded File',
-    body: JSON.stringify(metadata || {}, null, 2),
-    draft: false,
-    prerelease: false,
-  };
+      const result = await response.json();
+      console.log('[UPLOAD] Server response:', result);
 
-  logInfo(`[CREATE_RELEASE] Attempting to create release with tag: ${tag}`);
-  logInfo(`[CREATE_RELEASE] Repo: ${GITHUB_OWNER}/${GITHUB_REPO}`);
-
-  try {
-    const data = await githubRequest('POST', path, body);
-    
-    if (!data || !data.id) {
-      throw new Error('Release creation response missing id field');
-    }
-
-    logInfo(`Release created: ${data.id}`);
-
-    return {
-      release_id: data.id,
-      upload_url: data.upload_url,
-      html_url: data.html_url,
-      tag_name: data.tag_name,
-    };
-  } catch (error) {
-    logError(`[CREATE_RELEASE] Failed: ${error.message}`);
-    throw error;
-  }
-}
-
-/**
- * Asset (ファイル) をアップロード
- */
-async function uploadAsset(uploadUrl, fileName, fileData) {
-  try {
-    logInfo(`Preparing asset upload: ${fileName}`);
-
-    // uploadUrl をバリデーション
-    if (!uploadUrl || typeof uploadUrl !== 'string') {
-      throw new Error('Invalid uploadUrl provided');
-    }
-
-    // URI Template を削除
-    let baseUrl = String(uploadUrl).trim();
-    baseUrl = baseUrl.replace('{?name,label}', '');
-    baseUrl = baseUrl.replace('{?name}', '');
-    baseUrl = baseUrl.replace(/\{[?&].*?\}/g, '');
-
-    // ファイル名をエンコード
-    const encodedFileName = encodeURIComponent(fileName);
-    const assetUrl = `${baseUrl}?name=${encodedFileName}`;
-
-    logInfo(`Asset URL: ${assetUrl.substring(0, 100)}...`);
-
-    // fileData を Buffer に変換
-    let fileBuffer;
-    
-    if (Buffer.isBuffer(fileData)) {
-      fileBuffer = fileData;
-      logInfo(`File is already a Buffer: ${fileBuffer.length} bytes`);
-    } else if (typeof fileData === 'string') {
-      try {
-        // base64 文字列をバリデーション
-        if (!fileData || fileData.length === 0) {
-          throw new Error('fileBase64 is empty');
-        }
-
-        // base64 の有効性をチェック
-        if (!/^[A-Za-z0-9+/=]*$/.test(fileData)) {
-          throw new Error('fileBase64 contains invalid base64 characters');
-        }
-
-        logInfo(`Converting base64 string to Buffer (length: ${fileData.length})`);
-        fileBuffer = Buffer.from(fileData, 'base64');
-
-        // デコード後のバッファサイズをチェック
-        if (fileBuffer.length === 0) {
-          throw new Error('Decoded buffer is empty - possibly invalid base64');
-        }
-
-        logInfo(`Successfully decoded: ${fileBuffer.length} bytes`);
-      } catch (e) {
-        throw new Error(`Base64 decode error: ${e.message}`);
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || `HTTP ${response.status}`);
       }
-    } else {
-      throw new Error(`Invalid fileData type: ${typeof fileData}`);
+
+      const assetData = result.data;
+
+      console.log('[UPLOAD] Asset uploaded successfully:', {
+        assetId: assetData.asset_id,
+        name: assetData.name,
+        size: assetData.size,
+        downloadUrl: assetData.download_url
+      });
+
+      // ========================================
+      // Step 4: 完了
+      // ========================================
+      onProgress(100, '✅ アップロード完了！');
+
+      return {
+        success: true,
+        assetId: assetData.asset_id,
+        fileName: assetData.name,
+        fileSize: assetData.size,
+        downloadUrl: assetData.download_url,
+        uploadTime: uploadTime,
+        encodeTime: encodeTime
+      };
+
+    } catch (error) {
+      console.error('[UPLOAD] Upload failed:', error);
+      onProgress(100, `❌ エラー: ${error.message}`);
+      throw error;
     }
-
-    logInfo(`Final file size: ${fileBuffer.length} bytes`);
-
-    // アップロード実行
-    const data = await githubUploadRequest('POST', assetUrl, fileBuffer);
-
-    if (!data || !data.id) {
-      throw new Error('Asset upload response missing id field');
-    }
-
-    logInfo(`Asset uploaded successfully: ${data.id}`);
-
-    return {
-      asset_id: data.id,
-      name: data.name,
-      size: data.size,
-      download_url: data.browser_download_url,
-    };
-  } catch (e) {
-    logError(`Asset upload failed: ${e.message}`);
-    throw e;
   }
 }
 
 /**
- * github.json を取得
+ * 完全なワークフロー
  */
-async function getGithubJson() {
-  const path = `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`;
-
-  try {
-    logInfo(`Fetching github.json from ${path}`);
-    const res = await githubRequest('GET', path);
-    
-    if (!res.content) {
-      logInfo('github.json not found, creating new one');
-      return {
-        data: { files: [], views: [], lastUpdated: new Date().toISOString() },
-        sha: null,
-      };
-    }
-
-    const decoded = Buffer.from(res.content, 'base64').toString('utf-8');
-    let parsed = JSON.parse(decoded);
-
-    parsed.files = Array.isArray(parsed.files) ? parsed.files : [];
-    parsed.views = Array.isArray(parsed.views) ? parsed.views : [];
-
-    logInfo(`github.json retrieved: ${parsed.files.length} files, ${parsed.views.length} views`);
-
-    return { data: parsed, sha: res.sha };
-  } catch (error) {
-    logError(`Error fetching github.json: ${error.message}`);
-    return {
-      data: { files: [], views: [], lastUpdated: new Date().toISOString() },
-      sha: null,
-    };
-  }
-}
-
-/**
- * github.json を保存
- */
-async function saveGithubJson(jsonData, sha = null) {
-  const path = `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`;
-
-  logInfo(`Saving: ${jsonData.files.length} files, ${jsonData.views.length} views`);
-
-  const content = Buffer.from(JSON.stringify(jsonData, null, 2)).toString('base64');
-
-  const payload = {
-    message: `Update github.json ${new Date().toISOString()}`,
-    content,
-    branch: 'main',
-  };
-
-  if (sha) {
-    payload.sha = sha;
-    logInfo(`Updating existing github.json with SHA: ${sha}`);
-  } else {
-    logInfo(`Creating new github.json`);
+class VideoUploadWorkflow {
+  constructor() {
+    this.compressionEngine = new VideoCompressionEngineLocal();
+    this.uploader = new ClientVideoUploader();
   }
 
-  try {
-    await githubRequest('PUT', path, payload);
-    logInfo('github.json saved successfully');
-  } catch (error) {
-    logError(`Failed to save github.json: ${error.message}`);
-    throw error;
-  }
-}
-
-/**
- * github.json を非同期で更新（タイムアウト対策）
- */
-async function updateGithubJsonAsync(fileId, fileName, downloadUrl, fileSize) {
-  try {
-    pendingFiles.push({
-      fileId,
-      fileName,
-      downloadUrl,
-      fileSize,
-      uploadedAt: new Date().toISOString(),
-    });
-
-    const now = Date.now();
-    const timeSinceLastUpdate = now - lastGithubJsonUpdate;
-
-    // 一定時間経過したか、保留中のファイルが多い場合は更新
-    if (timeSinceLastUpdate >= GITHUB_JSON_UPDATE_INTERVAL || pendingFiles.length >= 10) {
-      logInfo(`[ASYNC] Flushing ${pendingFiles.length} pending files to github.json`);
-      
-      const current = await getGithubJson();
-      const json = current.data;
-      json.files = json.files || [];
-      json.files.push(...pendingFiles);
-      json.lastUpdated = new Date().toISOString();
-      
-      await saveGithubJson(json, current.sha);
-      
-      lastGithubJsonUpdate = Date.now();
-      pendingFiles = [];
-      
-      logInfo(`[ASYNC] github.json updated successfully`);
-    } else {
-      logInfo(`[ASYNC] File queued for batch update (${pendingFiles.length} pending)`);
-    }
-  } catch (error) {
-    logError(`[ASYNC] github.json update failed: ${error.message}`);
-    // エラーでも処理は続行（critical ではない）
-  }
-}
-
-/**
- * View を作成
- */
-async function createViewOnServer(fileIds, passwordHash, origin) {
-  try {
-    logInfo(`Creating view with ${fileIds.length} files`);
-
-    const current = await getGithubJson();
-    const json = current.data;
-
-    // ユニークな viewId を生成
-    let viewId = null;
-    for (let i = 0; i < 12; i++) {
-      const cand = generateShortId(6);
-      const exists = (json.views || []).some(v => v && v.viewId === cand);
-      if (!exists) { 
-        viewId = cand; 
-        break; 
-      }
-    }
-    
-    if (!viewId) {
-      throw new Error('Failed to generate unique viewId');
-    }
-
-    json.views = json.views || [];
-    
-    // Share URL を作成
-    const shareUrl = `${(origin || '').replace(/\/$/, '')}/d/${viewId}`;
-
-    // View をデータに追加
-    json.views.push({
-      viewId,
-      files: fileIds,
-      password: passwordHash || null,
-      shareUrl: shareUrl,
-      createdAt: new Date().toISOString(),
-    });
-
-    json.lastUpdated = new Date().toISOString();
-
-    // github.json を保存
-    await saveGithubJson(json, current.sha);
-
-    logInfo(`View created: ${viewId}`);
-
-    return {
-      viewId,
-      viewPath: `/d/${viewId}`,
-      shareUrl: shareUrl,
-    };
-  } catch (error) {
-    logError(`Failed to create view: ${error.message}`);
-    throw error;
-  }
-}
-
-/**
- * Netlify Function ハンドラー
- */
-exports.handler = async (event) => {
-  try {
-    logInfo(`=== REQUEST START ===`);
-    logInfo(`Method: ${event.httpMethod}, Path: ${event.path}`);
-
-    // ========================================
-    // 環境変数チェック
-    // ========================================
-    if (!GITHUB_TOKEN) {
-      logError('GITHUB_TOKEN is not set');
-      return {
-        statusCode: 500,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          success: false, 
-          error: 'GITHUB_TOKEN not configured',
-          details: 'Please set GITHUB_TOKEN environment variable in Netlify'
-        }),
-      };
-    }
-
-    if (!GITHUB_OWNER) {
-      logError('GITHUB_OWNER is not set');
-      return {
-        statusCode: 500,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          success: false, 
-          error: 'GITHUB_OWNER not configured',
-          details: 'Please set GITHUB_OWNER environment variable in Netlify'
-        }),
-      };
-    }
-
-    if (!GITHUB_REPO) {
-      logError('GITHUB_REPO is not set');
-      return {
-        statusCode: 500,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          success: false, 
-          error: 'GITHUB_REPO not configured',
-          details: 'Please set GITHUB_REPO environment variable in Netlify'
-        }),
-      };
-    }
-
-    // ========================================
-    // CORS プリフライト対応
-    // ========================================
-    if (event.httpMethod === 'OPTIONS') {
-      return {
-        statusCode: 200,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST,OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
-        },
-        body: '',
-      };
-    }
-
-    // ========================================
-    // リクエストボディをパース
-    // ========================================
-    let body;
+  /**
+   * ビデオファイルを選択 → ローカルで圧縮 → Base64 エンコード → アップロード
+   */
+  async handleVideoUpload(videoFile, releaseData, onProgress = () => {}) {
     try {
-      body = JSON.parse(event.body || '{}');
-    } catch (e) {
-      logError(`Failed to parse request body: ${e.message}`);
+      console.log('=== VIDEO UPLOAD WORKFLOW START ===');
+      console.log('Input file:', {
+        name: videoFile.name,
+        size: videoFile.size,
+        sizeMB: (videoFile.size / 1024 / 1024).toFixed(2)
+      });
+
+      // ========================================
+      // Phase 1: ビデオ圧縮（ローカル）
+      // ========================================
+      console.log('[WORKFLOW] Phase 1: Compress video locally...');
+      
+      const startCompress = Date.now();
+      const compressedBlob = await this.compressionEngine.compress(
+        videoFile,
+        (progress, message) => {
+          // 全体の 0-50% を圧縮フェーズに割り当て
+          onProgress(Math.floor(progress / 2), `[圧縮] ${message}`);
+        }
+      );
+      const compressTime = Date.now() - startCompress;
+
+      console.log('[WORKFLOW] Compression completed:', {
+        originalSize: videoFile.size,
+        compressedSize: compressedBlob.size,
+        ratio: ((1 - compressedBlob.size / videoFile.size) * 100).toFixed(0) + '%',
+        duration: compressTime + 'ms'
+      });
+
+      // ========================================
+      // Phase 2: Base64 エンコード + アップロード
+      // ========================================
+      console.log('[WORKFLOW] Phase 2: Encode and upload...');
+
+      const startUpload = Date.now();
+      const uploadResult = await this.uploader.uploadCompressedVideo(
+        compressedBlob,
+        releaseData,
+        (progress, message) => {
+          // 全体の 50-100% をアップロードフェーズに割り当て
+          onProgress(50 + Math.floor(progress / 2), `[アップロード] ${message}`);
+        }
+      );
+      const uploadTime = Date.now() - startUpload;
+
+      console.log('[WORKFLOW] Upload completed:', uploadResult);
+
+      // ========================================
+      // Phase 3: クリーンアップ
+      // ========================================
+      console.log('[WORKFLOW] Phase 3: Cleanup...');
+      await this.compressionEngine.cleanup();
+
+      const totalTime = compressTime + uploadTime;
+      console.log('=== VIDEO UPLOAD WORKFLOW SUCCESS ===');
+      console.log('Timeline:', {
+        compressionTime: compressTime + 'ms',
+        uploadTime: uploadTime + 'ms',
+        totalTime: totalTime + 'ms'
+      });
+
       return {
-        statusCode: 400,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          success: false, 
-          error: 'Invalid JSON in request body'
-        }),
+        success: true,
+        originalSize: videoFile.size,
+        compressedSize: compressedBlob.size,
+        compressionRatio: ((1 - compressedBlob.size / videoFile.size) * 100).toFixed(0) + '%',
+        compressTime: compressTime,
+        uploadTime: uploadTime,
+        totalTime: totalTime,
+        asset: uploadResult
       };
+
+    } catch (error) {
+      console.error('[WORKFLOW] Upload workflow failed:', error);
+      await this.compressionEngine.cleanup();
+      throw error;
     }
-
-    logInfo(`Action: ${body.action}`);
-    
-    let response;
-
-    // ========================================
-    // アクション別処理
-    // ========================================
-    switch (body.action) {
-      // -------- Release 作成 --------
-      case 'create-release': {
-        logInfo(`Creating release: ${body.releaseTag}`);
-        
-        if (!body.releaseTag) {
-          throw new Error('releaseTag is required');
-        }
-
-        response = await createRelease(body.releaseTag, body.metadata);
-        break;
-      }
-
-      // -------- Asset アップロード --------
-      case 'upload-asset': {
-        logInfo(`Uploading asset: ${body.fileName}`);
-        
-        // バリデーション
-        if (!body.fileBase64 || typeof body.fileBase64 !== 'string') {
-          throw new Error('Invalid fileBase64: must be a non-empty string');
-        }
-
-        if (!body.fileName || typeof body.fileName !== 'string') {
-          throw new Error('Invalid fileName: must be a non-empty string');
-        }
-
-        if (!body.uploadUrl || typeof body.uploadUrl !== 'string') {
-          throw new Error('Invalid uploadUrl: must be a non-empty string');
-        }
-
-        logInfo(`File: ${body.fileName}, Base64 length: ${body.fileBase64.length}`);
-
-        // Asset をアップロード（同期的に完了を待つ）
-        const assetResponse = await uploadAsset(
-          body.uploadUrl,
-          body.fileName,
-          body.fileBase64
-        );
-
-        // github.json 更新は非同期で実行（レスポンスを待たない）
-        updateGithubJsonAsync(
-          body.fileId,
-          body.fileName,
-          assetResponse.download_url,
-          body.fileSize
-        ).catch(err => logError(`Async update error: ${err.message}`));
-
-        // Asset アップロード結果を即座に返す
-        response = assetResponse;
-        break;
-      }
-
-      // -------- github.json 取得 --------
-      case 'get-github-json': {
-        logInfo('Getting github.json');
-        const result = await getGithubJson();
-        response = result.data;
-        break;
-      }
-
-      // -------- github.json 保存 --------
-      case 'save-github-json': {
-        logInfo('Saving github.json');
-        
-        if (!body.jsonData) {
-          throw new Error('jsonData is required');
-        }
-
-        const current = await getGithubJson();
-        await saveGithubJson(body.jsonData, current.sha);
-        response = { success: true };
-        break;
-      }
-
-      // -------- View 作成 --------
-      case 'create-view': {
-        logInfo(`Creating view with ${body.fileIds ? body.fileIds.length : 0} files`);
-        
-        const fileIds = Array.isArray(body.fileIds) ? body.fileIds : [];
-        if (fileIds.length === 0) {
-          throw new Error('fileIds is required and must be non-empty array');
-        }
-
-        const passwordHash = body.passwordHash || null;
-        const origin = body.origin || '';
-        
-        response = await createViewOnServer(fileIds, passwordHash, origin);
-        break;
-      }
-
-      default:
-        throw new Error(`Unknown action: ${body.action}`);
-    }
-
-    logInfo(`=== REQUEST SUCCESS ===`);
-    
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ success: true, data: response }),
-    };
-  } catch (e) {
-    logError(`=== REQUEST FAILED ===`);
-    logError(`Error: ${e.message}`);
-    logError(`Stack: ${e.stack}`);
-    
-    return {
-      statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        success: false, 
-        error: e.message || 'Internal Server Error'
-      }),
-    };
   }
-};
+}
+
+// グローバル変数に割り当て
+window.ClientVideoUploader = ClientVideoUploader;
+window.VideoUploadWorkflow = VideoUploadWorkflow;

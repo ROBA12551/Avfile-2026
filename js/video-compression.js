@@ -1,9 +1,10 @@
 /**
- * js/video-compression.js - iOS完全対応版
- * FFmpeg.wasm による動画圧縮
+ * js/video-compression-local.js
+ * ローカル（クライアント側）で完全に圧縮処理を行う
+ * サーバーはBase64デコード→Gzipもしない、単純にGitHubアップロードのみ
  */
 
-class VideoCompressionEngine {
+class VideoCompressionEngineLocal {
   constructor() {
     this.ffmpeg = null;
     this.ffmpegReady = false;
@@ -241,4 +242,4 @@ class VideoCompressionEngine {
   }
 }
 
-window.VideoCompressionEngine = VideoCompressionEngine;
+window.VideoCompressionEngineLocal = VideoCompressionEngineLocal;
