@@ -1,4 +1,9 @@
-
+/**
+ * js/simple-upload.js
+ * 
+ * 本番用アップロード管理 - GitHub Releases へ実際にアップロード
+ * デモモードなし - 本番環境のみ
+ */
 
 class SimpleUploadManager {
   constructor() {
@@ -74,14 +79,14 @@ class SimpleUploadManager {
       }
 
       const fileId = this.generateUUID();
-      onProgress(2, ' 準備中...');
+      onProgress(2, '⏳ 準備中...');
 
       // 動画ファイルのみ圧縮
       let processedBlob = fileBlob;
       let wasCompressed = false;
 
       if (this.isVideoFile(fileBlob)) {
-        console.log(' 動画ファイルを検出 - 720p 30fps に圧縮開始...');
+        console.log('🎥 動画ファイルを検出 - 720p 30fps に圧縮開始...');
         
         if (window.VideoCompressionEngine) {
           try {
@@ -94,20 +99,24 @@ class SimpleUploadManager {
             const originalMB = (fileBlob.size / 1024 / 1024).toFixed(1);
             const compressedMB = (processedBlob.size / 1024 / 1024).toFixed(1);
             const ratio = ((1 - processedBlob.size / fileBlob.size) * 100).toFixed(0);
-            console.log(` 圧縮完了: ${originalMB}MB → ${compressedMB}MB (${ratio}% 削減)`);
+            console.log(`📊 圧縮完了: ${originalMB}MB → ${compressedMB}MB (${ratio}% 削減)`);
           } catch (error) {
-            console.warn(' 圧縮失敗 - オリジナルでアップロード:', error.message);
+            console.warn('⚠️ 圧縮失敗 - FFmpeg のロードに問題があります');
+            console.warn('ℹ️ エラー詳細:', error.message);
+            console.warn('ℹ️ ネットワーク接続を確認し、再度アップロードしてください');
+            console.warn('ℹ️ オリジナルファイルでアップロードを続行します');
             wasCompressed = false;
           }
         } else {
-          console.warn(' 圧縮エンジンが利用できません');
+          console.warn('⚠️ 圧縮エンジンが利用できません - スクリプトのロードを確認してください');
+          wasCompressed = false;
         }
       }
 
-      onProgress(40, ' Base64 エンコード中...');
+      onProgress(40, '📤 Base64 エンコード中...');
       const base64 = await this.fileToBase64(processedBlob);
 
-      onProgress(45, ' GitHub にアップロード中...');
+      onProgress(45, '☁️ GitHub にアップロード中...');
 
       // Release を作成
       const releaseTag = `file_${fileId}`;
@@ -120,7 +129,7 @@ class SimpleUploadManager {
         `File ID: ${fileId}\nOriginal Name: ${fileName}\nType: ${processedBlob.type}\nUploaded: ${new Date().toISOString()}\nCompressed: ${wasCompressed ? 'Yes' : 'No'}`
       );
 
-      onProgress(65, ' ファイルをアップロード中...');
+      onProgress(65, '📤 ファイルをアップロード中...');
 
       // Asset をアップロード
       const assetData = await this.githubUploader.uploadAsset(
@@ -129,7 +138,7 @@ class SimpleUploadManager {
         base64
       );
 
-      onProgress(80, ' アップロード情報を記録中...');
+      onProgress(80, '📝 アップロード情報を記録中...');
 
       // github.json にファイル情報を追加
       const githubJson = await this.githubUploader.getGithubJson();
@@ -150,15 +159,15 @@ class SimpleUploadManager {
 
       await this.githubUploader.saveGithubJson(githubJson);
 
-      onProgress(90, ' 共有リンク生成中...');
+      onProgress(90, '🔗 共有リンク生成中...');
       const viewUrl = `${window.location.origin}/?id=${fileId}`;
 
-      onProgress(98, ' 最後の処理中...');
-      onProgress(100, ' アップロード完了！');
+      onProgress(98, '✨ 最後の処理中...');
+      onProgress(100, '✅ アップロード完了！');
 
-      console.log('ファイルが GitHub にアップロードされました');
-      console.log('視聴URL:', viewUrl);
-      console.log('ダウンロードURL:', assetData.download_url);
+      console.log('✅ ファイルが GitHub にアップロードされました');
+      console.log('📺 視聴URL:', viewUrl);
+      console.log('📥 ダウンロードURL:', assetData.download_url);
 
       return {
         success: true,
@@ -173,7 +182,7 @@ class SimpleUploadManager {
         wasCompressed: wasCompressed,
       };
     } catch (error) {
-      console.error('アップロードエラー:', error.message);
+      console.error('❌ アップロードエラー:', error.message);
       throw new Error(`ファイルアップロード失敗: ${error.message}`);
     }
   }
@@ -187,7 +196,7 @@ class SimpleUploadManager {
       const files = githubJson.files || [];
       return files.find(f => f.fileId === fileId) || null;
     } catch (error) {
-      console.error('ファイル取得エラー:', error.message);
+      console.error('❌ ファイル取得エラー:', error.message);
       return null;
     }
   }
@@ -200,7 +209,7 @@ class SimpleUploadManager {
       const githubJson = await this.githubUploader.getGithubJson();
       return githubJson.files || [];
     } catch (error) {
-      console.error('ファイル一覧取得エラー:', error.message);
+      console.error('❌ ファイル一覧取得エラー:', error.message);
       return [];
     }
   }
@@ -220,9 +229,9 @@ class SimpleUploadManager {
         document.execCommand('copy');
         document.body.removeChild(textarea);
       }
-      console.log('コピー完了');
+      console.log('✅ コピー完了');
     } catch (error) {
-      console.error('コピーエラー:', error.message);
+      console.error('❌ コピーエラー:', error.message);
     }
   }
 }

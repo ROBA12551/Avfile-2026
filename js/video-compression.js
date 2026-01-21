@@ -20,21 +20,33 @@ class VideoCompressionEngine {
     }
 
     try {
-      // FFmpeg.wasm がロードされるまで待機
+      // FFmpeg.wasm がロードされるまで待機（最大10秒）
       let attempts = 0;
-      while (!window.FFmpeg && attempts < 50) {
+      const maxAttempts = 100; // 100 * 100ms = 10秒
+      
+      while (!window.FFmpeg && attempts < maxAttempts) {
+        console.log(`⏳ FFmpeg ロード待機中... (${attempts + 1}/${maxAttempts})`);
         await new Promise(resolve => setTimeout(resolve, 100));
         attempts++;
       }
 
       if (!window.FFmpeg) {
-        throw new Error('FFmpeg.wasm library failed to load');
+        console.error('❌ FFmpeg.wasm がロードされません');
+        console.error('🔍 デバッグ情報:');
+        console.error('  - window.FFmpeg:', typeof window.FFmpeg);
+        console.error('  - navigator.onLine:', navigator.onLine);
+        console.error('  - スクリプトURL:', 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.6/dist/ffmpeg.min.js');
+        throw new Error('FFmpeg.wasm ライブラリのロードに失敗しました。ネットワーク接続を確認してください。');
       }
+
+      console.log('✅ FFmpeg ロード完了');
 
       const { FFmpeg, fetchFile } = window.FFmpeg;
       this.ffmpeg = new FFmpeg.FFmpeg();
       
       const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
+      console.log('⏳ FFmpeg コアをロード中...');
+      
       await this.ffmpeg.load({
         coreURL: `${baseURL}/ffmpeg-core.js`,
         wasmURL: `${baseURL}/ffmpeg-core.wasm`,

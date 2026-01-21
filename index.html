@@ -422,7 +422,7 @@
             </div>
             <div class="nav-links">
                 <a href="/">Home</a>
-                <a href="policy.html">Terms</a>
+                <a href="/policy">Terms</a>
             </div>
         </div>
     </nav>
@@ -545,7 +545,7 @@
     </main>
 
     <footer class="footer">
-        <p>&copy; 2026 Avfile. <a href="policy.html">Privacy & Terms</a> • Fast File Sharing</p>
+        <p>&copy; 2025 Avfile. <a href="/policy">Privacy & Terms</a> • Fast File Sharing</p>
     </footer>
 
     <!-- Bottom Banner -->
@@ -564,14 +564,18 @@
         };
     </script>
 
-    <!-- FFmpeg.wasm Library -->
-    <script async src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.6/dist/ffmpeg.min.js"></script>
+    <!-- FFmpeg.wasm Library - Must load before app scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.6/dist/ffmpeg.min.js"></script>
 
     <!-- App Scripts -->
     <script src="js/storage.js?v=8"></script>
     <script src="js/video-compression.js?v=8"></script>
     <script src="js/github-api.js?v=8"></script>
     <script src="js/simple-upload.js?v=8"></script>
+    <script>
+        // FFmpeg.wasm ロード確認
+        console.log('🔍 FFmpeg グローバルオブジェクト確認:', typeof window.FFmpeg !== 'undefined' ? '✅ ロード済み' : '❌ 未ロード');
+    </script>
     <script>
         const urlParams = new URLSearchParams(window.location.search);
         const fileId = urlParams.get('id');
