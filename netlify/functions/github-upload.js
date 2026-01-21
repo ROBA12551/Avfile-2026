@@ -166,8 +166,7 @@ async function createRelease(tag, metadata) {
     tag_name: data.tag_name,
   };
 }
-
-// ★ 修正: uploadAsset関数を完全にリファクタリング
+// ★ 修正: uploadAsset関数を完全にリファクタリング（iOS対応）
 async function uploadAsset(uploadUrl, fileData, fileName) {
   try {
     logInfo(`Preparing asset upload: ${fileName}`);
@@ -177,14 +176,36 @@ async function uploadAsset(uploadUrl, fileData, fileName) {
       throw new Error('Invalid uploadUrl provided');
     }
 
-    // ★ 修正: URI Templateを削除
+    // ★ 修正: iOS対応 - ファイル名をサニタイズ
+    let sanitizedFileName = String(fileName || 'file')
+      .replace(/[<>:"\\/|?*\x00-\x1f]/g, '_') // 危険な文字を削除
+      .replace(/\s+/g, '_') // スペースをアンダースコアに
+      .replace(/_+/g, '_') // 連続したアンダースコアを1つに
+      .trim();
+
+    if (!sanitizedFileName || sanitizedFileName === '.' || sanitizedFileName === '_') {
+      sanitizedFileName = 'file';
+    }
+
+    if (sanitizedFileName.length > 200) {
+      sanitizedFileName = sanitizedFileName.substring(0, 200);
+    }
+
+    logInfo(`Original fileName: ${fileName}`);
+    logInfo(`Sanitized fileName: ${sanitizedFileName}`);
+
+    // ★ 修正: URI Templateを削除（複数パターン対応）
     let baseUrl = String(uploadUrl).trim();
+    
+    // 全パターンのURI Templateを削除
     baseUrl = baseUrl.replace('{?name,label}', '');
     baseUrl = baseUrl.replace('{?name}', '');
-    baseUrl = baseUrl.replace(/\{[?&].*?\}/g, '');
+    baseUrl = baseUrl.replace(/\{[?&\w,]*\}/g, ''); // より安全な正規表現
 
-    // ★ 修正: fileName をエンコード
-    const encodedFileName = encodeURIComponent(fileName);
+    logInfo(`Base Upload URL: ${baseUrl.substring(0, 100)}...`);
+
+    // ★ 修正: encodeURIComponent の代わりにより安全なエンコーディング
+    const encodedFileName = encodeURIComponent(sanitizedFileName);
     const assetUrl = `${baseUrl}?name=${encodedFileName}`;
 
     logInfo(`Asset URL: ${assetUrl.substring(0, 100)}...`);
@@ -192,6 +213,7 @@ async function uploadAsset(uploadUrl, fileData, fileName) {
     // ★ 修正: fileData が Buffer であることを確認
     if (!Buffer.isBuffer(fileData)) {
       if (typeof fileData === 'string') {
+        logInfo(`Converting base64 to Buffer (${fileData.length} chars)`);
         fileData = Buffer.from(fileData, 'base64');
       } else {
         throw new Error('Invalid fileData type');
@@ -200,11 +222,15 @@ async function uploadAsset(uploadUrl, fileData, fileName) {
 
     logInfo(`File size: ${fileData.length} bytes`);
 
-    const data = await githubUploadRequest('POST', assetUrl, fileData, { 
-      'Content-Type': 'application/octet-stream' 
-    });
+    // ★ 修正: Content-Type を明示的に設定
+    const uploadHeaders = {
+      'Content-Type': 'application/octet-stream',
+      'Content-Length': fileData.length,
+    };
 
-    logInfo(`Asset uploaded successfully`);
+    const data = await githubUploadRequest('POST', assetUrl, fileData, uploadHeaders);
+
+    logInfo(`Asset uploaded successfully: ${data.name}`);
 
     return {
       asset_id: data.id,
@@ -215,6 +241,51 @@ async function uploadAsset(uploadUrl, fileData, fileName) {
   } catch (e) {
     logError(`Asset upload failed: ${e.message}`);
     throw e;
+  }
+}
+
+// ★ 新規追加: uploadAsset内でバリデーション
+function validateAndSanitizeFileName(fileName) {
+  if (!fileName || typeof fileName !== 'string') {
+    return 'file';
+  }
+
+  try {
+    // iOS特有の対応
+    let sanitized = String(fileName)
+      .trim()
+      .replace(/^\.+/, '') // 先頭のドットを削除
+      .replace(/[\x00-\x1f<>:"\\/|?*]/g, '_'); // 制御文字と危険な文字を削除
+
+    // スペースを処理
+    sanitized = sanitized.replace(/\s+/g, '_');
+
+    // 連続した特殊文字を削除
+    sanitized = sanitized.replace(/_+/g, '_').replace(/^_+|_+$/g, '');
+
+    // 拡張子の処理
+    const parts = sanitized.split('.');
+    if (parts.length > 1) {
+      const ext = parts[parts.length - 1].toLowerCase();
+      if (ext.length > 10 || ext.length === 0) {
+        sanitized = parts.slice(0, -1).join('.');
+      }
+    }
+
+    // 長さ制限
+    if (sanitized.length > 200) {
+      sanitized = sanitized.substring(0, 200);
+    }
+
+    // 空文字列チェック
+    if (!sanitized || sanitized === '.' || sanitized === '_') {
+      sanitized = 'file';
+    }
+
+    return sanitized;
+  } catch (e) {
+    logError(`Error sanitizing fileName: ${e.message}`);
+    return 'file';
   }
 }
 
@@ -322,34 +393,36 @@ exports.handler = async (event) => {
         logInfo(`Action: create-release tag=${body.releaseTag}`);
         response = await createRelease(body.releaseTag, body.metadata);
         break;
+case 'upload-asset':
+  logInfo(`Action: upload-asset fileName=${body.fileName}`);
+  
+  // ★ 修正: ファイル名をサニタイズ
+  const sanitizedFileName = validateAndSanitizeFileName(body.fileName);
+  
+  const assetResponse = await uploadAsset(
+    body.uploadUrl,
+    body.fileBase64,
+    sanitizedFileName  // サニタイズされたファイル名を使用
+  );
 
-      case 'upload-asset':
-        logInfo(`Action: upload-asset fileName=${body.fileName}`);
-        const assetResponse = await uploadAsset(
-          body.uploadUrl,
-          body.fileBase64, // base64文字列として渡される
-          body.fileName
-        );
+  const current = await getGithubJson();
+  const json = current.data;
+  json.files = json.files || [];
 
-        const current = await getGithubJson();
-        const json = current.data;
-        json.files = json.files || [];
+  const fileInfo = {
+    fileId: body.fileId,
+    fileName: sanitizedFileName,  // サニタイズされたファイル名を保存
+    downloadUrl: assetResponse.download_url,
+    fileSize: body.fileSize,
+    uploadedAt: new Date().toISOString(),
+  };
 
-        const fileInfo = {
-          fileId: body.fileId,
-          fileName: body.fileName,
-          downloadUrl: assetResponse.download_url,
-          fileSize: body.fileSize,
-          uploadedAt: new Date().toISOString(),
-        };
+  json.files.push(fileInfo);
+  logInfo(`File saved to github.json: ${sanitizedFileName}`);
+  await saveGithubJson(json, current.sha);
 
-        json.files.push(fileInfo);
-        logInfo(`File saved to github.json: ${body.fileName}`);
-        await saveGithubJson(json, current.sha);
-
-        response = assetResponse;
-        break;
-
+  response = assetResponse;
+  break;
       case 'get-github-json':
         logInfo('Action: get-github-json');
         const result = await getGithubJson();

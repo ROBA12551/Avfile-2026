@@ -980,34 +980,28 @@ function escapeHtml(t) {
   return d.innerHTML;
 }
 
-// 修正版getIcon関数
+// ファイルタイプの判定を修正 (正規表現の安全性向上)
 function getIcon(name) {
+  if (!name || typeof name !== 'string') return 'F';
+  
   try {
-    if (!name || typeof name !== 'string') return 'F';
-    
     const nameLower = String(name).toLowerCase().trim();
     if (!nameLower || nameLower.length === 0) return 'F';
     
-    // 拡張子を安全に取得
-    const parts = nameLower.split('.');
-    const ext = parts.length > 1 ? parts[parts.length - 1] : '';
-    
-    // 拡張子が安全な形式か確認
-    if (!ext || ext.length === 0 || ext.length > 10) return 'F';
-    
+    // 正規表現は安全にエスケープされた形式で定義
     const videoExtensions = ['mp4', 'webm', 'ogg', 'mkv', 'avi', 'mov', 'flv', 'wmv', 'm4v', 'ts', 'm2ts', 'mts', '3gp', '3g2', 'asf', 'f4v', 'm3u8', 'mxf'];
     const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'ico', 'tiff', 'tif'];
     const pdfExtensions = ['pdf'];
     
+    const ext = nameLower.split('.').pop();
+    
     if (videoExtensions.includes(ext)) return 'V';
     if (imageExtensions.includes(ext)) return 'I';
     if (pdfExtensions.includes(ext)) return 'P';
-    
-    return 'F';
   } catch (e) {
-    console.error('[ICON] Error:', e);
-    return 'F';
+    console.error('[ICON] Error:', e.message, 'name:', name);
   }
+  return 'F';
 }
 
 // ファイルサイズのフォーマット
@@ -1066,36 +1060,12 @@ document.getElementById('uploadMoreBtn').onclick = () => { showUpload(); documen
 document.getElementById('openLinkBtn').onclick = () => window.open(document.getElementById('shareUrl').value);
 document.getElementById('retryBtn').onclick = () => { showUpload(); document.getElementById('fileInput').value = ''; };
 document.getElementById('backBtn').onclick = () => showUpload();
-// モバイル判定関数（新規追加）
-function isMobileDevice() {
-  const userAgent = navigator.userAgent || navigator.vendor || window.opera;
-  
-  // iOS判定
-  if (/iPad|iPhone|iPod/.test(userAgent)) {
-    console.log('[MOBILE] iOS detected');
-    return true;
-  }
-  
-  // Android判定
-  if (/android/i.test(userAgent)) {
-    console.log('[MOBILE] Android detected');
-    return true;
-  }
-  
-  // その他のモバイル判定
-  if (/mobile/i.test(userAgent)) {
-    console.log('[MOBILE] Mobile device detected');
-    return true;
-  }
-  
-  return false;
-}
-// ファイルアップロード処理（モバイル最適化版）
+
+// ファイルアップロード処理（iOS対応版）
 async function uploadMultiple(files) {
   showStatus();
   const uploader = new GitHubUploader();
   const ids = [];
-  const isMobile = isMobileDevice();
 
   try {
     const promises = files.map((file, i) => (async () => {
@@ -1104,7 +1074,6 @@ async function uploadMultiple(files) {
       const fileId = 'f_' + Math.random().toString(36).substr(2, 9);
       
       console.log('[UPLOAD] Starting file:', file.name, 'Size:', file.size, 'Type:', file.type);
-      console.log('[UPLOAD] isMobile:', isMobile);
       
       // ファイル名のサニタイゼーション（iOS対応）
       let fileName = file.name || 'file';
@@ -1119,8 +1088,7 @@ async function uploadMultiple(files) {
       // 安全なビデオ形式判定
       const isVideo = isVideoFile(file);
       
-      // モバイルの場合は圧縮処理をスキップ
-      if (isVideo && !isMobile) {
+      if (isVideo) {
         const isMov = file.type === 'video/quicktime' || file.name.toLowerCase().endsWith('.mov');
         const needsCompression = file.size > VIDEO_COMPRESSION_THRESHOLD;
         
@@ -1130,7 +1098,7 @@ async function uploadMultiple(files) {
           try {
             uploadFile = await convertAndCompressVideo(file);
             const savedMB = ((file.size - uploadFile.size) / 1024 / 1024).toFixed(2);
-            console.log('[UPLOAD] Video optimization successful - Saved', savedMB + 'MB');
+            console.log('[UPLOAD] Video optimization successful');
           } catch (err) {
             console.warn('[UPLOAD] Video optimization failed:', err.message);
             uploadFile = file;
@@ -1140,14 +1108,11 @@ async function uploadMultiple(files) {
           document.getElementById('statusMessage').textContent = `${i + 1} / ${files.length} - Converting to MP4...`;
           try {
             uploadFile = await convertMovToMp4(file);
-            console.log('[UPLOAD] Conversion successful:', uploadFile.name);
           } catch (err) {
             console.warn('[UPLOAD] Video conversion failed:', err.message);
             uploadFile = file;
           }
         }
-      } else if (isVideo && isMobile) {
-        console.log('[UPLOAD] Skipping video compression on mobile device');
       }
       
       // Base64変換
@@ -1162,7 +1127,6 @@ async function uploadMultiple(files) {
               if (!b64) {
                 reject(new Error('Failed to convert file to base64'));
               }
-              console.log('[UPLOAD] Base64 created:', fileName);
               resolve(b64);
             } catch (e) {
               reject(e);
@@ -1210,43 +1174,6 @@ async function uploadMultiple(files) {
     showError(errorMsg);
   }
 }
-
-// ファイル名のサニタイゼーション関数（新規追加）
-function sanitizeFileName(fileName) {
-  try {
-    if (!fileName || typeof fileName !== 'string') {
-      return 'file';
-    }
-    
-    let sanitized = fileName
-      .replace(/[<>:"\\/|?*\x00-\x1f]/g, '_')
-      .replace(/\s+/g, '_')
-      .replace(/_+/g, '_')
-      .trim();
-    
-    const parts = sanitized.split('.');
-    const ext = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : '';
-    
-    if (ext && ext.length > 10) {
-      sanitized = parts.slice(0, -1).join('.');
-    }
-    
-    if (!sanitized || sanitized === '.' || sanitized === '_') {
-      sanitized = 'file';
-    }
-    
-    if (sanitized.length > 200) {
-      sanitized = sanitized.substring(0, 200);
-    }
-    
-    console.log('[SANITIZE] Original:', fileName, '→ Sanitized:', sanitized);
-    return sanitized;
-  } catch (e) {
-    console.error('[SANITIZE] Error:', e);
-    return 'file';
-  }
-}
-
 
 // ファイル名のサニタイゼーション関数（新規追加）
 function sanitizeFileName(fileName) {
