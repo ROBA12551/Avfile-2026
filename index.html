@@ -16,6 +16,10 @@
     <meta name="language" content="English">
     <meta name="revisit-after" content="7 days">
     
+    <!-- CORS Meta Tag -->
+    <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin-allow-popups">
+    <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
+    
     <!-- Open Graph Tags (Social Media) -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://avfile.netlify.app">
@@ -113,7 +117,6 @@
             padding: 0 1rem;
         }
 
-        /* Banner Container */
         .banner-container {
             display: flex;
             justify-content: center;
@@ -231,7 +234,6 @@
             margin-top: 1rem;
         }
 
-        /* File History Modal */
         .modal {
             display: none;
             position: fixed;
@@ -294,95 +296,12 @@
             flex: 1;
             overflow-y: auto;
             padding-right: 0.5rem;
-            margin-bottom: 1rem;
-        }
-
-        .file-list::-webkit-scrollbar {
-            width: 8px;
-        }
-
-        .file-list::-webkit-scrollbar-track {
-            background: rgba(102, 126, 234, 0.1);
-            border-radius: 4px;
-        }
-
-        .file-list::-webkit-scrollbar-thumb {
-            background: rgba(102, 126, 234, 0.4);
-            border-radius: 4px;
-        }
-
-        .file-list::-webkit-scrollbar-thumb:hover {
-            background: rgba(102, 126, 234, 0.6);
-        }
-
-        .file-item {
-            background: rgba(102, 126, 234, 0.08);
-            border: 1px solid rgba(102, 126, 234, 0.2);
-            border-radius: 8px;
-            padding: 1rem;
-            margin-bottom: 0.75rem;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .file-item:hover {
-            background: rgba(102, 126, 234, 0.15);
-            border-color: rgba(102, 126, 234, 0.4);
-            transform: translateX(5px);
-        }
-
-        .file-item-name {
-            font-weight: 500;
-            color: #667eea;
-            margin-bottom: 0.5rem;
-            word-break: break-all;
-        }
-
-        .file-item-url {
-            font-size: 0.8rem;
-            color: #909090;
-            word-break: break-all;
-            margin-bottom: 0.5rem;
-        }
-
-        .file-item-date {
-            font-size: 0.75rem;
-            color: #707070;
-        }
-
-        .file-item-actions {
-            display: flex;
-            gap: 0.5rem;
-            margin-top: 0.5rem;
-        }
-
-        .file-item-actions button {
-            flex: 1;
-            padding: 0.4rem 0.8rem;
-            font-size: 0.8rem;
-            border: 1px solid rgba(102, 126, 234, 0.3);
-            background: rgba(102, 126, 234, 0.1);
-            color: #667eea;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .file-item-actions button:hover {
-            background: rgba(102, 126, 234, 0.2);
-            border-color: rgba(102, 126, 234, 0.5);
-        }
-
-        .empty-message {
-            text-align: center;
-            color: #909090;
-            padding: 2rem;
         }
 
         .spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid rgba(102, 126, 234, 0.2);
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(102, 126, 234, 0.2);
             border-top-color: #667eea;
             border-radius: 50%;
             animation: spin 1s linear infinite;
@@ -401,9 +320,9 @@
 
         .progress-bar {
             width: 100%;
-            height: 8px;
+            height: 10px;
             background: rgba(102, 126, 234, 0.2);
-            border-radius: 4px;
+            border-radius: 5px;
             overflow: hidden;
         }
 
@@ -531,20 +450,92 @@
             text-decoration: underline;
         }
 
-        /* Bottom Banner - After Footer */
-        .footer + .banner-container {
-            margin-top: 2rem;
-            margin-bottom: 2rem;
-            padding: 1rem 0;
+        /* Gofile風ファイルビューアー */
+        .file-viewer-gofile {
+            background: rgba(102, 126, 234, 0.08);
+            border: 1px solid rgba(102, 126, 234, 0.2);
+            border-radius: 12px;
+            padding: 2rem;
+            margin: 2rem 0;
         }
 
-        #viewerControls {
+        .file-viewer-header {
             display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid rgba(102, 126, 234, 0.2);
+        }
+
+        .file-info {
+            display: flex;
+            align-items: center;
             gap: 1rem;
+        }
+
+        .file-icon {
+            font-size: 2rem;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
             justify-content: center;
+            background: rgba(102, 126, 234, 0.15);
+            border-radius: 8px;
+        }
+
+        .file-details h3 {
+            font-size: 1.2rem;
+            color: #667eea;
+            margin-bottom: 0.3rem;
+            word-break: break-word;
+        }
+
+        .file-details p {
+            font-size: 0.85rem;
+            color: #909090;
+        }
+
+        .file-actions {
+            display: flex;
+            gap: 0.5rem;
             flex-wrap: wrap;
-            margin-top: 2rem;
-            padding: 0 1rem;
+        }
+
+        .action-btn {
+            background: rgba(102, 126, 234, 0.15);
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            color: #667eea;
+            padding: 0.6rem 1.2rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+        }
+
+        .action-btn:hover {
+            background: rgba(102, 126, 234, 0.25);
+            border-color: rgba(102, 126, 234, 0.5);
+        }
+
+        .file-preview {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-top: 1.5rem;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 300px;
+        }
+
+        .file-preview video,
+        .file-preview img {
+            max-width: 100%;
+            max-height: 600px;
+            border-radius: 8px;
         }
 
         @media (max-width: 768px) {
@@ -560,6 +551,15 @@
 
             .features-grid {
                 grid-template-columns: 1fr;
+            }
+
+            .file-viewer-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .file-actions {
+                width: 100%;
             }
         }
     </style>
@@ -590,6 +590,7 @@
         </section>
 
         <div id="mainContainer">
+            <!-- Upload UI -->
             <section class="upload-section" id="uploadUI">
                 <div class="upload-area" id="uploadArea">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -610,32 +611,55 @@
                     </label>
                 </div>
 
-                <div id="processingArea" style="display: none; text-align: center; color: #e0e0e0; padding: 2rem; background: rgba(102, 126, 234, 0.05); border-radius: 12px; border: 1px solid rgba(102, 126, 234, 0.2);">
-                    <h3 id="processingTitle" style="font-size: 1.3rem; margin-bottom: 1rem;">Uploading New...</h3>
-                    <p id="processingMessage" style="color: #909090; margin: 1rem 0; font-size: 0.95rem;">Preparing file...</p>
-                    <div class="progress-container" style="margin: 2rem auto;">
-                        <div class="progress-bar">
-                            <div id="progressFill" class="progress-fill"></div>
+                <!-- Processing Area -->
+                <div id="processingArea" style="display: none;">
+                    <div class="file-viewer-gofile">
+                        <div class="file-viewer-header">
+                            <div class="file-info">
+                                <div class="file-icon">
+                                    <div class="spinner" style="width: 40px; height: 40px; margin: 0; border-width: 3px;"></div>
+                                </div>
+                                <div class="file-details">
+                                    <h3 id="processingTitle" style="margin: 0;">Uploading now</h3>
+                                    <p id="processingMessage">Preparing file...</p>
+                                </div>
+                            </div>
                         </div>
-                        <p id="progressText" style="margin-top: 0.5rem; color: #909090; font-weight: 500; font-size: 1.1rem;">0%</p>
+                        <div class="progress-container">
+                            <div class="progress-bar">
+                                <div id="progressFill" class="progress-fill"></div>
+                            </div>
+                            <p id="progressText" style="text-align: center; margin-top: 0.5rem; color: #909090; font-weight: 500;">0%</p>
+                        </div>
                     </div>
-                    <div class="spinner" style="width: 50px; height: 50px; margin: 1.5rem auto;"></div>
                 </div>
 
+                <!-- Success Area -->
                 <div id="successArea" style="display: none;">
-                    <div class="success-box">
-                        <div class="success-icon">✓</div>
-                        <h2>Upload Complete</h2>
-                        <p style="color: #909090; margin: 1rem 0;">Your file is ready to share</p>
-                        <div class="url-container">
-                            <input id="shareUrl" type="text" readonly class="url-input" placeholder="Share URL will appear here..." />
-                            <button class="btn" id="copyUrlBtn">Copy</button>
+                    <div class="file-viewer-gofile">
+                        <div class="file-viewer-header">
+                            <div class="file-info">
+                                <div class="file-icon" style="background: rgba(76, 175, 80, 0.2); color: #4caf50;">
+                                    ✓
+                                </div>
+                                <div class="file-details">
+                                    <h3 style="margin: 0; color: #4caf50;">Upload Complete</h3>
+                                    <p>Your file is ready to share</p>
+                                </div>
+                            </div>
                         </div>
-                        <button class="btn" id="uploadMoreBtn" style="margin-top: 1rem;">Upload Another</button>
-                        <button class="btn" id="fileHistoryBtn" style="margin-top: 1rem; background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);">File History</button>
+                        <div class="url-container">
+                            <input id="shareUrl" type="text" readonly class="url-input" placeholder="Share URL" />
+                            <button class="btn" id="copyUrlBtn">Copy Link</button>
+                        </div>
+                        <div class="file-actions" style="margin-top: 1rem;">
+                            <button class="action-btn" id="uploadMoreBtn">Upload Another</button>
+                            <button class="action-btn" id="fileHistoryBtn">File History</button>
+                        </div>
                     </div>
                 </div>
 
+                <!-- Error Area -->
                 <div id="errorArea" style="display: none;">
                     <div class="error-box">
                         <h2>Upload Failed</h2>
@@ -645,13 +669,16 @@
                 </div>
             </section>
 
+            <!-- Loading UI -->
             <div id="loadingUI" style="display: none; text-align: center; padding: 3rem;">
                 <div class="spinner"></div>
-                <p>Loading file...</p>
+                <p style="margin-top: 1rem; color: #909090;">Loading file...</p>
             </div>
 
-            <div id="fileViewerUI" style="display: none; padding: 2rem; text-align: center;"></div>
+            <!-- File Viewer UI - Gofile風 -->
+            <div id="fileViewerUI" style="display: none;"></div>
 
+            <!-- Error UI -->
             <div id="errorUI" style="display: none; padding: 3rem;">
                 <div class="error-box">
                     <h2>File Not Found</h2>
@@ -668,15 +695,10 @@
                         <button class="close-btn" id="closeModalBtn">&times;</button>
                     </div>
                     <div id="fileList" class="file-list">
-                        <div class="empty-message">No files uploaded yet</div>
+                        <div style="text-align: center; color: #909090; padding: 2rem;">No files uploaded yet</div>
                     </div>
                 </div>
             </div>
-        </div>
-
-        <div id="viewerControls" style="display: none;">
-            <button class="btn" id="downloadBtn">Download</button>
-            <button class="btn" id="shareBtn">Copy Link</button>
         </div>
 
         <!-- Middle Banner -->
@@ -724,7 +746,7 @@
         <div class="banner-slot" id="banner3"></div>
     </div>
 
-    <!-- FFmpeg.wasm Library - Must load synchronously -->
+    <!-- FFmpeg.wasm Library -->
     <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.10.1/dist/ffmpeg.min.js"></script>
 
     <!-- App Scripts -->
@@ -732,19 +754,15 @@
     <script src="js/video-compression.js?v=16"></script>
     <script src="js/github-api.js?v=16"></script>
     <script src="js/simple-upload.js?v=16"></script>
+
 <script>
 /* =====================
-   Config / Params
+   Config
 ===================== */
 const MAX_FILES = 5;
 const urlParams = new URLSearchParams(location.search);
-
-// /d/aZ3fK9 対応
 const pathMatch = location.pathname.match(/^\/d\/([a-zA-Z0-9]+)/);
-const viewId =
-  pathMatch?.[1] ||
-  urlParams.get('id') ||
-  null;
+const viewId = pathMatch?.[1] || urlParams.get('id') || null;
 
 /* =====================
    Init
@@ -828,15 +846,31 @@ function generateShortId(len = 6) {
 async function sha256(text) {
   const buf = new TextEncoder().encode(text);
   const hash = await crypto.subtle.digest('SHA-256', buf);
-  return [...new Uint8Array(hash)]
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
+  return [...new Uint8Array(hash)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 function escapeHtml(t) {
   const d = document.createElement('div');
   d.textContent = t;
   return d.innerHTML;
+}
+
+function getFileIcon(filename) {
+  if (/\.(mp4|webm|ogg|mkv|avi|mov)$/i.test(filename)) return '🎬';
+  if (/\.(mp3|wav|flac|aac|m4a)$/i.test(filename)) return '🎵';
+  if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(filename)) return '🖼️';
+  if (/\.(pdf)$/i.test(filename)) return '📄';
+  if (/\.(zip|rar|7z|tar|gz)$/i.test(filename)) return '📦';
+  if (/\.(txt|doc|docx|xlsx|ppt)$/i.test(filename)) return '📑';
+  return '📁';
+}
+
+function formatFileSize(bytes) {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
 }
 
 /* =====================
@@ -853,13 +887,11 @@ function setupUploadHandlers() {
   const fileHistoryModal = document.getElementById('fileHistoryModal');
   const closeModalBtn = document.getElementById('closeModalBtn');
 
-  // ファイル選択ボタン
   if (fileInput && selectFileBtn) {
     fileInput.multiple = true;
     selectFileBtn.onclick = () => fileInput.click();
   }
 
-  // ファイル選択時
   if (fileInput) {
     fileInput.onchange = async (e) => {
       const files = [...e.target.files];
@@ -872,19 +904,18 @@ function setupUploadHandlers() {
     };
   }
 
-  // URLをコピーボタン
   if (copyUrlBtn && shareUrl) {
     copyUrlBtn.onclick = async () => {
       try {
         await navigator.clipboard.writeText(shareUrl.value);
-        alert('✓ Copied to clipboard!');
+        copyUrlBtn.textContent = '✓ Copied!';
+        setTimeout(() => { copyUrlBtn.textContent = 'Copy Link'; }, 2000);
       } catch {
-        alert('× Copy failed');
+        alert('Copy failed');
       }
     };
   }
 
-  // 別のファイルをアップロードボタン
   if (uploadMoreBtn) {
     uploadMoreBtn.onclick = () => {
       showUploadUI();
@@ -892,7 +923,6 @@ function setupUploadHandlers() {
     };
   }
 
-  // リトライボタン
   if (retryBtn) {
     retryBtn.onclick = () => {
       showUploadUI();
@@ -900,61 +930,50 @@ function setupUploadHandlers() {
     };
   }
 
-  // ファイル履歴ボタン
   if (fileHistoryBtn) {
     fileHistoryBtn.onclick = () => {
       if (fileHistoryModal) fileHistoryModal.style.display = 'block';
     };
   }
 
-  // モーダルを閉じるボタン
   if (closeModalBtn) {
     closeModalBtn.onclick = () => {
       if (fileHistoryModal) fileHistoryModal.style.display = 'none';
     };
   }
 
-  // モーダルの外側をクリックで閉じる
   window.onclick = (event) => {
-    if (event.target === fileHistoryModal) {
+    if (event.target === fileHistoryModal && fileHistoryModal) {
       fileHistoryModal.style.display = 'none';
     }
   };
 }
-// ✅ view作成を Functions 側に一本化した最終版 uploadMultiple(files)
-// 前提:
-// - uploadManager.githubUploader.createView(fileIds, passwordHash, origin) が実装済み
-// - Copy は copyUrlBtn.onclick 側で行う（この関数では自動コピーしない）
 
+/* =====================
+   Upload Multiple Files
+===================== */
 async function uploadMultiple(files) {
   console.log('=== UPLOAD START ===');
 
-  // ===== DOM取得（必須）=====
   const uploadUI = document.getElementById('uploadUI');
   const processingArea = document.getElementById('processingArea');
   const successArea = document.getElementById('successArea');
   const errorArea = document.getElementById('errorArea');
-
   const progressFill = document.getElementById('progressFill');
   const progressText = document.getElementById('progressText');
   const processingTitle = document.getElementById('processingTitle');
   const processingMessage = document.getElementById('processingMessage');
-
   const shareUrlInput = document.getElementById('shareUrl');
   const errorMessage = document.getElementById('errorMessage');
 
-  // ===== 安全ガード =====
   if (!processingArea || !uploadUI || !successArea || !errorArea) {
-    console.error('Missing required UI elements');
-    alert('UI elements missing. Check HTML IDs.');
+    console.error('Missing UI elements');
     return;
   }
 
-  // ===== UI: Uploading表示 =====
   uploadUI.style.display = 'none';
   successArea.style.display = 'none';
   errorArea.style.display = 'none';
-
   processingArea.style.display = 'block';
 
   if (processingTitle) processingTitle.textContent = 'Uploading now';
@@ -962,27 +981,21 @@ async function uploadMultiple(files) {
   if (progressFill) progressFill.style.width = '0%';
   if (progressText) progressText.textContent = '0%';
 
-  // ★★ これがないと表示されないことがある（超重要）★★
   await new Promise(requestAnimationFrame);
   await new Promise(r => setTimeout(r, 250));
 
-  // ===== Upload開始 =====
   const uploadManager = new SimpleUploadManager();
   const uploadedIds = [];
-
-  // パスワード（任意）
   const pwEnabled = document.getElementById('pwSwitch')?.checked;
   let passwordHash = null;
 
   try {
-    // ===== passwordHash 作成（任意）=====
     if (pwEnabled) {
       const pw = prompt('Set password');
       if (!pw) throw new Error('Password required');
       passwordHash = await sha256(pw);
     }
 
-    // ===== ファイルアップロード（順番に）=====
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const total = files.length;
@@ -995,15 +1008,12 @@ async function uploadMultiple(files) {
         file,
         file.name,
         (progress) => {
-          // progress は 0-100（uploadFileから）
-          // 複数ファイルを1本のゲージに合成
           const overall = ((i + Math.max(0, Math.min(100, progress)) / 100) / total) * 100;
           const p = Math.max(0, Math.min(100, overall));
 
           if (progressFill) progressFill.style.width = p + '%';
           if (progressText) progressText.textContent = Math.round(p) + '%';
 
-          // 進捗タイトル
           if (processingTitle) {
             if (p < 40) processingTitle.textContent = 'Uploading now';
             else if (p < 80) processingTitle.textContent = 'Processing';
@@ -1019,20 +1029,17 @@ async function uploadMultiple(files) {
       uploadedIds.push(result.fileId);
     }
 
-    // ===== view作成（Functionsに一本化）=====
     if (processingMessage) processingMessage.textContent = 'Creating share link...';
     if (processingTitle) processingTitle.textContent = 'Finalizing';
 
     const viewData = await uploadManager.githubUploader.createView(
-      uploadedIds,                 // fileId配列
-      passwordHash,                // null or sha256 hash
-      window.location.origin       // shareUrl生成用
+      uploadedIds,
+      passwordHash,
+      window.location.origin
     );
 
-    // viewData: { viewId, viewPath, shareUrl }
     const shareLink = viewData.shareUrl || `${window.location.origin}${viewData.viewPath}`;
 
-    // ===== 成功UI =====
     processingArea.style.display = 'none';
     successArea.style.display = 'block';
 
@@ -1058,7 +1065,7 @@ async function uploadMultiple(files) {
 }
 
 /* =====================
-   Load and Display View
+   Load and Display View - Gofile風
 ===================== */
 async function loadAndDisplayView(viewId) {
   try {
@@ -1067,7 +1074,6 @@ async function loadAndDisplayView(viewId) {
 
     const data = await res.json();
 
-    // 🔐 パスワード
     if (data.password) {
       const pw = prompt('Enter password');
       const hash = await sha256(pw || '');
@@ -1082,7 +1088,7 @@ async function loadAndDisplayView(viewId) {
       fileViewerUI.innerHTML = '';
 
       for (const file of data.files) {
-        fileViewerUI.innerHTML += renderFileBlock(file);
+        fileViewerUI.innerHTML += renderFileBlockGofile(file);
       }
     }
 
@@ -1095,43 +1101,59 @@ async function loadAndDisplayView(viewId) {
 }
 
 /* =====================
-   Render File Block
+   Render File Block - Gofile風
 ===================== */
-function renderFileBlock(file) {
+function renderFileBlockGofile(file) {
   const url = file.downloadUrl;
+  const filename = file.fileName || 'file';
+  const icon = getFileIcon(filename);
+  const size = formatFileSize(file.fileSize || 0);
 
-  if (/\.(mp4|webm|ogg)$/i.test(url)) {
-    return `
-      <div style="margin:2rem;text-align:center">
-        <video controls preload="metadata" style="max-width:95%;border-radius:12px;max-height:60vh">
-          <source src="${url}">
+  let preview = '';
+
+  if (/\.(mp4|webm|ogg|mkv|avi|mov)$/i.test(url)) {
+    preview = `
+      <div class="file-preview">
+        <video controls style="max-width: 100%; max-height: 500px;" crossorigin="anonymous">
+          <source src="${url}" crossorigin="anonymous">
+          Your browser does not support video playback.
         </video>
-        <br />
-        <a class="btn" href="${url}" download>Download</a>
       </div>
     `;
-  }
-
-  if (/\.(png|jpg|jpeg|gif|webp)$/i.test(url)) {
-    return `
-      <div style="margin:2rem;text-align:center">
-        <img src="${url}" style="max-width:95%;border-radius:12px;max-height:60vh">
-        <br />
-        <a class="btn" href="${url}" download>Download</a>
+  } else if (/\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(url)) {
+    preview = `
+      <div class="file-preview">
+        <img src="${url}" alt="${escapeHtml(filename)}" crossorigin="anonymous" />
       </div>
     `;
   }
 
   return `
-    <div style="margin:2rem;text-align:center">
-      <p>${escapeHtml(file.fileName)}</p>
-      <a class="btn" href="${url}" download>Download</a>
+    <div class="file-viewer-gofile">
+      <div class="file-viewer-header">
+        <div class="file-info">
+          <div class="file-icon">${icon}</div>
+          <div class="file-details">
+            <h3 style="margin: 0;">${escapeHtml(filename)}</h3>
+            <p>${size}</p>
+          </div>
+        </div>
+        <div class="file-actions">
+          <a class="action-btn" href="${url}" download> Download</a>
+          <button class="action-btn" onclick="
+            navigator.clipboard.writeText('${url}');
+            this.textContent = '✓ Copied!';
+            setTimeout(() => { this.textContent = ' Copy URL'; }, 2000);
+          "> Copy URL</button>
+        </div>
+      </div>
+      ${preview}
     </div>
   `;
 }
 
 /* =====================
-   Start App
+   Start
 ===================== */
 initApp();
 </script>

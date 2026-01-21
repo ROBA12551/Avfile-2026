@@ -1,9 +1,4 @@
-/**
- * js/simple-upload.js
- * 
- * 本番用アップロード管理 - GitHub Releases へ実際にアップロード
- * デモモードなし - 本番環境のみ
- */
+
 
 class SimpleUploadManager {
   constructor() {
@@ -172,7 +167,6 @@ await this.githubUploader.saveGithubJson(githubJson);
       onProgress(100, '✅ アップロード完了！');
 
       console.log('✅ ファイルが GitHub にアップロードされました');
-      console.log('📺 視聴URL:', viewUrl);
       console.log('📥 ダウンロードURL:', assetData.download_url);
 
       return {
