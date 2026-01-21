@@ -4,57 +4,69 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_OWNER = process.env.GITHUB_OWNER;
 const GITHUB_REPO  = process.env.GITHUB_REPO;
 
-console.log('=== VIEW FUNCTION STARTED ===');
-console.log('Config:', { GITHUB_OWNER, GITHUB_REPO, TOKEN: GITHUB_TOKEN ? 'SET' : 'MISSING' });
+function logInfo(msg) {
+  console.log(`[INFO] ${new Date().toISOString()} ${msg}`);
+}
 
-function githubGet(path) {
+function logError(msg) {
+  console.error(`[ERROR] ${new Date().toISOString()} ${msg}`);
+}
+
+async function githubRequest(method, path, body = null) {
   return new Promise((resolve, reject) => {
     const options = {
       hostname: 'api.github.com',
+      port: 443,
       path,
-      method: 'GET',
+      method,
       headers: {
         'Authorization': `token ${GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github+json',
         'User-Agent': 'Avfile-View',
-        'Accept': 'application/vnd.github.v3.raw',
-      }
+      },
     };
 
-    console.log('GitHub Request:', path);
+    if (body) {
+      const jsonBody = JSON.stringify(body);
+      options.headers['Content-Type'] = 'application/json';
+      options.headers['Content-Length'] = Buffer.byteLength(jsonBody);
+    }
 
-    const req = https.request(options, res => {
+    logInfo(`GitHub Request: ${method} ${path}`);
+
+    const req = https.request(options, (res) => {
       let data = '';
-      res.on('data', d => data += d);
+      res.on('data', (c) => (data += c));
       res.on('end', () => {
-        console.log('GitHub Response:', res.statusCode);
+        logInfo(`GitHub Response: ${res.statusCode}`);
         
         if (res.statusCode >= 200 && res.statusCode < 300) {
           try {
-            resolve(JSON.parse(data));
+            resolve(data ? JSON.parse(data) : {});
           } catch (e) {
-            reject(new Error('Invalid JSON response'));
+            reject(new Error('Failed to parse response'));
           }
         } else {
-          reject(new Error(`GitHub API error: ${res.statusCode}`));
+          reject(new Error(`GitHub Error ${res.statusCode}: ${data}`));
         }
       });
     });
 
-    req.on('error', err => {
-      console.error('Request error:', err.message);
-      reject(err);
-    });
-
+    req.on('error', reject);
+    if (body) req.write(JSON.stringify(body));
     req.end();
   });
 }
 
 exports.handler = async (event) => {
-  console.log('Handler called with:', event.queryStringParameters);
+  logInfo(`=== VIEW HANDLER START ===`);
+  logInfo(`Query params: ${JSON.stringify(event.queryStringParameters)}`);
 
   try {
     const viewId = event.queryStringParameters?.id;
+    
     if (!viewId) {
+      logError('Missing id parameter');
       return {
         statusCode: 400,
         headers: { 'Content-Type': 'application/json' },
@@ -62,10 +74,11 @@ exports.handler = async (event) => {
       };
     }
 
-    console.log('Looking for viewId:', viewId);
+    logInfo(`Looking for viewId: ${viewId}`);
 
-    // Check environment variables
+    // Check env vars
     if (!GITHUB_TOKEN || !GITHUB_OWNER || !GITHUB_REPO) {
+      logError('Missing env vars');
       return {
         statusCode: 500,
         headers: { 'Content-Type': 'application/json' },
@@ -76,62 +89,38 @@ exports.handler = async (event) => {
       };
     }
 
+    logInfo(`Fetching github.json from ${GITHUB_OWNER}/${GITHUB_REPO}`);
+
     // Fetch github.json
-    let jsonRes;
-    try {
-      jsonRes = await githubGet(
-        `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`
-      );
-      console.log('github.json retrieved');
-    } catch (e) {
-      console.error('Failed to fetch github.json:', e.message);
+    const jsonRes = await githubRequest(
+      'GET',
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`
+    );
+
+    if (!jsonRes || !jsonRes.content) {
+      logError('Invalid github.json response');
       return {
         statusCode: 404,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'github.json not found: ' + e.message })
-      };
-    }
-
-    if (!jsonRes || !jsonRes.content) {
-      return {
-        statusCode: 500,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'Invalid github.json content' })
+        body: JSON.stringify({ error: 'github.json not found' })
       };
     }
 
     // Decode base64
-    let decoded;
-    try {
-      decoded = Buffer.from(jsonRes.content, 'base64').toString('utf-8');
-      console.log('Decoded github.json length:', decoded.length);
-    } catch (e) {
-      console.error('Decode error:', e.message);
-      return {
-        statusCode: 500,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'Failed to decode github.json' })
-      };
-    }
+    const decoded = Buffer.from(jsonRes.content, 'base64').toString('utf-8');
+    logInfo(`Decoded github.json: ${decoded.length} bytes`);
 
     // Parse JSON
-    let data;
-    try {
-      data = JSON.parse(decoded);
-      console.log('Parsed. Views count:', (data.views || []).length);
-    } catch (e) {
-      console.error('Parse error:', e.message);
-      return {
-        statusCode: 500,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'Invalid JSON in github.json' })
-      };
-    }
+    const data = JSON.parse(decoded);
+    logInfo(`Views count: ${(data.views || []).length}`);
+    logInfo(`Files count: ${(data.files || []).length}`);
 
     // Find view
-    const view = (data.views || []).find(v => v.viewId === viewId);
+    const view = (data.views || []).find(v => v && v.viewId === viewId);
+    
     if (!view) {
-      console.log('View not found. Available views:', (data.views || []).map(v => v.viewId));
+      logError(`View not found: ${viewId}`);
+      logInfo(`Available views: ${(data.views || []).map(v => v?.viewId).join(', ')}`);
       return {
         statusCode: 404,
         headers: { 'Content-Type': 'application/json' },
@@ -139,27 +128,33 @@ exports.handler = async (event) => {
       };
     }
 
-    console.log('View found. Files:', view.files.length);
+    logInfo(`View found: ${view.viewId}`);
 
     // Map files
-    const files = view.files
-      .map(fid => data.files.find(f => f.fileId === fid))
-      .filter(Boolean)
-      .map(f => ({
-        fileId: f.fileId,
-        fileName: f.fileName,
-        fileSize: f.fileSize,
-        downloadUrl: `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main/uploads/${f.fileId}-${f.fileName}`
-      }));
+    const files = (view.files || [])
+      .map(fid => {
+        const file = (data.files || []).find(f => f && f.fileId === fid);
+        if (!file) {
+          logInfo(`File not found: ${fid}`);
+          return null;
+        }
+        return {
+          fileId: file.fileId,
+          fileName: file.fileName,
+          fileSize: file.fileSize,
+          downloadUrl: `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main/uploads/${file.fileId}-${encodeURIComponent(file.fileName)}`
+        };
+      })
+      .filter(Boolean);
 
-    console.log('Returning files:', files.length);
+    logInfo(`Returning ${files.length} files`);
 
     return {
       statusCode: 200,
       headers: {
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type'
       },
       body: JSON.stringify({
@@ -170,14 +165,15 @@ exports.handler = async (event) => {
     };
 
   } catch (e) {
-    console.error('Unhandled error:', e);
+    logError(`Error: ${e.message}`);
+    logError(`Stack: ${e.stack}`);
+    
     return {
       statusCode: 500,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         error: 'Internal server error',
-        message: e.message,
-        stack: e.stack
+        message: e.message
       })
     };
   }

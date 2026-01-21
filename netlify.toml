@@ -1,9 +1,11 @@
 # Netlify Configuration for Avfile
 
 [build]
-  command = "exit 0"
-  publish = "."
   functions = "netlify/functions"
+  publish = "."
+
+[functions]
+  node_bundler = "esbuild"
 
 [build.environment]
   NODE_VERSION = "18"
