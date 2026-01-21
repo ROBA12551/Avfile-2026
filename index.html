@@ -851,7 +851,11 @@ async function uploadMultiple(files) {
   await github.saveGithubJson(json);
 
   const shareUrl = `${location.origin}/?id=${viewId}`;
+  const shareUrlInput = document.getElementById('shareUrl');
+if (shareUrlInput) {
   shareUrlInput.value = shareUrl;
+}
+
 
   processingArea.style.display = 'none';
   successArea.style.display = 'block';
