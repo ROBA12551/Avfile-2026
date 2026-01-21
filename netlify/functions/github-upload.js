@@ -8,7 +8,10 @@ let pendingFiles = [];
 let lastGithubJsonUpdate = 0;
 const GITHUB_JSON_UPDATE_INTERVAL = 30000;
 const MAX_RETRIES = 3;
-const RETRY_DELAY = 500; // ミリ秒
+const RETRY_DELAY = 500;
+
+// ★ リクエストサイズ制限を追加（50MB）
+const MAX_REQUEST_SIZE = 50 * 1024 * 1024; // 50MB
 
 function logInfo(msg) {
   console.log(`[INFO] ${new Date().toISOString()} ${msg}`);
@@ -29,16 +32,10 @@ function generateShortId(len = 6) {
   return out;
 }
 
-/**
- * 指定時間待機
- */
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-/**
- * GitHub APIにリクエストを送信
- */
 async function githubRequest(method, path, body = null, headers = {}) {
   return new Promise((resolve, reject) => {
     const options = {
@@ -46,7 +43,7 @@ async function githubRequest(method, path, body = null, headers = {}) {
       port: 443,
       path,
       method,
-      timeout: 15000,
+      timeout: 30000, // ★ タイムアウトを30秒に延長
       headers: {
         'Authorization': `token ${GITHUB_TOKEN}`,
         'Accept': 'application/vnd.github+json',
@@ -101,9 +98,6 @@ async function githubRequest(method, path, body = null, headers = {}) {
   });
 }
 
-/**
- * GitHub アセットアップロード用リクエスト
- */
 async function githubUploadRequest(method, fullUrl, body, headers = {}) {
   return new Promise((resolve, reject) => {
     try {
@@ -128,16 +122,17 @@ async function githubUploadRequest(method, fullUrl, body, headers = {}) {
       let uploadBody = body;
       let contentLength = 0;
 
-      if (typeof body === 'string') {
-        uploadBody = Buffer.from(body, 'base64');
-        contentLength = uploadBody.length;
-        logInfo(`Upload body: Base64 string (${body.length} chars) → Buffer (${contentLength} bytes)`);
-      } else if (Buffer.isBuffer(body)) {
+      if (Buffer.isBuffer(body)) {
         uploadBody = body;
         contentLength = body.length;
         logInfo(`Upload body: Buffer (${contentLength} bytes)`);
+      } else if (typeof body === 'string') {
+        // ★ Base64 の場合もサポート（後方互換性）
+        uploadBody = Buffer.from(body, 'base64');
+        contentLength = uploadBody.length;
+        logInfo(`Upload body: Base64 string → Buffer (${contentLength} bytes)`);
       } else {
-        throw new Error('Body must be a Base64 string or Buffer');
+        throw new Error('Body must be a Buffer or Base64 string');
       }
 
       const options = {
@@ -145,7 +140,7 @@ async function githubUploadRequest(method, fullUrl, body, headers = {}) {
         port: 443,
         path: parsed.pathname + parsed.search,
         method,
-        timeout: 30000,
+        timeout: 60000, // ★ 60秒に延長
         headers: {
           'Authorization': `token ${GITHUB_TOKEN}`,
           'User-Agent': 'Avfile-Netlify',
@@ -156,6 +151,7 @@ async function githubUploadRequest(method, fullUrl, body, headers = {}) {
       };
 
       logInfo(`Upload Request: ${method} ${parsed.hostname}${parsed.pathname.substring(0, 50)}...`);
+      logInfo(`Upload size: ${(contentLength / 1024 / 1024).toFixed(2)} MB`);
 
       const req = https.request(options, (res) => {
         let data = '';
@@ -184,7 +180,7 @@ async function githubUploadRequest(method, fullUrl, body, headers = {}) {
       });
 
       req.on('timeout', () => {
-        logError('Upload request timeout');
+        logError('Upload request timeout (60s)');
         req.destroy();
         reject(new Error('Upload request timeout'));
       });
@@ -198,9 +194,6 @@ async function githubUploadRequest(method, fullUrl, body, headers = {}) {
   });
 }
 
-/**
- * Release を作成
- */
 async function createRelease(tag, metadata) {
   const path = `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases`;
   const body = {
@@ -234,60 +227,6 @@ async function createRelease(tag, metadata) {
   }
 }
 
-/**
- * Asset (ファイル) をアップロード
- */
-async function uploadAsset(uploadUrl, fileName, fileBase64String) {
-  try {
-    logInfo(`Preparing asset upload: ${fileName}`);
-
-    if (!uploadUrl || typeof uploadUrl !== 'string') {
-      throw new Error('Invalid uploadUrl provided');
-    }
-
-    if (typeof fileBase64String !== 'string') {
-      throw new Error('fileBase64String must be a string');
-    }
-
-    logInfo(`Asset upload parameters:`, {
-      fileName: fileName,
-      base64Length: fileBase64String.length,
-      uploadUrl: uploadUrl.substring(0, 100)
-    });
-
-    let baseUrl = String(uploadUrl).trim();
-    baseUrl = baseUrl.replace('{?name,label}', '');
-    baseUrl = baseUrl.replace('{?name}', '');
-    baseUrl = baseUrl.replace(/\{[?&].*?\}/g, '');
-
-    const encodedFileName = encodeURIComponent(fileName);
-    const assetUrl = `${baseUrl}?name=${encodedFileName}`;
-
-    logInfo(`Asset URL: ${assetUrl.substring(0, 100)}...`);
-
-    const data = await githubUploadRequest('POST', assetUrl, fileBase64String);
-
-    if (!data || !data.id) {
-      throw new Error('Asset upload response missing id field');
-    }
-
-    logInfo(`Asset uploaded successfully: ${data.id}`);
-
-    return {
-      asset_id: data.id,
-      name: data.name,
-      size: data.size,
-      download_url: data.browser_download_url,
-    };
-  } catch (e) {
-    logError(`Asset upload failed: ${e.message}`);
-    throw e;
-  }
-}
-
-/**
- * github.json を取得
- */
 async function getGithubJson() {
   const path = `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`;
 
@@ -321,10 +260,6 @@ async function getGithubJson() {
   }
 }
 
-/**
- * github.json を保存（リトライ機能付き）
- * ★ SHA競合時は最新を再取得してリトライ
- */
 async function saveGithubJson(jsonData, sha = null, retryCount = 0) {
   const path = `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`;
 
@@ -349,23 +284,15 @@ async function saveGithubJson(jsonData, sha = null, retryCount = 0) {
     await githubRequest('PUT', path, payload);
     logInfo('github.json saved successfully');
   } catch (error) {
-    // ★ SHA競合エラーをチェック
     if (error.message.includes('409') && retryCount < MAX_RETRIES) {
       logWarn(`SHA競合検出。リトライ中... (${retryCount + 1}/${MAX_RETRIES})`);
       
-      // 少し待機
       await sleep(RETRY_DELAY * (retryCount + 1));
       
       try {
-        // 最新の SHA を取得
         const latest = await getGithubJson();
         logInfo(`最新の SHA を取得: ${latest.sha}`);
         
-        // マージして再試行
-        // 新しいデータを上書きする（古いデータは失う）
-        logInfo(`古いデータとのマージを試行`);
-        
-        // リトライ
         return await saveGithubJson(jsonData, latest.sha, retryCount + 1);
       } catch (retryError) {
         logError(`リトライ失敗: ${retryError.message}`);
@@ -378,13 +305,8 @@ async function saveGithubJson(jsonData, sha = null, retryCount = 0) {
   }
 }
 
-/**
- * github.json を非同期で更新
- * ★ 複数ファイル同時アップロード時にバッチ処理
- */
 async function updateGithubJsonAsync(fileId, fileName, downloadUrl, fileSize) {
   try {
-    // ★ fileInfo をキューに追加
     pendingFiles.push({
       fileId,
       fileName,
@@ -398,22 +320,18 @@ async function updateGithubJsonAsync(fileId, fileName, downloadUrl, fileSize) {
     const now = Date.now();
     const timeSinceLastUpdate = now - lastGithubJsonUpdate;
 
-    // ★ 一定条件でバッチ更新
     if (timeSinceLastUpdate >= GITHUB_JSON_UPDATE_INTERVAL || pendingFiles.length >= 10) {
       logInfo(`[ASYNC] Flushing ${pendingFiles.length} pending files to github.json`);
       
-      // 最新の github.json を取得
       const current = await getGithubJson();
       const json = current.data;
       json.files = json.files || [];
       
-      // pendingFiles を全て追加
       const filesToAdd = [...pendingFiles];
       json.files.push(...filesToAdd);
       json.lastUpdated = new Date().toISOString();
 
       try {
-        // SHA を指定して保存（リトライ機能付き）
         await saveGithubJson(json, current.sha, 0);
         
         lastGithubJsonUpdate = Date.now();
@@ -422,7 +340,6 @@ async function updateGithubJsonAsync(fileId, fileName, downloadUrl, fileSize) {
         logInfo(`[ASYNC] github.json updated successfully (${filesToAdd.length} files added)`);
       } catch (saveError) {
         logError(`[ASYNC] Failed to save github.json: ${saveError.message}`);
-        // エラーでも処理は続行（ファイル自体はアップロード済み）
         pendingFiles = [];
       }
     }
@@ -431,9 +348,6 @@ async function updateGithubJsonAsync(fileId, fileName, downloadUrl, fileSize) {
   }
 }
 
-/**
- * View を作成
- */
 async function createViewOnServer(fileIds, passwordHash, origin) {
   try {
     logInfo(`Creating view with ${fileIds.length} files`);
@@ -469,7 +383,6 @@ async function createViewOnServer(fileIds, passwordHash, origin) {
 
     json.lastUpdated = new Date().toISOString();
 
-    // リトライ機能付きで保存
     await saveGithubJson(json, current.sha, 0);
 
     logInfo(`View created: ${viewId}`);
@@ -485,9 +398,45 @@ async function createViewOnServer(fileIds, passwordHash, origin) {
   }
 }
 
-/**
- * Netlify Function ハンドラー
- */
+// ★ FormData パーサー
+function parseFormData(buffer, boundary) {
+  const fields = {};
+  const files = {};
+  
+  const parts = buffer.toString('binary').split(`--${boundary}`);
+  
+  for (const part of parts) {
+    if (!part || part.trim() === '--' || part.trim() === '') continue;
+
+    const [headerSection, ...bodyParts] = part.split('\r\n\r\n');
+    if (!headerSection) continue;
+
+    const bodyContent = bodyParts.join('\r\n\r\n').replace(/\r\n$/, '');
+
+    const nameMatch = headerSection.match(/name="([^"]+)"/);
+    const filenameMatch = headerSection.match(/filename="([^"]+)"/);
+    
+    if (nameMatch) {
+      const fieldName = nameMatch[1];
+      
+      if (filenameMatch) {
+        // ファイルフィールド
+        files[fieldName] = {
+          filename: filenameMatch[1],
+          data: Buffer.from(bodyContent, 'binary')
+        };
+        logInfo(`[FORMDATA] File: ${fieldName} = ${filenameMatch[1]} (${files[fieldName].data.length} bytes)`);
+      } else {
+        // テキストフィールド
+        fields[fieldName] = bodyContent.trim();
+        logInfo(`[FORMDATA] Field: ${fieldName} = ${fields[fieldName].substring(0, 50)}`);
+      }
+    }
+  }
+  
+  return { fields, files };
+}
+
 exports.handler = async (event) => {
   try {
     logInfo(`=== REQUEST START ===`);
@@ -517,19 +466,55 @@ exports.handler = async (event) => {
       };
     }
 
+    // ★ リクエストサイズチェック
+    const requestSize = event.body ? Buffer.byteLength(event.body, event.isBase64Encoded ? 'base64' : 'utf8') : 0;
+    logInfo(`Request size: ${(requestSize / 1024 / 1024).toFixed(2)} MB`);
+    
+    if (requestSize > MAX_REQUEST_SIZE) {
+      throw new Error(`Request too large: ${(requestSize / 1024 / 1024).toFixed(2)} MB (max: 50 MB)`);
+    }
+
     let body;
-    try {
-      body = JSON.parse(event.body || '{}');
-    } catch (e) {
-      logError(`Failed to parse JSON: ${e.message}`);
-      return {
-        statusCode: 400,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          success: false, 
-          error: 'Invalid JSON'
-        }),
+    const contentType = event.headers['content-type'] || event.headers['Content-Type'] || '';
+    
+    // ★ FormData の場合
+    if (contentType.includes('multipart/form-data')) {
+      logInfo('[FORMDATA] Detected multipart/form-data');
+      
+      const boundaryMatch = contentType.match(/boundary=([^\s;]+)/);
+      if (!boundaryMatch) {
+        throw new Error('No boundary found in FormData');
+      }
+      
+      const boundary = boundaryMatch[1];
+      const rawBody = event.isBase64Encoded 
+        ? Buffer.from(event.body, 'base64')
+        : Buffer.from(event.body, 'utf8');
+      
+      const { fields, files } = parseFormData(rawBody, boundary);
+      
+      body = {
+        action: fields.action,
+        ...fields,
+        _files: files
       };
+      
+      logInfo(`[FORMDATA] Parsed: action=${body.action}, fields=${Object.keys(fields).length}, files=${Object.keys(files).length}`);
+    } else {
+      // JSON の場合
+      try {
+        body = JSON.parse(event.body || '{}');
+      } catch (e) {
+        logError(`Failed to parse JSON: ${e.message}`);
+        return {
+          statusCode: 400,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            success: false, 
+            error: 'Invalid JSON'
+          }),
+        };
+      }
     }
 
     logInfo(`Action: ${body.action}`);
@@ -548,242 +533,43 @@ exports.handler = async (event) => {
         break;
       }
 
-      // ★ Blob を直接アップロード（圧縮と Base64 をスキップ）
-      case 'upload-asset-direct': {
-        logInfo(`[DIRECT] Uploading asset directly`);
-        
-        let fileName, uploadUrl, fileData;
-
-        // ★ FormData をパース
-        if (event.isBase64Encoded && event.body) {
-          logInfo(`[DIRECT] Parsing FormData...`);
-          
-          const decodedBody = Buffer.from(event.body, 'base64');
-          const contentType = event.headers['content-type'] || '';
-          const boundaryMatch = contentType.match(/boundary=([^\s;]+)/);
-          
-          if (!boundaryMatch) {
-            throw new Error('No boundary found in FormData');
-          }
-
-          const boundary = boundaryMatch[1];
-          const parts = decodedBody.toString('binary').split(`--${boundary}`);
-          
-          for (const part of parts) {
-            if (!part || part.includes('--')) continue;
-
-            const [headerPart, ...bodyParts] = part.split('\r\n\r\n');
-            if (!headerPart) continue;
-
-            const body = bodyParts.join('\r\n\r\n').replace(/\r\n--$/, '');
-            const nameMatch = headerPart.match(/name="([^"]+)"/);
-            const filenameMatch = headerPart.match(/filename="([^"]+)"/);
-            
-            if (nameMatch) {
-              const fieldName = nameMatch[1];
-              
-              if (filenameMatch && fieldName === 'file') {
-                fileData = Buffer.from(body, 'binary');
-                logInfo(`[DIRECT] File found: ${fileData.length} bytes`);
-              } else {
-                const value = body.trim();
-                if (fieldName === 'fileName') fileName = value;
-                if (fieldName === 'uploadUrl') uploadUrl = value;
-              }
-            }
-          }
-        }
-
-        if (!fileName) throw new Error('fileName not found');
-        if (!uploadUrl) throw new Error('uploadUrl not found');
-        if (!fileData || fileData.length === 0) throw new Error('File data not found');
-
-        logInfo(`[DIRECT] File: ${fileName}, Size: ${fileData.length} bytes`);
-
-        // ★ ファイルを GitHub にアップロード
-        let cleanUrl = String(uploadUrl).trim();
-        cleanUrl = cleanUrl.replace('{?name,label}', '');
-        cleanUrl = cleanUrl.replace('{?name}', '');
-        cleanUrl = cleanUrl.replace(/\{[?&].*?\}/g, '');
-
-        const encodedFileName = encodeURIComponent(fileName);
-        const assetUrl = `${cleanUrl}?name=${encodedFileName}`;
-
-        logInfo(`[DIRECT] Asset URL: ${assetUrl.substring(0, 100)}...`);
-
-        const assetResponse = await githubUploadRequest('POST', assetUrl, fileData);
-
-        if (!assetResponse || !assetResponse.id) {
-          throw new Error('Asset upload response missing id field');
-        }
-
-        logInfo(`[DIRECT] Asset uploaded successfully: ${assetResponse.id}`);
-
-        const result = {
-          asset_id: assetResponse.id,
-          name: assetResponse.name,
-          size: assetResponse.size,
-          download_url: assetResponse.browser_download_url,
-        };
-
-        // ★ 非同期で github.json を更新
-        updateGithubJsonAsync(
-          body.fileId,
-          fileName,
-          result.download_url,
-          body.fileSize
-        ).catch(err => logError(`[DIRECT] Async update error: ${err.message}`));
-
-        response = result;
-        break;
-      }
-
-      case 'upload-asset': {
-        logInfo(`[ASSET] Uploading asset`);
-        
-        let fileName, uploadUrl, fileData;
-
-        // ★ JSON body から直接取得
-        if (body && body.action === 'upload-asset') {
-          logInfo(`[ASSET] Using JSON body`);
-          fileName = body.fileName;
-          uploadUrl = body.uploadUrl;
-          
-          if (body.fileBase64 && typeof body.fileBase64 === 'string') {
-            fileData = Buffer.from(body.fileBase64, 'base64');
-            logInfo(`[ASSET] fileBase64 found: ${body.fileBase64.length} chars → ${fileData.length} bytes`);
-          }
-        }
-
-        if (!fileName) throw new Error('fileName not found');
-        if (!uploadUrl) throw new Error('uploadUrl not found');
-        if (!fileData || fileData.length === 0) throw new Error('File data not found');
-
-        logInfo(`[ASSET] File: ${fileName}, Size: ${fileData.length} bytes`);
-
-        // ★ ファイルを GitHub にアップロード
-        let cleanUrl = String(uploadUrl).trim();
-        cleanUrl = cleanUrl.replace('{?name,label}', '');
-        cleanUrl = cleanUrl.replace('{?name}', '');
-        cleanUrl = cleanUrl.replace(/\{[?&].*?\}/g, '');
-
-        const encodedFileName = encodeURIComponent(fileName);
-        const assetUrl = `${cleanUrl}?name=${encodedFileName}`;
-
-        logInfo(`[ASSET] Asset URL: ${assetUrl.substring(0, 100)}...`);
-
-        const assetResponse = await githubUploadRequest('POST', assetUrl, fileData);
-
-        if (!assetResponse || !assetResponse.id) {
-          throw new Error('Asset upload response missing id field');
-        }
-
-        logInfo(`[ASSET] Asset uploaded successfully: ${assetResponse.id}`);
-
-        const result = {
-          asset_id: assetResponse.id,
-          name: assetResponse.name,
-          size: assetResponse.size,
-          download_url: assetResponse.browser_download_url,
-        };
-
-        // ★ 非同期で github.json を更新
-        updateGithubJsonAsync(
-          body.fileId,
-          fileName,
-          result.download_url,
-          body.fileSize
-        ).catch(err => logError(`[ASSET] Async update error: ${err.message}`));
-
-        response = result;
-        break;
-      }
-
-      // ★ バイナリ直接アップロード（FormData 対応）
+      // ★ バイナリ直接アップロード（FormData対応）
       case 'upload-asset-binary': {
         logInfo(`[BINARY] Uploading asset`);
         
-        // ★ FormData の場合、event.body が base64 エンコードされた multipart データ
         let fileName, uploadUrl, fileId, fileSize;
         let binaryData = null;
 
-        // event.isBase64Encoded === true の場合、event.body は base64
-        if (event.isBase64Encoded && event.body) {
-          logInfo(`[BINARY] Parsing FormData (base64 encoded)...`);
+        // FormData の場合
+        if (body._files && body._files.file) {
+          logInfo(`[BINARY] Using FormData file`);
           
-          // Base64 をデコード
-          const decodedBody = Buffer.from(event.body, 'base64');
+          fileName = body.fileName || body._files.file.filename;
+          uploadUrl = body.uploadUrl;
+          fileId = body.fileId;
+          fileSize = parseInt(body.fileSize) || body._files.file.data.length;
+          binaryData = body._files.file.data;
           
-          // Content-Type から boundary を取得
-          const contentType = event.headers['content-type'] || '';
-          const boundaryMatch = contentType.match(/boundary=([^\s;]+)/);
+          logInfo(`[BINARY] FormData: ${fileName}, ${binaryData.length} bytes`);
+        } 
+        // JSON の場合（後方互換性）
+        else if (body.fileBase64) {
+          logInfo(`[BINARY] Using JSON with Base64`);
           
-          if (!boundaryMatch) {
-            throw new Error('No boundary found in FormData');
-          }
-
-          const boundary = boundaryMatch[1];
-          logInfo(`[BINARY] Boundary: ${boundary}`);
-
-          // FormData を手動でパース
-          const parts = decodedBody.toString('binary').split(`--${boundary}`);
-          
-          for (const part of parts) {
-            if (!part || part.includes('--')) continue;
-
-            // ヘッダーとボディを分割
-            const [headerPart, ...bodyParts] = part.split('\r\n\r\n');
-            if (!headerPart) continue;
-
-            const body = bodyParts.join('\r\n\r\n').replace(/\r\n--$/, '');
-
-            // name と filename を抽出
-            const nameMatch = headerPart.match(/name="([^"]+)"/);
-            const filenameMatch = headerPart.match(/filename="([^"]+)"/);
-            
-            if (nameMatch) {
-              const fieldName = nameMatch[1];
-              
-              if (filenameMatch) {
-                // ファイルフィールド
-                if (fieldName === 'file') {
-                  binaryData = Buffer.from(body, 'binary');
-                  logInfo(`[BINARY] File field found: ${binaryData.length} bytes`);
-                }
-              } else {
-                // テキストフィールド
-                const value = body.trim();
-                
-                if (fieldName === 'fileName') fileName = value;
-                if (fieldName === 'uploadUrl') uploadUrl = value;
-                if (fieldName === 'fileId') fileId = value;
-                if (fieldName === 'fileSize') fileSize = parseInt(value);
-                
-                logInfo(`[BINARY] Field: ${fieldName} = ${value.substring(0, 50)}`);
-              }
-            }
-          }
-        } else if (body && body.fileName) {
-          // JSON の場合（互換性のため）
-          logInfo(`[BINARY] Using JSON body`);
           fileName = body.fileName;
           uploadUrl = body.uploadUrl;
           fileId = body.fileId;
           fileSize = body.fileSize;
-          
-          if (body.fileBase64 && typeof body.fileBase64 === 'string') {
-            binaryData = Buffer.from(body.fileBase64, 'base64');
-          }
+          binaryData = Buffer.from(body.fileBase64, 'base64');
         }
 
-        // バリデーション
         if (!fileName) throw new Error('fileName not found');
         if (!uploadUrl) throw new Error('uploadUrl not found');
         if (!binaryData || binaryData.length === 0) throw new Error('File data not found');
 
-        logInfo(`[BINARY] File: ${fileName}, Size: ${binaryData.length} bytes, uploadUrl length: ${uploadUrl.length}`);
+        logInfo(`[BINARY] File: ${fileName}, Size: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
 
-        // ★ バイナリを直接アップロード
+        // GitHub にアップロード
         let cleanUrl = String(uploadUrl).trim();
         cleanUrl = cleanUrl.replace('{?name,label}', '');
         cleanUrl = cleanUrl.replace('{?name}', '');
@@ -792,34 +578,34 @@ exports.handler = async (event) => {
         const encodedFileName = encodeURIComponent(fileName);
         const assetUrl = `${cleanUrl}?name=${encodedFileName}`;
 
-        logInfo(`[BINARY] Asset URL: ${assetUrl.substring(0, 100)}...`);
+        logInfo(`[BINARY] Uploading to: ${assetUrl.substring(0, 100)}...`);
 
-        const binaryResponse = await githubUploadRequest('POST', assetUrl, binaryData);
+        const assetResponse = await githubUploadRequest('POST', assetUrl, binaryData);
 
-        if (!binaryResponse || !binaryResponse.id) {
+        if (!assetResponse || !assetResponse.id) {
           throw new Error('Asset upload response missing id field');
         }
 
-        logInfo(`[BINARY] Asset uploaded successfully: ${binaryResponse.id}`);
+        logInfo(`[BINARY] Upload success: ${assetResponse.id}`);
 
-        const assetResponse = {
-          asset_id: binaryResponse.id,
-          name: binaryResponse.name,
-          size: binaryResponse.size,
-          download_url: binaryResponse.browser_download_url,
+        const result = {
+          asset_id: assetResponse.id,
+          name: assetResponse.name,
+          size: assetResponse.size,
+          download_url: assetResponse.browser_download_url,
         };
 
-        // ★ 非同期で github.json を更新
-        if (fileId && fileSize) {
+        // 非同期で github.json を更新
+        if (fileId) {
           updateGithubJsonAsync(
             fileId,
             fileName,
-            assetResponse.download_url,
-            fileSize
+            result.download_url,
+            fileSize || result.size
           ).catch(err => logError(`[BINARY] Async update error: ${err.message}`));
         }
 
-        response = assetResponse;
+        response = result;
         break;
       }
 
@@ -838,7 +624,6 @@ exports.handler = async (event) => {
         }
 
         const current = await getGithubJson();
-        // ★ リトライ機能付きで保存
         await saveGithubJson(body.jsonData, current.sha, 0);
         response = { success: true };
         break;
@@ -868,7 +653,10 @@ exports.handler = async (event) => {
     
     return {
       statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
       body: JSON.stringify({ success: true, data: response }),
     };
 
@@ -878,8 +666,11 @@ exports.handler = async (event) => {
     logError(`Stack: ${e.stack}`);
     
     return {
-      statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      statusCode: 500,
+      headers: { 
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
       body: JSON.stringify({ 
         success: false, 
         error: e.message || 'Internal Server Error'
