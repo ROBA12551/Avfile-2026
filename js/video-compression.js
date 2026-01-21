@@ -177,6 +177,7 @@ class VideoCompressionEngine {
       // 長時間処理なので途中でプログレス更新
       const ffmpegPromise = this.ffmpeg.run(...command);
       
+      // プログレスシミュレーション（実際の進捗は取得できないため）
       const progressInterval = setInterval(() => {
         onProgress(50 + Math.random() * 30, '🎬 動画を圧縮中...');
       }, 2000);
@@ -243,3 +244,4 @@ class VideoCompressionEngine {
 
 // グローバルエクスポート
 window.VideoCompressionEngine = VideoCompressionEngine;
+
