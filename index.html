@@ -610,17 +610,18 @@
   </label>
 </div>
 
-                <div id="processingArea" style="display: none; text-align: center; color: #e0e0e0;">
-                    <h3 id="processingTitle">Uploading...</h3>
-                    <div class="spinner"></div>
-                    <p id="processingMessage" style="color: #909090; margin: 1rem 0;">Preparing file...</p>
-                    <div class="progress-container">
-                        <div class="progress-bar">
-                            <div id="progressFill" class="progress-fill"></div>
-                        </div>
-                        <p id="progressText" style="margin-top: 0.5rem; color: #909090;">0%</p>
-                    </div>
-                </div>
+              <div id="processingArea" style="display: none; text-align: center; color: #e0e0e0;">
+    <h3 id="processingTitle">Uploading...</h3>
+    <p id="processingMessage" style="color: #909090; margin: 1rem 0; font-size: 0.95rem;">Preparing file...</p>
+    <div class="progress-container" style="margin: 2rem auto;">
+        <div class="progress-bar">
+            <div id="progressFill" class="progress-fill"></div>
+        </div>
+        <p id="progressText" style="margin-top: 0.5rem; color: #909090; font-weight: 500;">0%</p>
+    </div>
+    <div class="spinner" style="width: 40px; height: 40px; margin: 1.5rem auto;"></div>
+    <button class="btn" id="uploadNewBtn" style="margin-top: 1.5rem;">Upload New</button>
+</div>
 
                 <div id="successArea" style="display: none;">
                     <div class="success-box">
@@ -816,6 +817,15 @@ function escapeHtml(t) {
 function setupUploadHandlers() {
   fileInput.multiple = true;
   selectFileBtn.onclick = () => fileInput.click();
+  
+  // "Upload New" ボタン
+  const uploadNewBtn = document.getElementById('uploadNewBtn');
+  if (uploadNewBtn) {
+    uploadNewBtn.onclick = () => {
+      showUploadUI();
+      fileInput.value = '';
+    };
+  }
 
   fileInput.onchange = async (e) => {
     const files = [...e.target.files];
@@ -827,7 +837,6 @@ function setupUploadHandlers() {
     await uploadMultiple(files);
   };
 
-  // ✅ ここに追加する
   const copyBtn = document.getElementById('copyUrlBtn');
   const shareInput = document.getElementById('shareUrl');
 
@@ -842,9 +851,8 @@ function setupUploadHandlers() {
     };
   }
 }
-async function uploadMultiple(files) {
 
-  // ===== DOMは最初に必ず取得 =====
+async function uploadMultiple(files) {
   const uploadUI = document.getElementById('uploadUI');
   const processingArea = document.getElementById('processingArea');
   const successArea = document.getElementById('successArea');
@@ -853,38 +861,38 @@ async function uploadMultiple(files) {
   const progressText = document.getElementById('progressText');
   const processingTitle = document.getElementById('processingTitle');
   const processingMessage = document.getElementById('processingMessage');
+  const uploadNewBtn = document.getElementById('uploadNewBtn');
 
-  // ===== UI切り替え =====
   uploadUI.style.display = 'none';
   successArea.style.display = 'none';
   errorArea.style.display = 'none';
 
   processingArea.style.display = 'block';
-  processingTitle.textContent = 'Uploading now';
-  processingMessage.textContent = 'Preparing upload...';
+  processingTitle.textContent = 'Uploading...';
   progressFill.style.width = '0%';
   progressText.textContent = '0%';
 
-  // ★★ 超重要：再描画を強制 ★★
+  // 再描画強制
   await new Promise(r => setTimeout(r, 50));
 
   const uploadManager = new SimpleUploadManager();
-  const github = uploadManager.githubUploader;
-
   const uploadedIds = [];
 
   try {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
+      const fileNumber = i + 1;
+      const totalFiles = files.length;
 
-      processingMessage.textContent =
-        `Uploading ${i + 1} / ${files.length}`;
+      processingMessage.textContent = `Uploading ${fileNumber} / ${totalFiles}: ${escapeHtml(file.name)}`;
 
       const result = await uploadManager.uploadFile(
         file,
         file.name,
         (progress) => {
-          const p = Math.min(100, Math.max(0, progress));
+          // ファイルごとの進捗を全体の進捗に変換
+          const overallProgress = ((i + progress / 100) / totalFiles) * 100;
+          const p = Math.min(100, Math.max(0, overallProgress));
           progressFill.style.width = p + '%';
           progressText.textContent = Math.round(p) + '%';
         }
@@ -893,9 +901,11 @@ async function uploadMultiple(files) {
       uploadedIds.push(result.fileId);
     }
 
-    // ===== 完了 =====
+    // 完了
     processingArea.style.display = 'none';
     successArea.style.display = 'block';
+    progressFill.style.width = '100%';
+    progressText.textContent = '100%';
 
   } catch (e) {
     console.error(e);
@@ -904,7 +914,6 @@ async function uploadMultiple(files) {
     document.getElementById('errorMessage').textContent = e.message;
   }
 }
-
 
 async function loadAndDisplayView(viewId) {
   try {

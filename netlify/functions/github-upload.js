@@ -192,7 +192,15 @@ async function getGithubJson() {
   try {
     const res = await githubRequest('GET', path);
     const decoded = Buffer.from(res.content, 'base64').toString('utf-8');
-    return { data: JSON.parse(decoded), sha: res.sha };
+    let parsed = JSON.parse(decoded);
+
+// 🔥 data.data.data... を全部剥がす
+while (parsed && parsed.data) {
+  parsed = parsed.data;
+}
+
+return { data: parsed, sha: res.sha };
+
   } catch {
     return {
       data: { files: [], lastUpdated: new Date().toISOString() },
@@ -271,12 +279,22 @@ exports.handler = async (event) => {
         response = await getGithubJson();
         break;
 
-      case 'save-github-json': {
-        const current = await getGithubJson();
-        await saveGithubJson(body.jsonData, current.sha);
-        response = { success: true };
-        break;
-      }
+case 'save-github-json': {
+  const current = await getGithubJson();
+
+  // 🔥 ここで必ず "data" だけを取り出す
+  let cleanData = body.jsonData;
+
+  // 保険：data.data.data... を剥がす
+  while (cleanData && cleanData.data) {
+    cleanData = cleanData.data;
+  }
+
+  await saveGithubJson(cleanData, current.sha);
+  response = { success: true };
+  break;
+}
+
 
       default:
         throw new Error(`Unknown action: ${body.action}`);
