@@ -875,91 +875,6 @@ class GitHubUploader {
     return data.data;
   }
 
-  // 動画用: Blobでバイナリ送信
-  async uploadAssetBinary(uploadUrl, fileName, blobData, fileId, fileSize) {
-    console.log('[GITHUB] uploadAssetBinary:', fileName, 'Size:', (fileSize / 1024 / 1024).toFixed(2) + 'MB');
-    console.log('[GITHUB] Original uploadUrl:', uploadUrl);
-    
-    try {
-      // Blobデータのタイプをチェック
-      if (!blobData || !(blobData instanceof Blob)) {
-        console.error('[GITHUB] Invalid blob data:', typeof blobData);
-        throw new Error('Invalid blob data');
-      }
-
-      console.log('[GITHUB] Blob details - Type:', blobData.type, 'Size:', blobData.size);
-      
-      // Blob サイズが制限を超えないか確認
-      if (blobData.size > MAX_UPLOAD_SIZE) {
-        console.error('[GITHUB] Blob size exceeds limit:', (blobData.size / 1024 / 1024).toFixed(2) + 'MB', 'max:', (MAX_UPLOAD_SIZE / 1024 / 1024) + 'MB');
-        throw new Error(`Compressed file size (${(blobData.size / 1024 / 1024).toFixed(2)}MB) exceeds maximum (${(MAX_UPLOAD_SIZE / 1024 / 1024).toFixed(0)}MB). Please try a smaller video or lower resolution.`);
-      }
-
-      // GitHub API のテンプレートURLを処理
-      let processedUrl = uploadUrl;
-      
-      // {?name,label} や {?name,label,state} などのテンプレートを削除
-      processedUrl = processedUrl.replace('{?name,label}', '');
-      processedUrl = processedUrl.replace('{?name,label,state}', '');
-      processedUrl = processedUrl.replace(/\{.*?\}/g, ''); // その他のテンプレートも削除
-      
-      // name パラメータを追加
-      const separator = processedUrl.includes('?') ? '&' : '?';
-      processedUrl = processedUrl + separator + `name=${encodeURIComponent(fileName)}`;
-      
-      console.log('[GITHUB] Processed uploadUrl:', processedUrl);
-
-      // FormData ではなく arrayBuffer を直接送信 (オーバーヘッド削減)
-      const arrayBuffer = await blobData.arrayBuffer();
-      
-      console.log('[GITHUB] Sending ArrayBuffer to:', processedUrl);
-      console.log('[GITHUB] ArrayBuffer size:', arrayBuffer.byteLength, 'bytes');
-      
-      const response = await fetch(processedUrl, {
-        method: 'POST',
-        body: arrayBuffer,
-        headers: {
-          'Content-Type': 'application/octet-stream',
-        }
-      });
-      
-      console.log('[GITHUB] Response status:', response.status);
-
-      if (!response.ok) {
-        const contentType = response.headers.get('content-type');
-        let err = '';
-        
-        if (contentType && contentType.includes('application/json')) {
-          const errJson = await response.json();
-          err = JSON.stringify(errJson);
-        } else {
-          err = await response.text();
-        }
-        
-        console.error('[GITHUB] Upload error:', response.status, err);
-        throw new Error(`Upload failed: ${response.status} - ${err}`);
-      }
-      
-      const contentType = response.headers.get('content-type');
-      let data;
-      
-      if (contentType && contentType.includes('application/json')) {
-        data = await response.json();
-        console.log('[GITHUB] Upload success:', data.name, data.size);
-      } else {
-        const text = await response.text();
-        console.log('[GITHUB] Upload response (not JSON):', text.substring(0, 200));
-        data = { name: fileName, size: fileSize };
-      }
-      
-      return data;
-    } catch (error) {
-      console.error('[GITHUB] uploadAssetBinary error:', error.message);
-      console.error('[GITHUB] Stack:', error.stack);
-      throw error;
-    }
-  }
-
   async getGithubJson() {
     const response = await fetch(this.functionUrl, {
       method: 'POST',
@@ -1058,62 +973,15 @@ class Carousel {
 
 // App
 const MAX_FILES = 10;
-const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB (表示用)
-const MAX_UPLOAD_SIZE = 420 * 1024 * 1024; // 420MB (GitHub制限: 2GB, オーバーヘッド30MB余裕)
-const VIDEO_COMPRESSION_THRESHOLD = 150 * 1024 * 1024; // デスクトップ: 150MB以上は圧縮
-const MOBILE_VIDEO_COMPRESSION_THRESHOLD = 50 * 1024 * 1024; // スマホ: 50MB以上は圧縮
-const MOBILE_MAX_RESOLUTION = '360p'; // スマホ: 360p に強制圧縮
+const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
+const VIDEO_COMPRESSION_THRESHOLD = 200 * 1024 * 1024; // 200MB以上は圧縮
 const pathMatch = location.pathname.match(/^\/d\/([a-zA-Z0-9]+)/);
 const viewId = pathMatch?.[1] || null;
-
-// スマホ判定
-function isMobileDevice() {
-  const ua = navigator.userAgent.toLowerCase();
-  return /iphone|ipad|ipod|android|windows phone|webos|blackberry/.test(ua);
-}
-
-const IS_MOBILE = isMobileDevice();
-console.log('[APP] Device:', IS_MOBILE ? 'Mobile' : 'Desktop');
 
 function escapeHtml(t) {
   const d = document.createElement('div');
   d.textContent = t;
   return d.innerHTML;
-}
-
-// ファイル名を短縮
-function sanitizeFileName(fileName) {
-  try {
-    // 特殊文字を削除
-    let name = fileName.replace(/[<>:"/\\|?*]/g, '_');
-    
-    // ファイル拡張子を取得
-    const parts = name.split('.');
-    const ext = parts.length > 1 ? parts[parts.length - 1] : 'file';
-    
-    // ファイル名部分のみを取得
-    const nameWithoutExt = parts.slice(0, -1).join('.');
-    
-    // 長すぎる場合は短縮 (最大50文字)
-    let shortName = nameWithoutExt.substring(0, 50);
-    
-    // 元のファイル名がUUID風の場合はさらに短縮
-    if (/^copy_[a-zA-Z0-9\-]{36}/.test(fileName)) {
-      // UUID形式: copy_XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX.mov
-      // → video_XXXXXXXX.mov (8文字のハッシュ)
-      const hash = Math.random().toString(36).substr(2, 8).toUpperCase();
-      shortName = `video_${hash}`;
-      console.log('[SANITIZE] UUID detected, shortened:', fileName, '→', shortName + '.' + ext);
-    } else if (shortName.length > 50) {
-      console.log('[SANITIZE] Long filename, shortened:', fileName, '→', shortName + '.' + ext);
-    }
-    
-    return `${shortName}.${ext}`;
-  } catch (err) {
-    console.error('[SANITIZE] Error:', err);
-    const hash = Math.random().toString(36).substr(2, 8);
-    return `file_${hash}.${fileName.split('.').pop() || 'tmp'}`;
-  }
 }
 
 function getIcon(name) {
@@ -1203,65 +1071,28 @@ async function uploadMultiple(files) {
         throw new Error(`File size exceeds limit: ${(file.size / 1024 / 1024).toFixed(2)}MB (max 500MB)`);
       }
       
-      // GitHub アップロード用の最大サイズチェック (450MB)
-      if (file.size > MAX_UPLOAD_SIZE) {
-        console.warn('[UPLOAD] File too large for direct upload:', file.name, (file.size / 1024 / 1024).toFixed(2) + 'MB');
-        if (isVideo) {
-          console.log('[UPLOAD] Video will be compressed before upload');
-        } else {
-          throw new Error(`File too large for upload: ${(file.size / 1024 / 1024).toFixed(2)}MB (max 450MB after compression)`);
-        }
-      }
-      
-      // ファイル名を安全に処理
-      let originalFileName = String(file.name || '').trim();
-      let fileName = sanitizeFileName(originalFileName);
-      
-      if (!fileName) {
-        throw new Error('Invalid file name');
-      }
-      
-      console.log('[UPLOAD] Original filename:', originalFileName);
-      console.log('[UPLOAD] Sanitized filename:', fileName);
-      
       // すべての動画形式を自動的にMP4に変換
       let uploadFile = file;
       const videoRegex = /\.(mp4|webm|ogg|mkv|avi|mov|flv|wmv|m4v|ts|m2ts|mts|3gp|3g2|asf|f4v|m3u8|mxf)$/i;
-      
-      let isVideo = false;
-      try {
-        isVideo = videoRegex.test(fileName) || (file.type && file.type.startsWith('video/'));
-      } catch (e) {
-        console.warn('[UPLOAD] Regex test error:', e);
-        isVideo = fileName.includes('mp4') || (file.type && file.type.includes('video'));
-      }
+      const isVideo = videoRegex.test(file.name) || file.type.startsWith('video/');
       
       if (isVideo) {
         // MOV形式または200MB以上は圧縮
-        const isMov = file.type === 'video/quicktime' || fileName.endsWith('.mov');
+        const isMov = file.type === 'video/quicktime' || file.name.toLowerCase().endsWith('.mov');
         const needsCompression = file.size > VIDEO_COMPRESSION_THRESHOLD;
         
-        // スマホの場合は積極的に圧縮
-        const needsMobileCompression = IS_MOBILE && file.size > MOBILE_VIDEO_COMPRESSION_THRESHOLD;
-        
-        if (isMov || needsCompression || needsMobileCompression) {
-          const reason = isMov ? 'MOV format' : 
-                        needsMobileCompression ? `Mobile optimization (${(file.size / 1024 / 1024).toFixed(1)}MB)` :
-                        `Large file (${(file.size / 1024 / 1024).toFixed(1)}MB)`;
-          
-          console.log('[UPLOAD] Video optimization needed:', file.name, '-', reason);
+        if (isMov || needsCompression) {
+          console.log('[UPLOAD] Video optimization needed:', file.name, 'Size:', (file.size / 1024 / 1024).toFixed(2) + 'MB');
           document.getElementById('statusMessage').textContent = `${i + 1} / ${files.length} - Optimizing video...`;
           try {
-            uploadFile = needsMobileCompression ? 
-              await compressVideoForMobile(file) :
-              await convertAndCompressVideo(file);
+            uploadFile = await convertAndCompressVideo(file);
             const savedMB = ((file.size - uploadFile.size) / 1024 / 1024).toFixed(2);
             console.log('[UPLOAD] Video optimization successful:', uploadFile.name, '- Saved', savedMB + 'MB');
           } catch (err) {
             console.warn('[UPLOAD] Video optimization failed, trying direct upload:', err.message);
             uploadFile = file;
           }
-        } else if (!fileName.endsWith('.mp4') && !(file.type && file.type.includes('mp4'))) {
+        } else if (!file.type.includes('mp4') && !file.name.toLowerCase().endsWith('.mp4')) {
           console.log('[UPLOAD] Converting to MP4:', file.name);
           document.getElementById('statusMessage').textContent = `${i + 1} / ${files.length} - Converting to MP4...`;
           try {
@@ -1274,75 +1105,48 @@ async function uploadMultiple(files) {
         }
       }
       
-      let uploadBlob = null;
       let base64 = '';
-      
-      // 動画の場合はBlobで直接アップロード
-      if (isVideo) {
-        try {
-          console.log('[UPLOAD] Creating Blob for video:', fileName);
-          const arrayBuffer = await uploadFile.arrayBuffer();
-          console.log('[UPLOAD] ArrayBuffer created, Size:', arrayBuffer.byteLength);
-          
-          uploadBlob = new Blob([arrayBuffer], { type: uploadFile.type || 'video/mp4' });
-          console.log('[UPLOAD] Blob created successfully:', fileName, 'Size:', (uploadBlob.size / 1024 / 1024).toFixed(2) + 'MB', 'Type:', uploadBlob.type);
-        } catch (err) {
-          console.error('[UPLOAD] Blob creation error:', err.message);
-          console.error('[UPLOAD] File object:', uploadFile.name, uploadFile.type, uploadFile.size);
-          throw new Error(`Failed to create Blob: ${err.message}`);
-        }
-      } else {
-        // 画像などはBase64変換
-        try {
-          base64 = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-              try {
-                const result = reader.result;
-                const b64 = result.split(',')[1];
-                if (!b64) {
-                  console.error('[UPLOAD] No base64 data');
-                  reject(new Error('Failed to convert file to base64'));
-                }
-                console.log('[UPLOAD] Base64 created:', uploadFile.name, 'length:', b64.length);
-                resolve(b64);
-              } catch (e) {
-                console.error('[UPLOAD] Base64 error:', e);
-                reject(e);
+      try {
+        base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            try {
+              const result = reader.result;
+              const b64 = result.split(',')[1];
+              if (!b64) {
+                console.error('[UPLOAD] No base64 data');
+                reject(new Error('Failed to convert file to base64'));
               }
-            };
-            reader.onerror = () => {
-              console.error('[UPLOAD] FileReader error:', reader.error);
-              reject(reader.error);
-            };
-            reader.onprogress = (e) => {
-              if (e.lengthComputable) {
-                console.log('[UPLOAD] Reading:', Math.round((e.loaded / e.total) * 100) + '%');
-              }
-            };
-            reader.readAsDataURL(uploadFile);
-          });
-        } catch (err) {
-          console.error('[UPLOAD] Failed to read file:', err, 'file:', uploadFile.name);
-          throw new Error(`Failed to read file: ${uploadFile.name}. Please try again.`);
-        }
+              console.log('[UPLOAD] Base64 created:', uploadFile.name, 'length:', b64.length);
+              resolve(b64);
+            } catch (e) {
+              console.error('[UPLOAD] Base64 error:', e);
+              reject(e);
+            }
+          };
+          reader.onerror = () => {
+            console.error('[UPLOAD] FileReader error:', reader.error);
+            reject(reader.error);
+          };
+          reader.onprogress = (e) => {
+            if (e.lengthComputable) {
+              console.log('[UPLOAD] Reading:', Math.round((e.loaded / e.total) * 100) + '%');
+            }
+          };
+          reader.readAsDataURL(uploadFile);
+        });
+      } catch (err) {
+        console.error('[UPLOAD] Failed to read file:', err, 'file:', uploadFile.name);
+        throw new Error(`Failed to read file: ${uploadFile.name}. Please try again.`);
       }
 
-      const releaseData = await uploader.createRelease(`file_${fileId}`, fileName);
-      
-      // 動画と画像で異なるアップロード方法
-      if (uploadBlob) {
-        console.log('[UPLOAD] Using binary upload for video');
-        await uploader.uploadAssetBinary(releaseData.upload_url, fileName, uploadBlob, fileId, uploadFile.size);
-      } else {
-        console.log('[UPLOAD] Using base64 upload for image');
-        await uploader.uploadAsset(releaseData.upload_url, fileName, base64, fileId, uploadFile.size);
-      }
+      const releaseData = await uploader.createRelease(`file_${fileId}`, uploadFile.name);
+      await uploader.uploadAsset(releaseData.upload_url, uploadFile.name, base64, fileId, uploadFile.size);
 
       const githubJson = await uploader.getGithubJson();
       githubJson.files = githubJson.files || [];
       githubJson.files.push({
-        fileId, fileName: fileName,
+        fileId, fileName: uploadFile.name,
         downloadUrl: releaseData.assets_url || releaseData.upload_url,
         fileSize: uploadFile.size, uploadedAt: new Date().toISOString(),
       });
@@ -1406,41 +1210,19 @@ async function loadView(viewId) {
       const pdfRegex = /\.(pdf)$/i;
 
       let preview = '';
-      let fileName = '';
-      
+      const fileName = String(file.fileName || '').toLowerCase();
       try {
-        // ファイル名を安全に処理
-        fileName = String(file.fileName || '').toLowerCase().trim();
         console.log('[FILE] Processing:', file.fileName, 'lowered:', fileName);
-        
         if (!fileName || fileName.length === 0) {
           throw new Error('Empty filename');
         }
-        
-        // 正規表現テストをより安全に
-        let isVideo = false;
-        let isImage = false;
-        let isPdf = false;
-        
-        try {
-          isVideo = videoRegex.test(fileName);
-          isImage = imageRegex.test(fileName);
-          isPdf = pdfRegex.test(fileName);
-        } catch (e) {
-          console.warn('[FILE] Regex error:', e);
-          // フォールバック: 拡張子で判定
-          isVideo = fileName.includes('.mp4') || fileName.includes('.mov') || fileName.includes('.webm');
-          isImage = fileName.includes('.jpg') || fileName.includes('.png') || fileName.includes('.gif');
-          isPdf = fileName.includes('.pdf');
-        }
-        
-        if (isVideo) {
+        if (videoRegex.test(fileName)) {
           console.log('[FILE] Video detected:', fileName);
           preview = `<div class="file-preview-area"><video controls style="max-width: 100%; max-height: 400px; border-radius: 8px;"><source src="/.netlify/functions/download?url=${encodeURIComponent(file.downloadUrl)}" type="video/mp4"></video></div>`;
-        } else if (isImage) {
+        } else if (imageRegex.test(fileName)) {
           console.log('[FILE] Image detected:', fileName);
           preview = `<div class="file-preview-area"><img src="/.netlify/functions/download?url=${encodeURIComponent(file.downloadUrl)}" style="max-width: 100%; max-height: 400px; border-radius: 8px;" /></div>`;
-        } else if (isPdf) {
+        } else if (pdfRegex.test(fileName)) {
           console.log('[FILE] PDF detected:', fileName);
           preview = `<div class="file-preview-area"><iframe src="/.netlify/functions/download?url=${encodeURIComponent(file.downloadUrl)}" style="width: 100%; height: 100%; border: none;"></iframe></div>`;
         } else {
@@ -1616,48 +1398,13 @@ async function convertAndCompressVideo(videoFile) {
     try {
       // コアファイルのURLを指定
       console.log('[COMPRESS] Loading FFmpeg core...');
-      
-      // FFmpeg 読み込みタイムアウト: 30秒
-      const loadTimeout = 30000;
-      let loadTimeoutId;
-      
-      const loadTimeoutPromise = new Promise((_, reject) => {
-        loadTimeoutId = setTimeout(() => {
-          console.error('[COMPRESS] FFmpeg load timeout');
-          reject(new Error('FFmpeg load timeout after 30 seconds'));
-        }, loadTimeout);
+      ffmpeg.load({
+        coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js',
       });
-      
-      try {
-        // FFmpeg を読み込む
-        await Promise.race([
-          (async () => {
-            ffmpeg.load({
-              coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js',
-            });
-            
-            // ロード完了待ち
-            if (!ffmpeg.isLoaded()) {
-              console.log('[COMPRESS] Waiting for FFmpeg to load...');
-              await new Promise((resolve) => {
-                const checkInterval = setInterval(() => {
-                  if (ffmpeg.isLoaded()) {
-                    clearInterval(checkInterval);
-                    resolve();
-                  }
-                }, 100);
-              });
-            }
-            console.log('[COMPRESS] FFmpeg loaded successfully');
-          })(),
-          loadTimeoutPromise
-        ]);
-        
-        clearTimeout(loadTimeoutId);
-      } catch (loadErr) {
-        clearTimeout(loadTimeoutId);
-        console.error('[COMPRESS] FFmpeg load error:', loadErr.message);
-        throw new Error(`Failed to load FFmpeg: ${loadErr.message}. Returning original file.`);
+
+      if (!ffmpeg.isLoaded()) {
+        console.log('[COMPRESS] Waiting for FFmpeg to load...');
+        await Promise.race([ffmpeg.load(), timeoutPromise]);
       }
 
       const inputExt = videoFile.name.split('.').pop().toLowerCase();
@@ -1671,8 +1418,8 @@ async function convertAndCompressVideo(videoFile) {
       ffmpeg.FS('writeFile', inputFileName, new Uint8Array(buffer));
       console.log('[COMPRESS] File written to FFmpeg FS');
 
-      console.log('[COMPRESS] Running compression (720p 30fps, CRF 26)...');
-      // 標準圧縮 (720p 30fps, CRF 26 でバランス品質)
+      console.log('[COMPRESS] Running compression (720p 30fps)...');
+      // 高品質圧縮 (720p 30fps)
       await Promise.race([
         ffmpeg.run(
           '-i', inputFileName,
@@ -1680,7 +1427,7 @@ async function convertAndCompressVideo(videoFile) {
           '-r', '30',
           '-c:v', 'libx264',
           '-preset', 'medium',      // 品質重視
-          '-crf', '26',             // 品質26 (バランス品質)
+          '-crf', '23',             // 品質23 (かなり高品質)
           '-c:a', 'aac',
           '-b:a', '128k',
           '-movflags', '+faststart',
@@ -1721,128 +1468,6 @@ async function convertAndCompressVideo(videoFile) {
     }
   } catch (error) {
     console.error('[COMPRESS] Outer error:', error);
-    return videoFile;
-  }
-}
-
-// スマホ向け: 360p 15fps に強制圧縮
-async function compressVideoForMobile(videoFile) {
-  try {
-    console.log('[MOBILE_COMPRESS] Mobile video compression starting...');
-    
-    if (!window.FFmpeg || !window.FFmpeg.FFmpeg) {
-      console.warn('[MOBILE_COMPRESS] FFmpeg not available');
-      return videoFile;
-    }
-
-    const FFmpeg = window.FFmpeg.FFmpeg;
-    const ffmpeg = new FFmpeg.FFmpeg();
-    
-    const timeout = 90000; // 90秒
-    let timeoutId;
-    
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = setTimeout(() => {
-        console.warn('[MOBILE_COMPRESS] Timeout');
-        reject(new Error('Mobile compression timeout'));
-      }, timeout);
-    });
-
-    try {
-      console.log('[MOBILE_COMPRESS] Loading FFmpeg...');
-      
-      const loadTimeout = 30000;
-      let loadTimeoutId;
-      
-      const loadTimeoutPromise = new Promise((_, reject) => {
-        loadTimeoutId = setTimeout(() => {
-          console.error('[MOBILE_COMPRESS] FFmpeg load timeout');
-          reject(new Error('FFmpeg load timeout after 30 seconds'));
-        }, loadTimeout);
-      });
-      
-      try {
-        await Promise.race([
-          (async () => {
-            ffmpeg.load({
-              coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js',
-            });
-
-            if (!ffmpeg.isLoaded()) {
-              console.log('[MOBILE_COMPRESS] Waiting for FFmpeg to load...');
-              await new Promise((resolve) => {
-                const checkInterval = setInterval(() => {
-                  if (ffmpeg.isLoaded()) {
-                    clearInterval(checkInterval);
-                    resolve();
-                  }
-                }, 100);
-              });
-            }
-            console.log('[MOBILE_COMPRESS] FFmpeg loaded successfully');
-          })(),
-          loadTimeoutPromise
-        ]);
-        
-        clearTimeout(loadTimeoutId);
-      } catch (loadErr) {
-        clearTimeout(loadTimeoutId);
-        console.error('[MOBILE_COMPRESS] FFmpeg load error:', loadErr.message);
-        return videoFile; // フォールバック
-      }
-
-      const inputExt = videoFile.name.split('.').pop().toLowerCase();
-      const inputFileName = `input.${inputExt}`;
-      const outputFileName = 'output.mp4';
-
-      console.log('[MOBILE_COMPRESS] Reading file...');
-      const buffer = await videoFile.arrayBuffer();
-      ffmpeg.FS('writeFile', inputFileName, new Uint8Array(buffer));
-
-      console.log('[MOBILE_COMPRESS] Compressing to 360p 15fps...');
-      // スマホ向け: 360p 15fps (低品質で高速)
-      await Promise.race([
-        ffmpeg.run(
-          '-i', inputFileName,
-          '-vf', 'scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2',
-          '-r', '15',
-          '-c:v', 'libx264',
-          '-preset', 'ultrafast',    // 最速
-          '-crf', '28',              // 低品質で小さく
-          '-c:a', 'aac',
-          '-b:a', '96k',             // 低ビットレート
-          '-movflags', '+faststart',
-          outputFileName
-        ),
-        timeoutPromise
-      ]);
-
-      clearTimeout(timeoutId);
-
-      console.log('[MOBILE_COMPRESS] Reading output...');
-      const outputData = ffmpeg.FS('readFile', outputFileName);
-      
-      ffmpeg.FS('unlink', inputFileName);
-      ffmpeg.FS('unlink', outputFileName);
-
-      const mp4Blob = new Blob([outputData.buffer], { type: 'video/mp4' });
-      const originalName = videoFile.name.replace(/\.[^.]+$/i, '.mp4');
-      const mp4File = new File([mp4Blob], originalName, { type: 'video/mp4' });
-      
-      const originalMB = (videoFile.size / 1024 / 1024).toFixed(2);
-      const compressedMB = (mp4File.size / 1024 / 1024).toFixed(2);
-      const ratio = ((1 - mp4File.size / videoFile.size) * 100).toFixed(0);
-      
-      console.log(`[MOBILE_COMPRESS] Success: ${originalMB}MB → ${compressedMB}MB (${ratio}% reduction)`);
-      
-      return mp4File;
-    } catch (error) {
-      clearTimeout(timeoutId);
-      console.error('[MOBILE_COMPRESS] Error:', error.message);
-      return videoFile;
-    }
-  } catch (error) {
-    console.error('[MOBILE_COMPRESS] Outer error:', error);
     return videoFile;
   }
 }
