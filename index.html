@@ -604,24 +604,23 @@
                     <p class="upload-info">Max 100MB • All formats supported</p>
                 </div>
                 <div style="margin-top:1rem">
-  <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-    <input type="checkbox" id="pwSwitch">
-    <span>Password protect</span>
-  </label>
-</div>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                        <input type="checkbox" id="pwSwitch">
+                        <span>Password protect</span>
+                    </label>
+                </div>
 
-              <div id="processingArea" style="display: none; text-align: center; color: #e0e0e0;">
-    <h3 id="processingTitle">Uploading...</h3>
-    <p id="processingMessage" style="color: #909090; margin: 1rem 0; font-size: 0.95rem;">Preparing file...</p>
-    <div class="progress-container" style="margin: 2rem auto;">
-        <div class="progress-bar">
-            <div id="progressFill" class="progress-fill"></div>
-        </div>
-        <p id="progressText" style="margin-top: 0.5rem; color: #909090; font-weight: 500;">0%</p>
-    </div>
-    <div class="spinner" style="width: 40px; height: 40px; margin: 1.5rem auto;"></div>
-    <button class="btn" id="uploadNewBtn" style="margin-top: 1.5rem;">Upload New</button>
-</div>
+                <div id="processingArea" style="display: none; text-align: center; color: #e0e0e0;">
+                    <h3 id="processingTitle">Uploading...</h3>
+                    <p id="processingMessage" style="color: #909090; margin: 1rem 0; font-size: 0.95rem;">Preparing file...</p>
+                    <div class="progress-container" style="margin: 2rem auto;">
+                        <div class="progress-bar">
+                            <div id="progressFill" class="progress-fill"></div>
+                        </div>
+                        <p id="progressText" style="margin-top: 0.5rem; color: #909090; font-weight: 500;">0%</p>
+                    </div>
+                    <div class="spinner" style="width: 40px; height: 40px; margin: 1.5rem auto;"></div>
+                </div>
 
                 <div id="successArea" style="display: none;">
                     <div class="success-box">
@@ -665,7 +664,7 @@
             <div id="fileHistoryModal" class="modal">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h2> File History</h2>
+                        <h2>File History</h2>
                         <button class="close-btn" id="closeModalBtn">&times;</button>
                     </div>
                     <div id="fileList" class="file-list">
@@ -764,6 +763,11 @@ async function initApp() {
    UI State
 ===================== */
 function showUploadUI() {
+  const uploadUI = document.getElementById('uploadUI');
+  const loadingUI = document.getElementById('loadingUI');
+  const fileViewerUI = document.getElementById('fileViewerUI');
+  const errorUI = document.getElementById('errorUI');
+  
   uploadUI.style.display = 'block';
   loadingUI.style.display = 'none';
   fileViewerUI.style.display = 'none';
@@ -771,17 +775,36 @@ function showUploadUI() {
 }
 
 function showLoadingUI() {
+  const uploadUI = document.getElementById('uploadUI');
+  const loadingUI = document.getElementById('loadingUI');
+  const fileViewerUI = document.getElementById('fileViewerUI');
+  const errorUI = document.getElementById('errorUI');
+  
   uploadUI.style.display = 'none';
   loadingUI.style.display = 'block';
+  fileViewerUI.style.display = 'none';
+  errorUI.style.display = 'none';
 }
 
 function showViewerUI() {
+  const uploadUI = document.getElementById('uploadUI');
+  const loadingUI = document.getElementById('loadingUI');
+  const fileViewerUI = document.getElementById('fileViewerUI');
+  const errorUI = document.getElementById('errorUI');
+  
   uploadUI.style.display = 'none';
   loadingUI.style.display = 'none';
   fileViewerUI.style.display = 'block';
+  errorUI.style.display = 'none';
 }
 
 function showErrorUI(msg) {
+  const uploadUI = document.getElementById('uploadUI');
+  const loadingUI = document.getElementById('loadingUI');
+  const fileViewerUI = document.getElementById('fileViewerUI');
+  const errorUI = document.getElementById('errorUI');
+  const errorMsg = document.getElementById('errorMsg');
+  
   uploadUI.style.display = 'none';
   loadingUI.style.display = 'none';
   fileViewerUI.style.display = 'none';
@@ -814,19 +837,26 @@ function escapeHtml(t) {
   d.textContent = t;
   return d.innerHTML;
 }
+
+/* =====================
+   Setup Upload Handlers
+===================== */
 function setupUploadHandlers() {
+  const fileInput = document.getElementById('fileInput');
+  const selectFileBtn = document.getElementById('selectFileBtn');
+  const uploadMoreBtn = document.getElementById('uploadMoreBtn');
+  const retryBtn = document.getElementById('retryBtn');
+  const copyUrlBtn = document.getElementById('copyUrlBtn');
+  const shareUrl = document.getElementById('shareUrl');
+  const fileHistoryBtn = document.getElementById('fileHistoryBtn');
+  const fileHistoryModal = document.getElementById('fileHistoryModal');
+  const closeModalBtn = document.getElementById('closeModalBtn');
+
+  // ファイル選択ボタン
   fileInput.multiple = true;
   selectFileBtn.onclick = () => fileInput.click();
-  
-  // "Upload New" ボタン
-  const uploadNewBtn = document.getElementById('uploadNewBtn');
-  if (uploadNewBtn) {
-    uploadNewBtn.onclick = () => {
-      showUploadUI();
-      fileInput.value = '';
-    };
-  }
 
+  // ファイル選択時
   fileInput.onchange = async (e) => {
     const files = [...e.target.files];
     if (!files.length) return;
@@ -837,21 +867,59 @@ function setupUploadHandlers() {
     await uploadMultiple(files);
   };
 
-  const copyBtn = document.getElementById('copyUrlBtn');
-  const shareInput = document.getElementById('shareUrl');
-
-  if (copyBtn && shareInput) {
-    copyBtn.onclick = async () => {
+  // URLをコピーボタン
+  if (copyUrlBtn && shareUrl) {
+    copyUrlBtn.onclick = async () => {
       try {
-        await navigator.clipboard.writeText(shareInput.value);
-        alert('Copied!');
+        await navigator.clipboard.writeText(shareUrl.value);
+        alert('Copied to clipboard!');
       } catch {
         alert('Copy failed');
       }
     };
   }
+
+  // 別のファイルをアップロードボタン
+  if (uploadMoreBtn) {
+    uploadMoreBtn.onclick = () => {
+      showUploadUI();
+      fileInput.value = '';
+    };
+  }
+
+  // リトライボタン
+  if (retryBtn) {
+    retryBtn.onclick = () => {
+      showUploadUI();
+      fileInput.value = '';
+    };
+  }
+
+  // ファイル履歴ボタン
+  if (fileHistoryBtn) {
+    fileHistoryBtn.onclick = () => {
+      fileHistoryModal.style.display = 'block';
+    };
+  }
+
+  // モーダルを閉じるボタン
+  if (closeModalBtn) {
+    closeModalBtn.onclick = () => {
+      fileHistoryModal.style.display = 'none';
+    };
+  }
+
+  // モーダルの外側をクリックで閉じる
+  window.onclick = (event) => {
+    if (event.target === fileHistoryModal) {
+      fileHistoryModal.style.display = 'none';
+    }
+  };
 }
 
+/* =====================
+   Upload Multiple Files
+===================== */
 async function uploadMultiple(files) {
   const uploadUI = document.getElementById('uploadUI');
   const processingArea = document.getElementById('processingArea');
@@ -861,8 +929,10 @@ async function uploadMultiple(files) {
   const progressText = document.getElementById('progressText');
   const processingTitle = document.getElementById('processingTitle');
   const processingMessage = document.getElementById('processingMessage');
-  const uploadNewBtn = document.getElementById('uploadNewBtn');
+  const shareUrl = document.getElementById('shareUrl');
+  const errorMessage = document.getElementById('errorMessage');
 
+  // UI切り替え
   uploadUI.style.display = 'none';
   successArea.style.display = 'none';
   errorArea.style.display = 'none';
@@ -898,23 +968,35 @@ async function uploadMultiple(files) {
         }
       );
 
-      uploadedIds.push(result.fileId);
+      console.log('Upload result:', result);
+
+      // resultの構造をチェック
+      const fileId = result?.fileId || result?.id || generateShortId();
+      uploadedIds.push(fileId);
     }
 
-    // 完了
+    // 完了 - 共有URLを生成
     processingArea.style.display = 'none';
+    
+    const firstFileId = uploadedIds[0];
+    const shareLink = `${window.location.origin}/d/${firstFileId}`;
+    shareUrl.value = shareLink;
+    
     successArea.style.display = 'block';
     progressFill.style.width = '100%';
     progressText.textContent = '100%';
 
   } catch (e) {
-    console.error(e);
+    console.error('Upload error:', e);
     processingArea.style.display = 'none';
     errorArea.style.display = 'block';
-    document.getElementById('errorMessage').textContent = e.message;
+    errorMessage.textContent = e.message || 'Upload failed. Please try again.';
   }
 }
 
+/* =====================
+   Load and Display View
+===================== */
 async function loadAndDisplayView(viewId) {
   try {
     const res = await fetch(`/.netlify/functions/view?id=${viewId}`);
@@ -932,6 +1014,7 @@ async function loadAndDisplayView(viewId) {
       }
     }
 
+    const fileViewerUI = document.getElementById('fileViewerUI');
     fileViewerUI.innerHTML = '';
 
     for (const file of data.files) {
@@ -941,12 +1024,13 @@ async function loadAndDisplayView(viewId) {
     showViewerUI();
 
   } catch (e) {
+    console.error(e);
     showErrorUI('File not found');
   }
 }
 
 /* =====================
-   Render
+   Render File Block
 ===================== */
 function renderFileBlock(file) {
   const url = file.downloadUrl;
@@ -957,6 +1041,7 @@ function renderFileBlock(file) {
         <video controls preload="metadata" style="max-width:95%;border-radius:12px">
           <source src="${url}">
         </video>
+        <br />
         <a class="btn" href="${url}" download>Download</a>
       </div>
     `;
@@ -966,6 +1051,7 @@ function renderFileBlock(file) {
     return `
       <div style="margin:2rem;text-align:center">
         <img src="${url}" style="max-width:95%;border-radius:12px">
+        <br />
         <a class="btn" href="${url}" download>Download</a>
       </div>
     `;
@@ -973,14 +1059,14 @@ function renderFileBlock(file) {
 
   return `
     <div style="margin:2rem;text-align:center">
-      <p>${file.fileName}</p>
+      <p>${escapeHtml(file.fileName)}</p>
       <a class="btn" href="${url}" download>Download</a>
     </div>
   `;
 }
 
 /* =====================
-   Start
+   Start App
 ===================== */
 initApp();
 </script>

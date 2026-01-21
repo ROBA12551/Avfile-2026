@@ -140,24 +140,30 @@ class SimpleUploadManager {
 
       onProgress(80, '📝 アップロード情報を記録中...');
 
-      // github.json にファイル情報を追加
-      const githubJson = await this.githubUploader.getGithubJson();
-      githubJson.files = githubJson.files || [];
-      githubJson.files.push({
-        fileId: fileId,
-        fileName: fileName,
-        downloadUrl: assetData.download_url,
-        githubReleaseUrl: releaseData.html_url,
-        fileSize: processedBlob.size,
-        originalSize: fileBlob.size,
-        compressed: wasCompressed,
-        uploadedAt: new Date().toISOString(),
-        releaseTag: releaseTag,
-        assetId: assetData.asset_id,
-      });
-      githubJson.lastUpdated = new Date().toISOString();
+const res = await this.githubUploader.getGithubJson();
+const githubJson = res.data; // ← ★これが最重要
 
-      await this.githubUploader.saveGithubJson(githubJson);
+githubJson.files = Array.isArray(githubJson.files)
+  ? githubJson.files
+  : [];
+
+githubJson.files.push({
+  fileId: fileId,
+  fileName: fileName,
+  downloadUrl: assetData.download_url,
+  githubReleaseUrl: releaseData.html_url,
+  fileSize: processedBlob.size,
+  originalSize: fileBlob.size,
+  compressed: wasCompressed,
+  uploadedAt: new Date().toISOString(),
+  releaseTag: releaseTag,
+  assetId: assetData.asset_id,
+});
+
+githubJson.lastUpdated = new Date().toISOString();
+
+// ★ sha は Function 側で処理するので data だけ渡す
+await this.githubUploader.saveGithubJson(githubJson);
 
       onProgress(90, '🔗 共有リンク生成中...');
       const viewUrl = `${window.location.origin}/?id=${fileId}`;
