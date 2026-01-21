@@ -68,11 +68,12 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            background: #ffffff;
+            border-radius: 6px;
+            flex-shrink: 0;
         }
         .logo-box img {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
+            display: none;
         }
         .logo-text { 
             font-size: 1.5rem; 
@@ -157,9 +158,34 @@
         }
 
         .upload-icon {
-            font-size: 3.5rem;
+            width: 60px;
+            height: 60px;
             margin-bottom: 1rem;
             animation: float 3s ease-in-out infinite;
+            border: 3px solid rgba(255, 255, 255, 0.8);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        
+        .upload-icon::before {
+            content: '';
+            width: 0;
+            height: 0;
+            border-left: 12px solid transparent;
+            border-right: 12px solid transparent;
+            border-bottom: 14px solid rgba(255, 255, 255, 0.8);
+        }
+        
+        .upload-icon::after {
+            content: '';
+            position: absolute;
+            width: 3px;
+            height: 16px;
+            background: rgba(255, 255, 255, 0.8);
+            bottom: 8px;
         }
 
         @keyframes float {
@@ -243,8 +269,11 @@
         }
 
         .feature-icon {
-            font-size: 2.5rem;
+            width: 50px;
+            height: 50px;
             margin-bottom: 1rem;
+            border-left: 4px solid rgba(255, 255, 255, 0.6);
+            padding-left: 12px;
         }
 
         .feature-title {
@@ -589,7 +618,7 @@
 
             <section class="upload-section">
                 <div class="upload-area" id="uploadArea">
-                    <div class="upload-icon">↑</div>
+                    <div class="upload-icon"></div>
                     <h2>Drag & Drop Files Here</h2>
                     <p>Or click to select files from your computer</p>
                     <input type="file" id="fileInput" multiple />
@@ -622,42 +651,42 @@
                 <h2 class="features-title">Why Choose Avfile?</h2>
                 <div class="features-grid">
                     <div class="feature-card">
-                        <div class="feature-icon">⚡</div>
+                        <div class="feature-icon"></div>
                         <div class="feature-title">Lightning Fast</div>
                         <div class="feature-description">
                             Upload and share files instantly. Get your shareable link within seconds, even for large files.
                         </div>
                     </div>
                     <div class="feature-card">
-                        <div class="feature-icon">🔒</div>
+                        <div class="feature-icon"></div>
                         <div class="feature-title">Secure & Reliable</div>
                         <div class="feature-description">
                             Your files are stored securely and reliably. Share with confidence knowing your content is safe.
                         </div>
                     </div>
                     <div class="feature-card">
-                        <div class="feature-icon">🌐</div>
+                        <div class="feature-icon"></div>
                         <div class="feature-title">No Login Required</div>
                         <div class="feature-description">
                             Start sharing files immediately. No account, no password, no hassle. Just upload and share.
                         </div>
                     </div>
                     <div class="feature-card">
-                        <div class="feature-icon">♾️</div>
+                        <div class="feature-icon"></div>
                         <div class="feature-title">No Expiration</div>
                         <div class="feature-description">
                             Your files never expire. Share links anytime, anywhere, and recipients can access them forever.
                         </div>
                     </div>
                     <div class="feature-card">
-                        <div class="feature-icon">🎬</div>
+                        <div class="feature-icon"></div>
                         <div class="feature-title">Preview Support</div>
                         <div class="feature-description">
                             Preview videos, images, and PDFs directly. No need to download to see what you're sharing.
                         </div>
                     </div>
                     <div class="feature-card">
-                        <div class="feature-icon">📦</div>
+                        <div class="feature-icon"></div>
                         <div class="feature-title">Multiple Files</div>
                         <div class="feature-description">
                             Share up to 10 files with a single link. Browse through all files using the carousel viewer.
