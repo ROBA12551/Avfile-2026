@@ -20,15 +20,26 @@ class VideoCompressionEngine {
     }
 
     try {
-      const { FFmpeg, fetchFile } = FFmpeg;
+      // FFmpeg.wasm がロードされるまで待機
+      let attempts = 0;
+      while (!window.FFmpeg && attempts < 50) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
+      }
+
+      if (!window.FFmpeg) {
+        throw new Error('FFmpeg.wasm library failed to load');
+      }
+
+      const { FFmpeg, fetchFile } = window.FFmpeg;
       this.ffmpeg = new FFmpeg.FFmpeg();
       
       const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
-      this.ffmpeg.load({
-        coreURL: await fetchFile(`${baseURL}/ffmpeg-core.js`),
+      await this.ffmpeg.load({
+        coreURL: `${baseURL}/ffmpeg-core.js`,
+        wasmURL: `${baseURL}/ffmpeg-core.wasm`,
       });
 
-      await this.ffmpeg.isLoaded();
       this.ffmpegReady = true;
       console.log('✅ FFmpeg 初期化完了');
     } catch (error) {
@@ -45,6 +56,7 @@ class VideoCompressionEngine {
       // FFmpeg を初期化
       await this.initFFmpeg();
 
+      const { fetchFile } = window.FFmpeg;
       const inputFileName = 'input.mp4';
       const outputFileName = 'output.mp4';
 
