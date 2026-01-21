@@ -592,12 +592,7 @@
             }
         }
     </style>
-    
-    <!-- Native Banner Ad -->
-    <script async="async" data-cfasync="false" src="https://engagementidentifiers.com/16ac9477bac66fd273f07f78988634a7/invoke.js"></script>
-    
-    <!-- Social Bar Ad -->
-    <script src="https://engagementidentifiers.com/e5/9f/35/e59f35567eb52ba605ba4c542cd416d9.js"></script>
+
 </head>
 <body>
     <!-- Navbar -->
@@ -633,25 +628,7 @@
                     <p class="upload-hint">You can upload up to 10 files at once • All file types supported</p>
                 </div>
             </section>
-            
-            <!-- Native Banner Ad -->
-            <div class="ad-container">
-                <div id="container-16ac9477bac66fd273f07f78988634a7"></div>
-            </div>
-            
-            <!-- Banner Ad -->
-            <div class="banner-ad-container">
-                <script>
-                    atOptions = {
-                        'key' : '0ce05c94a48d8d79efd364431b44b38c',
-                        'format' : 'iframe',
-                        'height' : 50,
-                        'width' : 320,
-                        'params' : {}
-                    };
-                </script>
-                <script src="https://engagementidentifiers.com/0ce05c94a48d8d79efd364431b44b38c/invoke.js"></script>
-            </div>
+
 
             <!-- Features Section -->
             <div class="features-section">
@@ -779,14 +756,13 @@
     </footer>
 
 <script>
-// Cache 管理
+// キャッシュ管理 (修正版)
 class Cache {
   static async downloadDirect(url, fileId) {
     try {
       console.log('[CACHE] Downloading:', fileId);
       console.log('[CACHE] Original URL:', url);
       
-      // プロキシ経由でダウンロード
       const proxyUrl = `/.netlify/functions/download?url=${encodeURIComponent(url)}`;
       console.log('[CACHE] Proxy URL:', proxyUrl);
       
@@ -836,7 +812,7 @@ class Cache {
   }
 }
 
-// GitHub Uploader
+// GitHub アップローダー
 class GitHubUploader {
   constructor() {
     this.functionUrl = '/.netlify/functions/github-upload';
@@ -914,7 +890,7 @@ class GitHubUploader {
   }
 }
 
-// Carousel
+// カルーセル管理
 class Carousel {
   constructor(track, dots, prevBtn, nextBtn, info) {
     this.track = track;
@@ -971,34 +947,45 @@ class Carousel {
   }
 }
 
-// App
+// グローバル変数
 const MAX_FILES = 10;
-const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
-const VIDEO_COMPRESSION_THRESHOLD = 200 * 1024 * 1024; // 200MB以上は圧縮
+const MAX_FILE_SIZE = 500 * 1024 * 1024;
+const VIDEO_COMPRESSION_THRESHOLD = 200 * 1024 * 1024;
 const pathMatch = location.pathname.match(/^\/d\/([a-zA-Z0-9]+)/);
 const viewId = pathMatch?.[1] || null;
 
+// ユーティリティ関数
 function escapeHtml(t) {
   const d = document.createElement('div');
   d.textContent = t;
   return d.innerHTML;
 }
 
+// ファイルタイプの判定を修正 (正規表現の安全性向上)
 function getIcon(name) {
   if (!name || typeof name !== 'string') return 'F';
-  const nameLower = String(name).toLowerCase().trim();
-  if (!nameLower || nameLower.length === 0) return 'F';
   
   try {
-    if (/\.(mp4|webm|ogg|mkv|avi|mov|flv|wmv|m4v|ts|m2ts|mts|3gp|3g2|asf|f4v|m3u8|mxf)$/i.test(nameLower)) return 'V';
-    if (/\.(jpg|jpeg|png|gif|webp|bmp|svg|ico|tiff|tif)$/i.test(nameLower)) return 'I';
-    if (/\.(pdf)$/i.test(nameLower)) return 'P';
+    const nameLower = String(name).toLowerCase().trim();
+    if (!nameLower || nameLower.length === 0) return 'F';
+    
+    // 正規表現は安全にエスケープされた形式で定義
+    const videoExtensions = ['mp4', 'webm', 'ogg', 'mkv', 'avi', 'mov', 'flv', 'wmv', 'm4v', 'ts', 'm2ts', 'mts', '3gp', '3g2', 'asf', 'f4v', 'm3u8', 'mxf'];
+    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'ico', 'tiff', 'tif'];
+    const pdfExtensions = ['pdf'];
+    
+    const ext = nameLower.split('.').pop();
+    
+    if (videoExtensions.includes(ext)) return 'V';
+    if (imageExtensions.includes(ext)) return 'I';
+    if (pdfExtensions.includes(ext)) return 'P';
   } catch (e) {
-    console.error('[ICON] Error:', e, 'name:', name);
+    console.error('[ICON] Error:', e.message, 'name:', name);
   }
   return 'F';
 }
 
+// ファイルサイズのフォーマット
 function formatSize(bytes) {
   const sizes = ['B', 'KB', 'MB', 'GB'];
   if (bytes === 0) return '0 B';
@@ -1006,6 +993,7 @@ function formatSize(bytes) {
   return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
 }
 
+// UI表示関数
 function hideAll() {
   document.getElementById('uploadUI').style.display = 'none';
   document.getElementById('uploadStatusScreen').classList.remove('show');
@@ -1021,6 +1009,7 @@ function showSuccess() { hideAll(); document.getElementById('successScreen').cla
 function showError(msg) { hideAll(); document.getElementById('errorMsg').textContent = msg; document.getElementById('errorScreen').classList.add('show'); }
 function showLoading() { hideAll(); document.getElementById('loadingUI').classList.add('show'); }
 
+// イベントリスナー設定
 document.getElementById('selectFileBtn').onclick = () => document.getElementById('fileInput').click();
 
 const uploadArea = document.getElementById('uploadArea');
@@ -1053,6 +1042,7 @@ document.getElementById('openLinkBtn').onclick = () => window.open(document.getE
 document.getElementById('retryBtn').onclick = () => { showUpload(); document.getElementById('fileInput').value = ''; };
 document.getElementById('backBtn').onclick = () => showUpload();
 
+// ファイルアップロード処理 (修正版)
 async function uploadMultiple(files) {
   showStatus();
   const uploader = new GitHubUploader();
@@ -1066,18 +1056,16 @@ async function uploadMultiple(files) {
       
       console.log('[UPLOAD] Starting file:', file.name, 'Size:', file.size, 'Type:', file.type);
       
-      // ファイルサイズチェック
       if (file.size > MAX_FILE_SIZE) {
         throw new Error(`File size exceeds limit: ${(file.size / 1024 / 1024).toFixed(2)}MB (max 500MB)`);
       }
       
-      // すべての動画形式を自動的にMP4に変換
       let uploadFile = file;
-      const videoRegex = /\.(mp4|webm|ogg|mkv|avi|mov|flv|wmv|m4v|ts|m2ts|mts|3gp|3g2|asf|f4v|m3u8|mxf)$/i;
-      const isVideo = videoRegex.test(file.name) || file.type.startsWith('video/');
+      
+      // 安全なビデオ形式判定
+      const isVideo = isVideoFile(file);
       
       if (isVideo) {
-        // MOV形式または200MB以上は圧縮
         const isMov = file.type === 'video/quicktime' || file.name.toLowerCase().endsWith('.mov');
         const needsCompression = file.size > VIDEO_COMPRESSION_THRESHOLD;
         
@@ -1128,11 +1116,6 @@ async function uploadMultiple(files) {
             console.error('[UPLOAD] FileReader error:', reader.error);
             reject(reader.error);
           };
-          reader.onprogress = (e) => {
-            if (e.lengthComputable) {
-              console.log('[UPLOAD] Reading:', Math.round((e.loaded / e.total) * 100) + '%');
-            }
-          };
           reader.readAsDataURL(uploadFile);
         });
       } catch (err) {
@@ -1173,6 +1156,26 @@ async function uploadMultiple(files) {
   }
 }
 
+// ビデオファイルの判定を安全に
+function isVideoFile(file) {
+  if (!file) return false;
+  
+  // MIME typeで判定
+  if (file.type && file.type.startsWith('video/')) {
+    return true;
+  }
+  
+  // ファイル名の拡張子で判定
+  if (file.name && typeof file.name === 'string') {
+    const videoExtensions = ['mp4', 'webm', 'ogg', 'mkv', 'avi', 'mov', 'flv', 'wmv', 'm4v', 'ts', 'm2ts', 'mts', '3gp', '3g2', 'asf', 'f4v', 'm3u8', 'mxf'];
+    const ext = file.name.toLowerCase().split('.').pop();
+    return videoExtensions.includes(ext);
+  }
+  
+  return false;
+}
+
+// ビュー読み込み (修正版)
 async function loadView(viewId) {
   try {
     console.log('[MAIN] Loading view:', viewId);
@@ -1205,33 +1208,36 @@ async function loadView(viewId) {
       const item = document.createElement('div');
       item.className = 'carousel-item';
 
-      const videoRegex = /\.(mp4|webm|ogg|mkv|avi|mov|flv|wmv|m4v|ts|m2ts|mts|3gp|3g2|asf|f4v|m3u8)$/i;
-      const imageRegex = /\.(jpg|jpeg|png|gif|webp|bmp|svg|ico|tiff)$/i;
-      const pdfRegex = /\.(pdf)$/i;
-
       let preview = '';
       const fileName = String(file.fileName || '').toLowerCase();
+      
       try {
         console.log('[FILE] Processing:', file.fileName, 'lowered:', fileName);
         if (!fileName || fileName.length === 0) {
           throw new Error('Empty filename');
         }
-        if (videoRegex.test(fileName)) {
+        
+        const ext = fileName.split('.').pop();
+        const videoExtensions = ['mp4', 'webm', 'ogg', 'mkv', 'avi', 'mov', 'flv', 'wmv', 'm4v', 'ts', 'm2ts', 'mts', '3gp', '3g2', 'asf', 'f4v', 'm3u8'];
+        const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'ico', 'tiff', 'tif'];
+        const pdfExtensions = ['pdf'];
+        
+        if (videoExtensions.includes(ext)) {
           console.log('[FILE] Video detected:', fileName);
           preview = `<div class="file-preview-area"><video controls style="max-width: 100%; max-height: 400px; border-radius: 8px;"><source src="/.netlify/functions/download?url=${encodeURIComponent(file.downloadUrl)}" type="video/mp4"></video></div>`;
-        } else if (imageRegex.test(fileName)) {
+        } else if (imageExtensions.includes(ext)) {
           console.log('[FILE] Image detected:', fileName);
           preview = `<div class="file-preview-area"><img src="/.netlify/functions/download?url=${encodeURIComponent(file.downloadUrl)}" style="max-width: 100%; max-height: 400px; border-radius: 8px;" /></div>`;
-        } else if (pdfRegex.test(fileName)) {
+        } else if (pdfExtensions.includes(ext)) {
           console.log('[FILE] PDF detected:', fileName);
           preview = `<div class="file-preview-area"><iframe src="/.netlify/functions/download?url=${encodeURIComponent(file.downloadUrl)}" style="width: 100%; height: 100%; border: none;"></iframe></div>`;
         } else {
           console.log('[FILE] Other file:', fileName);
-          preview = `<div class="file-preview-area"><p style="color: rgba(255, 255, 255, 0.7);"><a href="${file.downloadUrl}" download style="color: #ffffff;">Download file</a></p></div>`;
+          preview = `<div class="file-preview-area"><p style="color: rgba(255, 255, 255, 0.7);"><a href="${escapeHtml(file.downloadUrl)}" download style="color: #ffffff;">Download file</a></p></div>`;
         }
       } catch (e) {
         console.error('[FILE] Preview error:', e, 'fileName:', fileName, 'file:', file);
-        preview = `<div class="file-preview-area"><p style="color: rgba(255, 255, 255, 0.7);"><a href="${file.downloadUrl}" download style="color: #ffffff;">Download file</a></p></div>`;
+        preview = `<div class="file-preview-area"><p style="color: rgba(255, 255, 255, 0.7);"><a href="${escapeHtml(file.downloadUrl)}" download style="color: #ffffff;">Download file</a></p></div>`;
       }
 
       item.innerHTML = `
@@ -1245,8 +1251,8 @@ async function loadView(viewId) {
               </div>
             </div>
             <div class="file-item-actions">
-              <a href="${file.downloadUrl}" download class="file-action-btn">Download</a>
-              <button class="file-action-btn" onclick="navigator.clipboard.writeText('${file.downloadUrl}'); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy Link', 2000);">Copy Link</button>
+              <a href="${escapeHtml(file.downloadUrl)}" download class="file-action-btn">Download</a>
+              <button class="file-action-btn" onclick="navigator.clipboard.writeText('${escapeHtml(file.downloadUrl)}'); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy Link', 2000);">Copy Link</button>
             </div>
           </div>
           ${preview}
@@ -1267,12 +1273,11 @@ async function loadView(viewId) {
 
 window.addEventListener('beforeunload', () => Cache.clearAll());
 
-// MOV → MP4 変換関数
+// MOV → MP4 変換
 async function convertMovToMp4(movFile) {
   try {
     console.log('[CONVERT] Video conversion starting...', 'File:', movFile.name, 'Type:', movFile.type, 'Size:', movFile.size);
     
-    // FFmpeg を確認
     if (!window.FFmpeg || !window.FFmpeg.FFmpeg) {
       console.warn('[CONVERT] FFmpeg not available, returning original file');
       return movFile;
@@ -1280,8 +1285,6 @@ async function convertMovToMp4(movFile) {
 
     const FFmpeg = window.FFmpeg.FFmpeg;
     const ffmpeg = new FFmpeg.FFmpeg();
-    
-    // タイムアウト設定 (30秒)
     const timeout = 30000;
     let timeoutId;
     
@@ -1293,7 +1296,6 @@ async function convertMovToMp4(movFile) {
     });
 
     try {
-      // コアファイルのURLを指定
       console.log('[CONVERT] Loading FFmpeg core...');
       ffmpeg.load({
         coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js',
@@ -1306,28 +1308,24 @@ async function convertMovToMp4(movFile) {
 
       const inputFileName = 'input_video';
       const outputFileName = 'output.mp4';
-
-      // ファイル拡張子から入力ファイル名を決定
       const inputExt = movFile.name.split('.').pop().toLowerCase();
       const inputFullName = `${inputFileName}.${inputExt}`;
 
       console.log('[CONVERT] Reading file data...');
       const buffer = await movFile.arrayBuffer();
       
-      // FFmpeg FS にファイルを書き込む
       ffmpeg.FS('writeFile', inputFullName, new Uint8Array(buffer));
       console.log('[CONVERT] File written to FFmpeg FS');
 
       console.log('[CONVERT] Running conversion...');
-      // より積極的な圧縮コマンド
       await Promise.race([
         ffmpeg.run(
           '-i', inputFullName,
-          '-c:v', 'libx264',      // H.264コーデック (軽量)
-          '-preset', 'ultrafast', // 最速変換
-          '-crf', '28',           // 品質 (28 = 低圧縮)
-          '-c:a', 'aac',          // AAC音声
-          '-b:a', '128k',         // 128k音声ビットレート
+          '-c:v', 'libx264',
+          '-preset', 'ultrafast',
+          '-crf', '28',
+          '-c:a', 'aac',
+          '-b:a', '128k',
           '-movflags', '+faststart',
           outputFileName
         ),
@@ -1339,15 +1337,11 @@ async function convertMovToMp4(movFile) {
       console.log('[CONVERT] Conversion completed, reading output...');
       const outputData = ffmpeg.FS('readFile', outputFileName);
       
-      // クリーンアップ
       ffmpeg.FS('unlink', inputFullName);
       ffmpeg.FS('unlink', outputFileName);
 
-      // MP4 Blob を作成
       const mp4Blob = new Blob([outputData.buffer], { type: 'video/mp4' });
       const originalName = movFile.name.replace(/\.[^.]+$/i, '.mp4');
-      
-      // File オブジェクトを作成
       const mp4File = new File([mp4Blob], originalName, { type: 'video/mp4' });
       
       const originalMB = (movFile.size / 1024 / 1024).toFixed(2);
@@ -1361,7 +1355,6 @@ async function convertMovToMp4(movFile) {
       clearTimeout(timeoutId);
       console.error('[CONVERT] Conversion error:', error.message);
       console.error('[CONVERT] Stack:', error.stack);
-      // 変換失敗時は元のファイルを返す
       return movFile;
     }
   } catch (error) {
@@ -1370,12 +1363,11 @@ async function convertMovToMp4(movFile) {
   }
 }
 
-// 動画を高品質に圧縮
+// 動画圧縮処理
 async function convertAndCompressVideo(videoFile) {
   try {
     console.log('[COMPRESS] Video compression starting...');
     
-    // FFmpeg を確認
     if (!window.FFmpeg || !window.FFmpeg.FFmpeg) {
       console.warn('[COMPRESS] FFmpeg not available, returning original file');
       return videoFile;
@@ -1383,8 +1375,6 @@ async function convertAndCompressVideo(videoFile) {
 
     const FFmpeg = window.FFmpeg.FFmpeg;
     const ffmpeg = new FFmpeg.FFmpeg();
-    
-    // タイムアウト設定 (60秒)
     const timeout = 60000;
     let timeoutId;
     
@@ -1396,7 +1386,6 @@ async function convertAndCompressVideo(videoFile) {
     });
 
     try {
-      // コアファイルのURLを指定
       console.log('[COMPRESS] Loading FFmpeg core...');
       ffmpeg.load({
         coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js',
@@ -1414,20 +1403,18 @@ async function convertAndCompressVideo(videoFile) {
       console.log('[COMPRESS] Reading file data...');
       const buffer = await videoFile.arrayBuffer();
       
-      // FFmpeg FS にファイルを書き込む
       ffmpeg.FS('writeFile', inputFileName, new Uint8Array(buffer));
       console.log('[COMPRESS] File written to FFmpeg FS');
 
       console.log('[COMPRESS] Running compression (720p 30fps)...');
-      // 高品質圧縮 (720p 30fps)
       await Promise.race([
         ffmpeg.run(
           '-i', inputFileName,
           '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2',
           '-r', '30',
           '-c:v', 'libx264',
-          '-preset', 'medium',      // 品質重視
-          '-crf', '23',             // 品質23 (かなり高品質)
+          '-preset', 'medium',
+          '-crf', '23',
           '-c:a', 'aac',
           '-b:a', '128k',
           '-movflags', '+faststart',
@@ -1441,15 +1428,11 @@ async function convertAndCompressVideo(videoFile) {
       console.log('[COMPRESS] Compression completed, reading output...');
       const outputData = ffmpeg.FS('readFile', outputFileName);
       
-      // クリーンアップ
       ffmpeg.FS('unlink', inputFileName);
       ffmpeg.FS('unlink', outputFileName);
 
-      // MP4 Blob を作成
       const mp4Blob = new Blob([outputData.buffer], { type: 'video/mp4' });
       const originalName = videoFile.name.replace(/\.[^.]+$/i, '.mp4');
-      
-      // File オブジェクトを作成
       const mp4File = new File([mp4Blob], originalName, { type: 'video/mp4' });
       
       const originalMB = (videoFile.size / 1024 / 1024).toFixed(2);
@@ -1463,7 +1446,6 @@ async function convertAndCompressVideo(videoFile) {
       clearTimeout(timeoutId);
       console.error('[COMPRESS] Error:', error.message);
       console.error('[COMPRESS] Stack:', error.stack);
-      // 圧縮失敗時は元のファイルを返す
       return videoFile;
     }
   } catch (error) {
