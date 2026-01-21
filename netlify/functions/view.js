@@ -58,6 +58,49 @@ async function githubRequest(method, path, body = null) {
   });
 }
 
+// ★ GitHub Releases URL を jsDelivr CDN に変換
+function convertToJsDelivrUrl(downloadUrl) {
+  if (!downloadUrl || !downloadUrl.includes('github.com')) {
+    return downloadUrl;
+  }
+
+  try {
+    // URL format: https://github.com/OWNER/REPO/releases/download/TAG/FILENAME
+    // または: https://api.github.com/repos/OWNER/REPO/releases/assets/ID
+    
+    // github.com/releases/download の場合
+    const match1 = downloadUrl.match(/github\.com\/([^/]+)\/([^/]+)\/releases\/download\/([^/]+)\/(.+)$/);
+    if (match1) {
+      const [, owner, repo, tag, filename] = match1;
+      const jsDelivrUrl = `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${tag}/${filename}`;
+      logInfo(`Converted URL: ${downloadUrl} → ${jsDelivrUrl}`);
+      return jsDelivrUrl;
+    }
+
+    // github releases redirect の場合（通常はこちら）
+    // https://github.com/user/repo/releases/download/tag/file.ext
+    if (downloadUrl.includes('/releases/download/')) {
+      const parts = downloadUrl.split('/');
+      const owner = parts[3];
+      const repo = parts[4];
+      // releases/download の後ろを取得
+      const idx = downloadUrl.indexOf('/releases/download/');
+      const tagAndFile = downloadUrl.substring(idx + '/releases/download/'.length);
+      const [tag, ...fileParts] = tagAndFile.split('/');
+      const filename = fileParts.join('/');
+      
+      const jsDelivrUrl = `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${tag}/${filename}`;
+      logInfo(`Converted URL: ${downloadUrl} → ${jsDelivrUrl}`);
+      return jsDelivrUrl;
+    }
+
+    return downloadUrl;
+  } catch (e) {
+    logError(`URL conversion error: ${e.message}`);
+    return downloadUrl;
+  }
+}
+
 exports.handler = async (event) => {
   logInfo(`=== VIEW HANDLER START ===`);
   logInfo(`Query params: ${JSON.stringify(event.queryStringParameters)}`);
@@ -153,7 +196,7 @@ exports.handler = async (event) => {
 
     logInfo(`View found: ${view.viewId}`);
 
-    // ★ github.json から downloadUrl を取得
+    // ★ github.json から downloadUrl を取得し、jsDelivr に変換
     const files = (view.files || [])
       .map(fid => {
         logInfo(`Looking for file: ${fid}`);
@@ -163,11 +206,15 @@ exports.handler = async (event) => {
           return null;
         }
         logInfo(`Found file: ${file.fileName}`);
+        
+        // ★ URL を jsDelivr に変換（CORS エラーを回避）
+        const downloadUrl = convertToJsDelivrUrl(file.downloadUrl);
+        
         return {
           fileId: file.fileId,
           fileName: file.fileName,
           fileSize: file.fileSize,
-          downloadUrl: file.downloadUrl  // ★ github.json に保存されている URL をそのまま使用
+          downloadUrl: downloadUrl  // ★ 変換後の URL を返す
         };
       })
       .filter(Boolean);
@@ -185,7 +232,7 @@ exports.handler = async (event) => {
       body: JSON.stringify({
         success: true,
         password: view.password || null,
-        shareUrl: view.shareUrl || null,  // ★ 共有URL も返す
+        shareUrl: view.shareUrl || null,
         files: files
       })
     };
