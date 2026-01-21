@@ -844,22 +844,28 @@ function setupUploadHandlers() {
 }
 async function uploadMultiple(files) {
 
-  // === DOMを最初に必ず取得 ===
+  // ===== DOMは最初に必ず取得 =====
   const uploadUI = document.getElementById('uploadUI');
   const processingArea = document.getElementById('processingArea');
   const successArea = document.getElementById('successArea');
   const errorArea = document.getElementById('errorArea');
   const progressFill = document.getElementById('progressFill');
   const progressText = document.getElementById('progressText');
+  const processingTitle = document.getElementById('processingTitle');
   const processingMessage = document.getElementById('processingMessage');
 
-  // === UI切り替え（最初）===
+  // ===== UI切り替え =====
   uploadUI.style.display = 'none';
   successArea.style.display = 'none';
   errorArea.style.display = 'none';
-  processingArea.style.display = 'block';
 
-  // 🔑 再描画を強制（これが超重要）
+  processingArea.style.display = 'block';
+  processingTitle.textContent = 'Uploading now';
+  processingMessage.textContent = 'Preparing upload...';
+  progressFill.style.width = '0%';
+  progressText.textContent = '0%';
+
+  // ★★ 超重要：再描画を強制 ★★
   await new Promise(r => setTimeout(r, 50));
 
   const uploadManager = new SimpleUploadManager();
@@ -887,35 +893,9 @@ async function uploadMultiple(files) {
       uploadedIds.push(result.fileId);
     }
 
-    // ===== URL生成 =====
-    const viewId = generateShortId(6);
-
-    const pwEnabled = document.getElementById('pwSwitch')?.checked;
-    let passwordHash = null;
-
-    if (pwEnabled) {
-      const pw = prompt('Set password');
-      if (!pw) throw new Error('Password required');
-      passwordHash = await sha256(pw);
-    }
-
-    const json = await github.getGithubJson();
-    json.views = json.views || [];
-    json.views.push({
-      viewId,
-      files: uploadedIds,
-      password: passwordHash,
-      createdAt: new Date().toISOString()
-    });
-
-    await github.saveGithubJson(json);
-
-    // ===== 完了UI =====
+    // ===== 完了 =====
     processingArea.style.display = 'none';
     successArea.style.display = 'block';
-
-    const shareUrl = `${location.origin}/d/${viewId}`;
-    document.getElementById('shareUrl').value = shareUrl;
 
   } catch (e) {
     console.error(e);
