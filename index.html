@@ -844,7 +844,9 @@ async function loadAndDisplayView(viewId) {
 
   const viewId = generateShortId(6);
   const github = uploadManager.githubUploader;
+async function loadAndDisplayView(viewId) {
   const json = await github.getGithubJson();
+}
 
   json.views = json.views || [];
   json.views.push({
