@@ -85,6 +85,7 @@ async function githubRequest(method, path, body = null, headers = {}) {
       let data = '';
       res.on('data', (c) => (data += c));
       res.on('end', () => {
+        logInfo(`GitHub Response: ${res.statusCode}`);
         if (res.statusCode >= 200 && res.statusCode < 300) {
           try {
             resolve(data ? JSON.parse(data) : {});
@@ -119,6 +120,7 @@ async function githubUploadRequest(method, fullUrl, body, headers = {}) {
       headers: {
         'Authorization': `token ${GITHUB_TOKEN}`,
         'User-Agent': 'Avfile-Netlify',
+        'Content-Type': 'application/octet-stream',
         ...headers,
       },
     };
@@ -127,17 +129,21 @@ async function githubUploadRequest(method, fullUrl, body, headers = {}) {
       options.headers['Content-Length'] = body.length;
     }
 
-    logInfo(`GitHub Upload Request: ${method} ${parsed.hostname}${options.path}`);
+    logInfo(`Upload Request: ${method} ${parsed.hostname}${options.path.substring(0, 100)}`);
+    logInfo(`Upload body size: ${body ? body.length : 0} bytes`);
 
     const req = https.request(options, (res) => {
       let data = '';
       res.on('data', (c) => (data += c));
       res.on('end', () => {
+        logInfo(`Upload Response: ${res.statusCode}`);
+        logInfo(`Upload Response Data: ${data.substring(0, 500)}`);
+        
         if (res.statusCode >= 200 && res.statusCode < 300) {
           try {
             resolve(data ? JSON.parse(data) : {});
           } catch {
-            resolve({});
+            reject(new Error('Failed to parse upload response'));
           }
         } else {
           reject(
@@ -149,7 +155,11 @@ async function githubUploadRequest(method, fullUrl, body, headers = {}) {
       });
     });
 
-    req.on('error', reject);
+    req.on('error', (err) => {
+      logError(`Upload Request Error: ${err.message}`);
+      reject(err);
+    });
+    
     if (body) req.write(body);
     req.end();
   });
@@ -168,6 +178,8 @@ async function createRelease(tag, metadata) {
 
   const data = await githubRequest('POST', path, body);
 
+  logInfo(`Release created: ${data.id}`);
+
   return {
     release_id: data.id,
     upload_url: data.upload_url,
@@ -177,8 +189,13 @@ async function createRelease(tag, metadata) {
 }
 
 async function uploadAsset(uploadUrl, fileData, fileName) {
+  logInfo(`Preparing asset upload: ${fileName}`);
+  logInfo(`File size: ${fileData.length} bytes`);
+
   const clean = uploadUrl.replace('{?name,label}', '');
   const assetUrl = `${clean}?name=${encodeURIComponent(fileName)}`;
+
+  logInfo(`Asset URL: ${assetUrl.substring(0, 100)}`);
 
   const data = await githubUploadRequest(
     'POST',
@@ -186,6 +203,8 @@ async function uploadAsset(uploadUrl, fileData, fileName) {
     fileData,
     { 'Content-Type': 'application/octet-stream' }
   );
+
+  logInfo(`Asset uploaded: ${data.id || 'unknown'}`);
 
   return {
     asset_id: data.id,
@@ -232,6 +251,7 @@ async function saveGithubJson(jsonData, sha = null) {
   if (sha) payload.sha = sha;
 
   await githubRequest('PUT', path, payload);
+  logInfo('github.json saved');
 }
 
 async function createViewOnServer(fileIds, passwordHash, origin) {
@@ -267,7 +287,6 @@ async function createViewOnServer(fileIds, passwordHash, origin) {
 }
 
 exports.handler = async (event) => {
-  // CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
       statusCode: 200,
@@ -281,6 +300,7 @@ exports.handler = async (event) => {
   }
 
   if (!GITHUB_TOKEN || !GITHUB_OWNER || !GITHUB_REPO) {
+    logError('Missing GitHub env vars');
     return {
       statusCode: 500,
       body: JSON.stringify({ error: 'Missing GitHub env vars' }),
@@ -306,10 +326,12 @@ exports.handler = async (event) => {
 
     switch (body.action) {
       case 'create-release':
+        logInfo(`Action: create-release tag=${body.releaseTag}`);
         response = await createRelease(body.releaseTag, body.metadata);
         break;
 
       case 'upload-asset':
+        logInfo(`Action: upload-asset fileName=${body.fileName}`);
         response = await uploadAsset(
           body.uploadUrl,
           Buffer.from(body.fileBase64, 'base64'),
@@ -318,10 +340,12 @@ exports.handler = async (event) => {
         break;
 
       case 'get-github-json':
+        logInfo('Action: get-github-json');
         response = await getGithubJson();
         break;
 
       case 'save-github-json': {
+        logInfo('Action: save-github-json');
         const current = await getGithubJson();
         let cleanData = body.jsonData;
         cleanData = normalizeGithubJson(cleanData);
@@ -331,6 +355,7 @@ exports.handler = async (event) => {
       }
 
       case 'create-view': {
+        logInfo(`Action: create-view fileIds=${body.fileIds.length}`);
         const fileIds = Array.isArray(body.fileIds) ? body.fileIds : [];
         if (fileIds.length === 0) throw new Error('fileIds required');
         const passwordHash = body.passwordHash || null;
@@ -349,7 +374,8 @@ exports.handler = async (event) => {
       body: JSON.stringify({ success: true, data: response }),
     };
   } catch (e) {
-    logError(e.stack || e.message || String(e));
+    logError(`Error: ${e.message}`);
+    logError(`Stack: ${e.stack}`);
     return {
       statusCode: 400,
       headers: { 'Content-Type': 'application/json' },
