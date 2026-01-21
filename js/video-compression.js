@@ -1,8 +1,9 @@
 /**
  * js/video-compression-local.js
  * ローカル（クライアント側）で完全に圧縮処理を行う
- * ★ モバイル（iOS/Android Chrome）でも FFmpeg 圧縮を実行
- * ★ Safari/Opera のみスキップ（MP4 変換のみ）
+ * ★ すべてのデバイス・ブラウザで FFmpeg 圧縮を実行
+ * ★ Safari/Opera でも圧縮実行（スキップなし）
+ * ★ すべての動画を MP4 に統一
  */
 
 class VideoCompressionEngineLocal {
@@ -23,8 +24,6 @@ class VideoCompressionEngineLocal {
     this.IS_OPERA = /Opera|OPR/.test(ua);
     this.IS_FIREFOX = /Firefox/.test(ua);
     this.IS_MOBILE = this.IS_IOS || this.IS_ANDROID || /Mobile|Tablet|Kindle/.test(ua);
-    // ★ Safari と Opera のみスキップ、モバイル Chrome は圧縮実行
-    this.SHOULD_SKIP = (this.IS_MOBILE && this.IS_SAFARI) || this.IS_OPERA;
 
     console.log('[DEVICE] Detection result:', {
       iOS: this.IS_IOS,
@@ -32,23 +31,12 @@ class VideoCompressionEngineLocal {
       Safari: this.IS_SAFARI,
       Opera: this.IS_OPERA,
       Mobile: this.IS_MOBILE,
-      shouldSkip: this.SHOULD_SKIP,
     });
 
-    if (this.SHOULD_SKIP) {
-      console.log('⏭️ Safari/Opera - FFmpeg処理をスキップ（MP4変換のみ実行）');
-    } else {
-      console.log('✅ FFmpeg圧縮を実行します（モバイルを含む）');
-    }
+    console.log('✅ すべてのデバイスで FFmpeg 圧縮を実行します');
   }
 
   async initFFmpeg() {
-    if (this.SHOULD_SKIP) {
-      console.log('⏭️ Safari/Opera - FFmpeg処理をスキップ');
-      this.ffmpegReady = true;
-      return;
-    }
-
     if (this.ffmpegReady && this.ffmpeg && this.ffmpeg.isLoaded()) {
       console.log('✅ FFmpeg は既に初期化済み');
       return;
@@ -131,26 +119,8 @@ class VideoCompressionEngineLocal {
       const mp4FileName = this.convertToMP4FileName(originalFileName);
       console.log('[COMPRESS] Output will be converted to:', mp4FileName);
 
-      if (this.SHOULD_SKIP) {
-        // ★ Safari/Opera のみスキップ - MP4 変換のみ実行
-        console.log('⏭️ Safari/Opera デバイス - 圧縮をスキップ（MP4 変換のみ実行）');
-        
-        onProgress(10, '📱 Safari/Opera 検出 - MP4 に変換中');
-        await new Promise(r => setTimeout(r, 100));
-        
-        onProgress(50, '🎬 形式を MP4 に変換中...');
-        await new Promise(r => setTimeout(r, 100));
-        
-        onProgress(100, '✅ MP4 変換完了');
-        
-        // ★ Safari/Opera でも MP4 に変換したファイルを返す
-        const mp4File = new File([videoFile], mp4FileName, { type: 'video/mp4' });
-        console.log('[COMPRESS] Returning MP4 formatted file:', mp4FileName);
-        return mp4File;
-      }
-
-      // ★ iOS/Android Chrome などは圧縮を実行
-      console.log('✅ FFmpeg 圧縮を実行します');
+      // ★ すべてのデバイスで圧縮実行
+      console.log('✅ FFmpeg 圧縮を実行します（すべてのデバイス・ブラウザ対応）');
 
       try {
         await this.initFFmpeg();
