@@ -730,10 +730,10 @@
 
 <!-- ★ 修正: ローカル圧縮対応のスクリプトを読み込む（順序重要） -->
 <!-- ローカル圧縮エンジン -->
-<script src="/js/video-compression.js"></script>
+<script src="/js/video-compression-local.js"></script>
 
 <!-- ファイルアップロード強化版 -->
-<script src="/js/universal-file-uploader.js"></script>
+<script src="/js/universal-file-uploader-enhanced.js"></script>
 
 <script>
 // ★ グローバル変数定義（最初）
@@ -1549,11 +1549,27 @@ async function uploadMultiple(files) {
 
         let uploadFile = file;
 
-        // ★ 圧縮を無効化（テスト用）
-        console.log('[COMPRESS_' + idx + '] 圧縮をスキップ');
-        // if (info.type === 'video' && window.VideoCompressionEngineLocal) { 
-        //   圧縮コード削除
-        // }
+        // ★ すべての動画ファイルを圧縮（圧縮失敗時は元ファイルそのまま）
+        if (info.type === 'video' && window.VideoCompressionEngineLocal) {
+          try {
+            console.log('[COMPRESS_' + idx + '] 圧縮開始（ファイルサイズ: ' + fileUploader.formatSize(file.size) + '）');
+            const engine = new VideoCompressionEngineLocal();
+            uploadFile = await engine.compress(file, (progress, message) => {
+              console.log('[COMPRESS_' + idx + '] ' + message);
+              document.getElementById('statusMessage').textContent = `${idx + 1} / ${valid.length} - ${message}`;
+            });
+            console.log('[COMPRESS_' + idx + '] 圧縮完了（圧縮後: ' + fileUploader.formatSize(uploadFile.size) + '）');
+          } catch (err) {
+            console.warn('[COMPRESS_' + idx + '] 圧縮失敗: ' + err.message);
+            // ★ 圧縮失敗時は元ファイルをそのまま使用
+          }
+        }
+
+        // ★ ファイルサイズをチェック（10MB以上なら警告）
+        if (uploadFile.size > 10 * 1024 * 1024) {
+          console.warn('[FILE_SIZE] ファイルが大きい: ' + fileUploader.formatSize(uploadFile.size));
+          console.warn('[FILE_SIZE] JSON body が Netlify の制限を超える可能性があります');
+        }
 
         // ★ Asset アップロード（既存方式）
         console.log('[ASSET_' + idx + '] 開始');
