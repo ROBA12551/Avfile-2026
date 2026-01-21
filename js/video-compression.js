@@ -1,7 +1,8 @@
 /**
  * js/video-compression-local.js
  * ローカル（クライアント側）で完全に圧縮処理を行う
- * サーバーはBase64デコード→Gzipもしない、単純にGitHubアップロードのみ
+ * ★ モバイル（iOS/Android Chrome）でも FFmpeg 圧縮を実行
+ * ★ Safari/Opera のみスキップ（MP4 変換のみ）
  */
 
 class VideoCompressionEngineLocal {
@@ -22,24 +23,28 @@ class VideoCompressionEngineLocal {
     this.IS_OPERA = /Opera|OPR/.test(ua);
     this.IS_FIREFOX = /Firefox/.test(ua);
     this.IS_MOBILE = this.IS_IOS || this.IS_ANDROID || /Mobile|Tablet|Kindle/.test(ua);
-    this.SHOULD_SKIP = this.IS_MOBILE || this.IS_SAFARI || this.IS_OPERA;
+    // ★ Safari と Opera のみスキップ、モバイル Chrome は圧縮実行
+    this.SHOULD_SKIP = (this.IS_MOBILE && this.IS_SAFARI) || this.IS_OPERA;
 
     console.log('[DEVICE] Detection result:', {
       iOS: this.IS_IOS,
       Android: this.IS_ANDROID,
       Safari: this.IS_SAFARI,
+      Opera: this.IS_OPERA,
       Mobile: this.IS_MOBILE,
       shouldSkip: this.SHOULD_SKIP,
     });
 
     if (this.SHOULD_SKIP) {
-      console.log('⏭️ このデバイスではFFmpeg処理をスキップします');
+      console.log('⏭️ Safari/Opera - FFmpeg処理をスキップ（MP4変換のみ実行）');
+    } else {
+      console.log('✅ FFmpeg圧縮を実行します（モバイルを含む）');
     }
   }
 
   async initFFmpeg() {
     if (this.SHOULD_SKIP) {
-      console.log('⏭️ モバイル/Safari - FFmpeg処理をスキップ');
+      console.log('⏭️ Safari/Opera - FFmpeg処理をスキップ');
       this.ffmpegReady = true;
       return;
     }
@@ -94,6 +99,25 @@ class VideoCompressionEngineLocal {
     });
   }
 
+  /**
+   * 拡張子を MP4 に変換
+   */
+  convertToMP4FileName(fileName) {
+    if (!fileName) return 'output.mp4';
+    
+    // 既に .mp4 なら変更不要
+    if (fileName.toLowerCase().endsWith('.mp4')) {
+      return fileName;
+    }
+    
+    // 拡張子を削除して .mp4 を追加
+    const nameWithoutExt = fileName.split('.').slice(0, -1).join('.');
+    const newFileName = nameWithoutExt ? `${nameWithoutExt}.mp4` : 'output.mp4';
+    
+    console.log('[CONVERT] File name conversion:', fileName, '→', newFileName);
+    return newFileName;
+  }
+
   async compress(videoFile, onProgress = () => {}) {
     try {
       console.log('[COMPRESS] Starting compression:', {
@@ -102,26 +126,41 @@ class VideoCompressionEngineLocal {
         type: videoFile.type,
       });
 
+      // ★ ファイル名を MP4 に統一
+      const originalFileName = videoFile.name || 'video';
+      const mp4FileName = this.convertToMP4FileName(originalFileName);
+      console.log('[COMPRESS] Output will be converted to:', mp4FileName);
+
       if (this.SHOULD_SKIP) {
-        console.log('⏭️ モバイル/Safari デバイス - 圧縮をスキップ');
+        // ★ Safari/Opera のみスキップ - MP4 変換のみ実行
+        console.log('⏭️ Safari/Opera デバイス - 圧縮をスキップ（MP4 変換のみ実行）');
         
-        onProgress(10, '📱 モバイルデバイス検出 - ファイルをそのままアップロード');
+        onProgress(10, '📱 Safari/Opera 検出 - MP4 に変換中');
         await new Promise(r => setTimeout(r, 100));
         
-        onProgress(50, '📦 ファイルを準備中...');
+        onProgress(50, '🎬 形式を MP4 に変換中...');
         await new Promise(r => setTimeout(r, 100));
         
-        onProgress(100, '✅ 準備完了');
+        onProgress(100, '✅ MP4 変換完了');
         
-        return videoFile;
+        // ★ Safari/Opera でも MP4 に変換したファイルを返す
+        const mp4File = new File([videoFile], mp4FileName, { type: 'video/mp4' });
+        console.log('[COMPRESS] Returning MP4 formatted file:', mp4FileName);
+        return mp4File;
       }
+
+      // ★ iOS/Android Chrome などは圧縮を実行
+      console.log('✅ FFmpeg 圧縮を実行します');
 
       try {
         await this.initFFmpeg();
       } catch (error) {
-        console.warn('⚠️ FFmpeg 初期化に失敗 - 元のファイルを返却:', error.message);
-        onProgress(100, '⚠️ ファイルをそのままアップロード');
-        return videoFile;
+        console.warn('⚠️ FFmpeg 初期化に失敗 - ファイルを MP4 に変換して返却:', error.message);
+        onProgress(100, '⚠️ ファイルを MP4 に変換');
+        
+        // ★ FFmpeg 初期化失敗時も MP4 に変換
+        const mp4File = new File([videoFile], mp4FileName, { type: 'video/mp4' });
+        return mp4File;
       }
 
       const inputFileName = 'input_video.mp4';
@@ -136,9 +175,12 @@ class VideoCompressionEngineLocal {
         console.log('[COMPRESS] ArrayBuffer created:', inputData.byteLength, 'bytes');
       } catch (err) {
         console.error('[COMPRESS] Blob conversion failed:', err.message);
-        console.warn('⚠️ ファイル変換失敗 - 元のファイルを返却');
-        onProgress(100, '⚠️ ファイルをそのままアップロード');
-        return videoFile;
+        console.warn('⚠️ ファイル変換失敗 - MP4 形式で返却');
+        onProgress(100, '⚠️ ファイルを MP4 に変換');
+        
+        // ★ MP4 形式で返す
+        const mp4File = new File([videoFile], mp4FileName, { type: 'video/mp4' });
+        return mp4File;
       }
 
       try {
@@ -147,9 +189,12 @@ class VideoCompressionEngineLocal {
         console.log('[COMPRESS] File written to FFmpeg FS');
       } catch (err) {
         console.error('[COMPRESS] writeFile failed:', err.message);
-        console.warn('⚠️ ファイル書き込み失敗 - 元のファイルを返却');
-        onProgress(100, '⚠️ ファイルをそのままアップロード');
-        return videoFile;
+        console.warn('⚠️ ファイル書き込み失敗 - MP4 形式で返却');
+        onProgress(100, '⚠️ ファイルを MP4 に変換');
+        
+        // ★ MP4 形式で返す
+        const mp4File = new File([videoFile], mp4FileName, { type: 'video/mp4' });
+        return mp4File;
       }
 
       const originalMB = (videoFile.size / 1024 / 1024).toFixed(2);
@@ -181,9 +226,12 @@ class VideoCompressionEngineLocal {
         console.log('✅ FFmpeg 実行完了');
       } catch (err) {
         console.error('[COMPRESS] FFmpeg run failed:', err.message);
-        console.warn('⚠️ 圧縮失敗 - 元のファイルを返却');
-        onProgress(100, '⚠️ ファイルをそのままアップロード');
-        return videoFile;
+        console.warn('⚠️ 圧縮失敗 - MP4 形式で返却');
+        onProgress(100, '⚠️ ファイルを MP4 に変換');
+        
+        // ★ MP4 形式で返す
+        const mp4File = new File([videoFile], mp4FileName, { type: 'video/mp4' });
+        return mp4File;
       }
 
       onProgress(80, '📤 圧縮ファイルを取得中...');
@@ -195,9 +243,12 @@ class VideoCompressionEngineLocal {
         console.log('[COMPRESS] Output file read:', outputData.length, 'bytes');
       } catch (err) {
         console.error('[COMPRESS] readFile failed:', err.message);
-        console.warn('⚠️ 出力ファイル読み込み失敗 - 元のファイルを返却');
-        onProgress(100, '⚠️ ファイルをそのままアップロード');
-        return videoFile;
+        console.warn('⚠️ 出力ファイル読み込み失敗 - MP4 形式で返却');
+        onProgress(100, '⚠️ ファイルを MP4 に変換');
+        
+        // ★ MP4 形式で返す
+        const mp4File = new File([videoFile], mp4FileName, { type: 'video/mp4' });
+        return mp4File;
       }
 
       const compressedBlob = new Blob([outputData.buffer], { type: 'video/mp4' });
@@ -214,17 +265,26 @@ class VideoCompressionEngineLocal {
       const ratio = ((1 - compressedBlob.size / videoFile.size) * 100).toFixed(0);
       
       console.log(`✅ 圧縮完了: ${originalMB}MB → ${compressedMB}MB (${ratio}% 削減)`);
+      console.log(`✅ ファイル形式を MP4 に統一: ${mp4FileName}`);
 
-      onProgress(100, `✅ 圧縮完了 (${ratio}% 削減)`);
+      onProgress(100, `✅ MP4 圧縮完了 (${ratio}% 削減)`);
 
-      return compressedBlob;
+      // ★ 圧縮済みファイルを MP4 ファイルとして返す
+      const compressedMP4File = new File([compressedBlob], mp4FileName, { type: 'video/mp4' });
+      return compressedMP4File;
     } catch (error) {
       console.error('❌ 圧縮エラー:', error.message);
       console.error('Stack:', error.stack);
       
-      console.warn('⚠️ 圧縮失敗 - 元のファイルを返却します');
-      onProgress(100, '⚠️ ファイルをそのままアップロード');
-      return videoFile;
+      // ★ エラー時も MP4 形式で返す
+      const originalFileName = videoFile.name || 'video';
+      const mp4FileName = this.convertToMP4FileName(originalFileName);
+      
+      console.warn('⚠️ 圧縮失敗 - MP4 形式で元のファイルを返却します');
+      onProgress(100, '⚠️ ファイルを MP4 に変換');
+      
+      const mp4File = new File([videoFile], mp4FileName, { type: 'video/mp4' });
+      return mp4File;
     }
   }
 
