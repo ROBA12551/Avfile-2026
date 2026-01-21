@@ -984,9 +984,11 @@ class GitHubUploader {
     });
     const data = await response.json();
     if (!data.success) throw new Error(data.error);
-    return data.data;
+    return
+    
+    data.data;
   }
-  // ★ バイナリを直接Netlify Functions経由でGitHubへ送信（軽量版）
+  // ★ バイナリをGitHubへ直接送信（Netlify Functions を経由しない）
 async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   const sanitizedFileName = this.sanitizeFileName(fileName);
 
@@ -1038,18 +1040,16 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   const arrayBuffer = await processedFile.arrayBuffer();
   console.log('[UPLOAD_BINARY] ArrayBuffer size:', (arrayBuffer.byteLength / 1024 / 1024).toFixed(2), 'MB');
 
-  // ★ 最小限のメタデータ（URLパラメータに直接）
-  const params = new URLSearchParams({
-    action: 'upload-asset-binary',
-    url: uploadUrl,
-    name: sanitizedFileName
-  });
+  // ★ GitHubのupload_urlから {?name,label} を削除してクリーンなURLに
+  const cleanUploadUrl = uploadUrl.replace(/\{\?.*\}$/, '');
+  
+  // ★ nameパラメータを追加
+  const finalUrl = `${cleanUploadUrl}?name=${encodeURIComponent(sanitizedFileName)}`;
 
-  const finalUrl = `${this.functionUrl}?${params.toString()}`;
+  console.log('[UPLOAD_BINARY] Uploading directly to GitHub...');
+  console.log('[UPLOAD_BINARY] Target URL:', finalUrl);
 
-  console.log('[UPLOAD_BINARY] Sending binary to Netlify Functions...');
-
-  // ★ バイナリを直接送信
+  // ★ GitHubへ直接バイナリアップロード
   const response = await fetch(finalUrl, {
     method: 'POST',
     headers: { 
@@ -1061,18 +1061,23 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => '');
-    console.error('[UPLOAD_BINARY] Error:', response.status, errorText);
-    throw new Error(`Upload failed: ${response.status} - ${errorText}`);
+    console.error('[UPLOAD_BINARY] GitHub upload error:', response.status, errorText);
+    throw new Error(`GitHub upload failed: ${response.status} - ${errorText}`);
   }
 
   const data = await response.json();
-  if (!data.success) throw new Error(data.error || 'Upload failed');
   
-  console.log('[UPLOAD_BINARY] Complete - Asset ID:', data.data.asset_id);
-  return data.data;
+  console.log('[UPLOAD_BINARY] Complete - Asset uploaded to GitHub');
+  console.log('[UPLOAD_BINARY] Browser download URL:', data.browser_download_url);
+  
+  return {
+    success: true,
+    asset_id: data.id,
+    browser_download_url: data.browser_download_url,
+    name: data.name
+  };
 }
 }
-
 // カルーセル管理
 class Carousel {
   constructor(track, dots, prevBtn, nextBtn, info) {
