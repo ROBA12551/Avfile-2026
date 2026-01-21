@@ -67,8 +67,9 @@
         .error-actions { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
         .error-btn { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%); color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 8px; cursor: pointer; font-weight: 500; transition: all 0.3s; }
         .error-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(255, 107, 107, 0.3); }
-        .file-viewer { display: none; background: rgba(102, 126, 234, 0.08); border: 1px solid rgba(102, 126, 234, 0.2); border-radius: 12px; padding: 2rem; margin: 2rem 0; }
-        .file-viewer.show { display: block; }
+        .file-viewer-container { display: none; background: rgba(102, 126, 234, 0.08); border: 1px solid rgba(102, 126, 234, 0.2); border-radius: 12px; padding: 2rem; margin: 2rem 0; }
+        .file-viewer-container.show { display: block; }
+        .file-viewer { display: block; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(102, 126, 234, 0.2); border-radius: 12px; padding: 2rem; margin: 2rem 0; }
         .file-viewer-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid rgba(102, 126, 234, 0.2); flex-wrap: wrap; gap: 1rem; }
         .file-info { display: flex; align-items: center; gap: 1rem; }
         .file-icon { width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; background: rgba(102, 126, 234, 0.15); border-radius: 8px; font-size: 1.5rem; }
@@ -79,6 +80,7 @@
         .file-action-btn:hover { background: rgba(102, 126, 234, 0.25); border-color: rgba(102, 126, 234, 0.5); }
         .file-preview { background: rgba(0, 0, 0, 0.3); border-radius: 12px; padding: 2rem; margin-top: 1.5rem; text-align: center; display: flex; align-items: center; justify-content: center; min-height: 300px; }
         .file-preview video, .file-preview img { max-width: 100%; max-height: 600px; border-radius: 8px; }
+        .file-preview p { color: #ff6b6b; }
         .features { margin: 4rem 0; }
         .features h2 { font-size: 2rem; text-align: center; margin-bottom: 3rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
         .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 2rem; }
@@ -176,7 +178,9 @@
                 </div>
             </div>
 
-            <div class="file-viewer" id="fileViewer"></div>
+            <div class="file-viewer-container" id="fileViewerContainer">
+                <div id="fileViewer"></div>
+            </div>
 
             <div style="display: none; text-align: center; padding: 4rem;" id="loadingUI">
                 <div class="upload-status-spinner"></div>
@@ -270,57 +274,6 @@ class GitHubUploader {
     }
   }
 
-  async getReleaseByTag(releaseTag) {
-    try {
-      const response = await fetch(this.functionUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'get-release-by-tag',
-          releaseTag: releaseTag,
-        }),
-      });
-
-      if (!response.ok) {
-        console.warn('Release not found');
-        return null;
-      }
-
-      const data = await response.json();
-      if (!data.success) {
-        console.warn('Failed to get release');
-        return null;
-      }
-
-      return data.data;
-    } catch (error) {
-      console.error('Error:', error.message);
-      return null;
-    }
-  }
-
-  async createView(fileIds, passwordHash, origin) {
-    const res = await fetch('/.netlify/functions/github-upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'create-view',
-        fileIds,
-        passwordHash: passwordHash || null,
-        origin: origin || window.location.origin
-      })
-    });
-
-    if (!res.ok) {
-      const t = await res.text().catch(() => '');
-      throw new Error(`createView failed: ${res.status} ${t}`);
-    }
-
-    const json = await res.json();
-    if (!json.success) throw new Error(json.error || 'createView failed');
-    return json.data;
-  }
-
   async getGithubJson() {
     try {
       const response = await fetch(this.functionUrl, {
@@ -376,6 +329,28 @@ class GitHubUploader {
       throw error;
     }
   }
+
+  async createView(fileIds, passwordHash, origin) {
+    const res = await fetch('/.netlify/functions/github-upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'create-view',
+        fileIds,
+        passwordHash: passwordHash || null,
+        origin: origin || window.location.origin
+      })
+    });
+
+    if (!res.ok) {
+      const t = await res.text().catch(() => '');
+      throw new Error(`createView failed: ${res.status} ${t}`);
+    }
+
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || 'createView failed');
+    return json.data;
+  }
 }
 
 window.GitHubUploader = GitHubUploader;
@@ -427,19 +402,6 @@ class SimpleUploadManager {
       onProgress(2);
 
       let processedBlob = fileBlob;
-      let wasCompressed = false;
-
-      if (this.isVideoFile(fileBlob) && window.VideoCompressionEngine) {
-        try {
-          const compressor = new window.VideoCompressionEngine();
-          processedBlob = await compressor.compress(fileBlob, (progress, message) => {
-            onProgress(2 + (progress * 0.33));
-          });
-          wasCompressed = true;
-        } catch (error) {
-          console.warn('Compression failed, using original file');
-        }
-      }
 
       onProgress(40);
       const base64 = await this.fileToBase64(processedBlob);
@@ -449,7 +411,7 @@ class SimpleUploadManager {
       const fileExtension = this.getFileExtension(processedBlob.type);
       const assetFileName = `${fileName.substring(0, fileName.lastIndexOf('.') || fileName.length)}.${fileExtension}`;
 
-      const releaseData = await this.githubUploader.createRelease(releaseTag, fileName, `File ID: ${fileId}\nOriginal Name: ${fileName}\nType: ${processedBlob.type}\nUploaded: ${new Date().toISOString()}\nCompressed: ${wasCompressed ? 'Yes' : 'No'}`);
+      const releaseData = await this.githubUploader.createRelease(releaseTag, fileName, `File ID: ${fileId}\nOriginal Name: ${fileName}\nType: ${processedBlob.type}\nUploaded: ${new Date().toISOString()}`);
 
       onProgress(65);
       const assetData = await this.githubUploader.uploadAsset(releaseData.upload_url, assetFileName, base64);
@@ -466,8 +428,6 @@ class SimpleUploadManager {
         downloadUrl: assetData.download_url,
         githubReleaseUrl: releaseData.html_url,
         fileSize: processedBlob.size,
-        originalSize: fileBlob.size,
-        compressed: wasCompressed,
         uploadedAt: new Date().toISOString(),
         releaseTag: releaseTag,
         assetId: assetData.asset_id,
@@ -490,35 +450,11 @@ class SimpleUploadManager {
         viewUrl: viewUrl,
         downloadUrl: assetData.download_url,
         fileSize: processedBlob.size,
-        originalSize: fileBlob.size,
-        githubUrl: releaseData.html_url,
         uploadedAt: new Date().toISOString(),
-        wasCompressed: wasCompressed,
       };
     } catch (error) {
       console.error('Upload error:', error.message);
       throw new Error(`Upload failed: ${error.message}`);
-    }
-  }
-
-  async getFileInfo(fileId) {
-    try {
-      const githubJson = await this.githubUploader.getGithubJson();
-      const files = githubJson.files || [];
-      return files.find(f => f.fileId === fileId) || null;
-    } catch (error) {
-      console.error('File fetch error:', error.message);
-      return null;
-    }
-  }
-
-  async getAllFiles() {
-    try {
-      const githubJson = await this.githubUploader.getGithubJson();
-      return githubJson.files || [];
-    } catch (error) {
-      console.error('File list error:', error.message);
-      return [];
     }
   }
 }
@@ -529,6 +465,8 @@ window.SimpleUploadManager = SimpleUploadManager;
 const MAX_FILES = 5;
 const pathMatch = location.pathname.match(/^\/d\/([a-zA-Z0-9]+)/);
 const viewId = pathMatch?.[1] || new URLSearchParams(location.search).get('id') || null;
+
+console.log('App loaded. ViewId:', viewId, 'Pathname:', location.pathname);
 
 async function sha256(text) {
   const buf = new TextEncoder().encode(text);
@@ -565,7 +503,7 @@ function hideAllScreens() {
   document.getElementById('uploadStatusScreen').classList.remove('show');
   document.getElementById('successScreen').classList.remove('show');
   document.getElementById('errorScreen').classList.remove('show');
-  document.getElementById('fileViewer').classList.remove('show');
+  document.getElementById('fileViewerContainer').classList.remove('show');
   document.getElementById('loadingUI').style.display = 'none';
 }
 
@@ -678,8 +616,13 @@ async function loadAndDisplayView(viewId) {
   try {
     console.log('Fetching view:', viewId);
     const res = await fetch(`/.netlify/functions/view?id=${viewId}`);
+    console.log('View response status:', res.status);
+    
     if (!res.ok) throw new Error(`Server error: ${res.status}`);
     const data = await res.json();
+    
+    console.log('View data:', data);
+
     if (data.password) {
       const pw = prompt('Enter password');
       const hash = await sha256(pw || '');
@@ -688,22 +631,30 @@ async function loadAndDisplayView(viewId) {
         return;
       }
     }
+    
     let html = '';
     for (const file of data.files) {
       const icon = getFileIcon(file.fileName);
       const size = formatFileSize(file.fileSize || 0);
       const url = file.downloadUrl;
+      
+      console.log('Processing file:', file.fileName, 'URL:', url);
+      
       let preview = '';
-      if (/\.(mp4|webm|ogg)$/i.test(url)) {
-        preview = `<div class="file-preview"><video controls style="max-width: 100%; max-height: 500px;" crossorigin="anonymous"><source src="${url}" type="video/mp4"><p>Video not supported</p></video></div>`;
-      } else if (/\.(jpg|jpeg|png|gif|webp)$/i.test(url)) {
-        preview = `<div class="file-preview"><img src="${url}" alt="${escapeHtml(file.fileName)}" crossorigin="anonymous" /></div>`;
+      if (/\.(mp4|webm|ogg)$/i.test(file.fileName)) {
+        console.log('Detected video file');
+        preview = `<div class="file-preview"><video controls style="max-width: 100%; max-height: 500px;" crossorigin="anonymous"><source src="${url}" type="video/mp4"><p>Video not supported or failed to load</p></video></div>`;
+      } else if (/\.(jpg|jpeg|png|gif|webp)$/i.test(file.fileName)) {
+        console.log('Detected image file');
+        preview = `<div class="file-preview"><img src="${url}" alt="${escapeHtml(file.fileName)}" crossorigin="anonymous" onerror="this.parentElement.innerHTML='<p>Image failed to load</p>'" /></div>`;
       }
-      html += `<div class="file-viewer"><div class="file-viewer-header"><div class="file-info"><div class="file-icon">${icon}</div><div class="file-details"><h3>${escapeHtml(file.fileName)}</h3><p>${size}</p></div></div><div class="file-actions"><a class="file-action-btn" href="${url}" download>Download</a><button class="file-action-btn" onclick="navigator.clipboard.writeText('${url}'); this.textContent='Link Copied!'; setTimeout(()=>this.textContent='Link Copy URL', 2000);">Link Copy URL</button></div></div>${preview}</div>`;
+      
+      html += `<div class="file-viewer"><div class="file-viewer-header"><div class="file-info"><div class="file-icon">${icon}</div><div class="file-details"><h3>${escapeHtml(file.fileName)}</h3><p>${size}</p></div></div><div class="file-actions"><a class="file-action-btn" href="${url}" download>Download</a><button class="file-action-btn" onclick="navigator.clipboard.writeText('${url}'); this.textContent='Link Copied!'; setTimeout(()=>this.textContent='Copy Link', 2000);">Copy Link</button></div></div>${preview}</div>`;
     }
+    
     document.getElementById('fileViewer').innerHTML = html;
     hideAllScreens();
-    document.getElementById('fileViewer').classList.add('show');
+    document.getElementById('fileViewerContainer').classList.add('show');
   } catch (e) {
     console.error('Error:', e);
     showErrorScreen('File not found: ' + e.message);
