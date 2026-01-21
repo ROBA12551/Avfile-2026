@@ -152,29 +152,52 @@ exports.handler = async (event) => {
     }
 
     logInfo(`View found: ${view.viewId}`);
+    logInfo(`View structure: ${JSON.stringify(view)}`);
+    
+    // ★ ファイル取得のデバッグ
+    const fileIdArray = view.fileIds || view.files || [];
+    logInfo(`FileIds/Files array: ${JSON.stringify(fileIdArray)}`);
+    logInfo(`Array length: ${fileIdArray.length}`);
 
-    // ★ GitHub Release URL をそのまま使用（jsDelivr変換は不要）
-    const files = (view.fileIds || [])
-      .map(fileId => {
-        logInfo(`Looking for file: ${fileId}`);
+    // ★ GitHub Release URL をそのまま使用
+    const files = [];
+    
+    // fileIds の場合（各ファイルIDから検索）
+    if (Array.isArray(fileIdArray) && fileIdArray.length > 0 && typeof fileIdArray[0] === 'string') {
+      for (const fileId of fileIdArray) {
+        logInfo(`Looking for fileId: ${fileId}`);
         const file = (data.files || []).find(f => f && f.fileId === fileId);
         if (!file) {
           logError(`File not found: ${fileId}`);
-          return null;
+          continue;
         }
         logInfo(`Found file: ${file.fileName}`);
-        logInfo(`Download URL: ${file.downloadUrl}`);
-        
-        return {
+        files.push({
           fileId: file.fileId,
           fileName: file.fileName,
           fileSize: file.fileSize,
-          downloadUrl: file.downloadUrl  // ★ GitHub Release URL をそのまま返す
-        };
-      })
-      .filter(Boolean);
+          downloadUrl: file.downloadUrl
+        });
+      }
+    } 
+    // files オブジェクトの場合（直接ファイル配列）
+    else if (Array.isArray(fileIdArray) && fileIdArray.length > 0 && typeof fileIdArray[0] === 'object') {
+      logInfo(`Direct files array detected`);
+      for (const file of fileIdArray) {
+        if (file && file.fileName && file.downloadUrl) {
+          logInfo(`Adding file: ${file.fileName}`);
+          files.push({
+            fileId: file.fileId || file.fileName,
+            fileName: file.fileName,
+            fileSize: file.fileSize,
+            downloadUrl: file.downloadUrl
+          });
+        }
+      }
+    }
 
-    logInfo(`Returning ${files.length} files`);
+    logInfo(`Processed files: ${files.length}`);
+    logInfo(`Files to return: ${JSON.stringify(files)}`);
 
     return {
       statusCode: 200,
