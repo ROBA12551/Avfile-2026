@@ -585,45 +585,95 @@ exports.handler = async (event) => {
 
       // ★ バイナリ直接アップロード（FormData 対応）
       case 'upload-asset-binary': {
-        logInfo(`[BINARY] Uploading asset: ${body.fileName || 'unknown'}`);
+        logInfo(`[BINARY] Uploading asset`);
         
-        if (!body.fileName || typeof body.fileName !== 'string') {
-          throw new Error('Invalid fileName: must be a non-empty string');
-        }
+        // ★ FormData の場合、event.body が base64 エンコードされた multipart データ
+        let fileName, uploadUrl, fileId, fileSize;
+        let binaryData = null;
 
-        if (!body.uploadUrl || typeof body.uploadUrl !== 'string') {
-          throw new Error('Invalid uploadUrl: must be a non-empty string');
-        }
+        // event.isBase64Encoded === true の場合、event.body は base64
+        if (event.isBase64Encoded && event.body) {
+          logInfo(`[BINARY] Parsing FormData (base64 encoded)...`);
+          
+          // Base64 をデコード
+          const decodedBody = Buffer.from(event.body, 'base64');
+          
+          // Content-Type から boundary を取得
+          const contentType = event.headers['content-type'] || '';
+          const boundaryMatch = contentType.match(/boundary=([^\s;]+)/);
+          
+          if (!boundaryMatch) {
+            throw new Error('No boundary found in FormData');
+          }
 
-        let binaryData;
+          const boundary = boundaryMatch[1];
+          logInfo(`[BINARY] Boundary: ${boundary}`);
 
-        // ★ FormData からファイルを取得
-        if (event.body && event.isBase64Encoded) {
-          // FormData の場合、body は base64 エンコードされている
-          binaryData = Buffer.from(event.body, 'base64');
-          logInfo(`[BINARY] FormData → Buffer: ${binaryData.length} bytes`);
-        } else if (body.fileBase64 && typeof body.fileBase64 === 'string') {
+          // FormData を手動でパース
+          const parts = decodedBody.toString('binary').split(`--${boundary}`);
+          
+          for (const part of parts) {
+            if (!part || part.includes('--')) continue;
+
+            // ヘッダーとボディを分割
+            const [headerPart, ...bodyParts] = part.split('\r\n\r\n');
+            if (!headerPart) continue;
+
+            const body = bodyParts.join('\r\n\r\n').replace(/\r\n--$/, '');
+
+            // name と filename を抽出
+            const nameMatch = headerPart.match(/name="([^"]+)"/);
+            const filenameMatch = headerPart.match(/filename="([^"]+)"/);
+            
+            if (nameMatch) {
+              const fieldName = nameMatch[1];
+              
+              if (filenameMatch) {
+                // ファイルフィールド
+                if (fieldName === 'file') {
+                  binaryData = Buffer.from(body, 'binary');
+                  logInfo(`[BINARY] File field found: ${binaryData.length} bytes`);
+                }
+              } else {
+                // テキストフィールド
+                const value = body.trim();
+                
+                if (fieldName === 'fileName') fileName = value;
+                if (fieldName === 'uploadUrl') uploadUrl = value;
+                if (fieldName === 'fileId') fileId = value;
+                if (fieldName === 'fileSize') fileSize = parseInt(value);
+                
+                logInfo(`[BINARY] Field: ${fieldName} = ${value.substring(0, 50)}`);
+              }
+            }
+          }
+        } else if (body && body.fileName) {
           // JSON の場合（互換性のため）
-          binaryData = Buffer.from(body.fileBase64, 'base64');
-          logInfo(`[BINARY] Base64 → Buffer: ${body.fileBase64.length} chars → ${binaryData.length} bytes`);
-        } else if (body.fileBinary) {
-          binaryData = Buffer.isBuffer(body.fileBinary) 
-            ? body.fileBinary 
-            : Buffer.from(body.fileBinary);
-          logInfo(`[BINARY] Using binary data: ${binaryData.length} bytes`);
-        } else {
-          throw new Error('No file data found');
+          logInfo(`[BINARY] Using JSON body`);
+          fileName = body.fileName;
+          uploadUrl = body.uploadUrl;
+          fileId = body.fileId;
+          fileSize = body.fileSize;
+          
+          if (body.fileBase64 && typeof body.fileBase64 === 'string') {
+            binaryData = Buffer.from(body.fileBase64, 'base64');
+          }
         }
 
-        logInfo(`[BINARY] File: ${body.fileName}, Size: ${binaryData.length} bytes`);
+        // バリデーション
+        if (!fileName) throw new Error('fileName not found');
+        if (!uploadUrl) throw new Error('uploadUrl not found');
+        if (!binaryData || binaryData.length === 0) throw new Error('File data not found');
+
+        logInfo(`[BINARY] File: ${fileName}, Size: ${binaryData.length} bytes, uploadUrl length: ${uploadUrl.length}`);
 
         // ★ バイナリを直接アップロード
-        let cleanUrl = String(body.uploadUrl).trim();
+        let cleanUrl = String(uploadUrl).trim();
         cleanUrl = cleanUrl.replace('{?name,label}', '');
         cleanUrl = cleanUrl.replace('{?name}', '');
         cleanUrl = cleanUrl.replace(/\{[?&].*?\}/g, '');
 
-        const encodedFileName = encodeURIComponent(body.fileName);
+        const encodedFileName = encodeURIComponent(fileName);
         const assetUrl = `${cleanUrl}?name=${encodedFileName}`;
 
         logInfo(`[BINARY] Asset URL: ${assetUrl.substring(0, 100)}...`);
@@ -644,12 +694,14 @@ exports.handler = async (event) => {
         };
 
         // ★ 非同期で github.json を更新
-        updateGithubJsonAsync(
-          body.fileId,
-          body.fileName,
-          assetResponse.download_url,
-          body.fileSize
-        ).catch(err => logError(`[BINARY] Async update error: ${err.message}`));
+        if (fileId && fileSize) {
+          updateGithubJsonAsync(
+            fileId,
+            fileName,
+            assetResponse.download_url,
+            fileSize
+          ).catch(err => logError(`[BINARY] Async update error: ${err.message}`));
+        }
 
         response = assetResponse;
         break;
