@@ -981,10 +981,16 @@ function escapeHtml(t) {
 
 function getIcon(name) {
   if (!name || typeof name !== 'string') return 'F';
-  const nameLower = String(name).toLowerCase();
-  if (/\.(mp4|webm|ogg|mkv|avi|mov)$/i.test(nameLower)) return 'V';
-  if (/\.(jpg|jpeg|png|gif|webp)$/i.test(nameLower)) return 'I';
-  if (/\.(pdf)$/i.test(nameLower)) return 'P';
+  const nameLower = String(name).toLowerCase().trim();
+  if (!nameLower || nameLower.length === 0) return 'F';
+  
+  try {
+    if (/\.(mp4|webm|ogg|mkv|avi|mov|flv|wmv|m4v|ts|m2ts|mts|3gp|3g2|asf|f4v|m3u8|mxf)$/i.test(nameLower)) return 'V';
+    if (/\.(jpg|jpeg|png|gif|webp|bmp|svg|ico|tiff|tif)$/i.test(nameLower)) return 'I';
+    if (/\.(pdf)$/i.test(nameLower)) return 'P';
+  } catch (e) {
+    console.error('[ICON] Error:', e, 'name:', name);
+  }
   return 'F';
 }
 
@@ -1121,24 +1127,32 @@ async function loadView(viewId) {
       const item = document.createElement('div');
       item.className = 'carousel-item';
 
-      const videoRegex = /\.(mp4|webm|ogg)$/i;
-      const imageRegex = /\.(jpg|jpeg|png|gif|webp)$/i;
+      const videoRegex = /\.(mp4|webm|ogg|mkv|avi|mov|flv|wmv|m4v|ts|m2ts|mts|3gp|3g2|asf|f4v|m3u8)$/i;
+      const imageRegex = /\.(jpg|jpeg|png|gif|webp|bmp|svg|ico|tiff)$/i;
       const pdfRegex = /\.(pdf)$/i;
 
       let preview = '';
       const fileName = String(file.fileName || '').toLowerCase();
       try {
+        console.log('[FILE] Processing:', file.fileName, 'lowered:', fileName);
+        if (!fileName || fileName.length === 0) {
+          throw new Error('Empty filename');
+        }
         if (videoRegex.test(fileName)) {
+          console.log('[FILE] Video detected:', fileName);
           preview = `<div class="file-preview-area"><video controls style="max-width: 100%; max-height: 400px; border-radius: 8px;"><source src="/.netlify/functions/download?url=${encodeURIComponent(file.downloadUrl)}" type="video/mp4"></video></div>`;
         } else if (imageRegex.test(fileName)) {
+          console.log('[FILE] Image detected:', fileName);
           preview = `<div class="file-preview-area"><img src="/.netlify/functions/download?url=${encodeURIComponent(file.downloadUrl)}" style="max-width: 100%; max-height: 400px; border-radius: 8px;" /></div>`;
         } else if (pdfRegex.test(fileName)) {
+          console.log('[FILE] PDF detected:', fileName);
           preview = `<div class="file-preview-area"><iframe src="/.netlify/functions/download?url=${encodeURIComponent(file.downloadUrl)}" style="width: 100%; height: 100%; border: none;"></iframe></div>`;
         } else {
+          console.log('[FILE] Other file:', fileName);
           preview = `<div class="file-preview-area"><p style="color: rgba(255, 255, 255, 0.7);"><a href="${file.downloadUrl}" download style="color: #ffffff;">Download file</a></p></div>`;
         }
       } catch (e) {
-        console.error('Preview error:', e);
+        console.error('[FILE] Preview error:', e, 'fileName:', fileName, 'file:', file);
         preview = `<div class="file-preview-area"><p style="color: rgba(255, 255, 255, 0.7);"><a href="${file.downloadUrl}" download style="color: #ffffff;">Download file</a></p></div>`;
       }
 
