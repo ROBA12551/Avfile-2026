@@ -726,10 +726,10 @@
 
 <!-- ★ 修正: ローカル圧縮対応のスクリプトを読み込む（順序重要） -->
 <!-- ローカル圧縮エンジン -->
-<script src="/js/video-compression.js"></script>
+<script src="/js/video-compression-local.js"></script>
 
 <!-- ファイルアップロード強化版 -->
-<script src="/js/universal-file-uploader.js"></script>
+<script src="/js/universal-file-uploader-enhanced.js"></script>
 
 <script>
 // ★ グローバル変数定義（最初）
@@ -1052,7 +1052,7 @@ class GitHubUploader {
     return data.data;
   }
 
-  // ★ バイナリ直接アップロード（FormData 使用）
+  // ★ バイナリ直接アップロード（Base64 チャンク分割）
   async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
     const sanitizedFileName = this.sanitizeFileName(fileName);
 
@@ -1068,21 +1068,26 @@ class GitHubUploader {
       throw new Error('Invalid uploadUrl provided');
     }
 
-    // ★ FormData でバイナリを送信（スタック溢れなし）
-    console.log('[UPLOAD_BINARY] Creating FormData...');
-    const formData = new FormData();
-    formData.append('action', 'upload-asset-binary');
-    formData.append('uploadUrl', uploadUrl);
-    formData.append('fileName', sanitizedFileName);
-    formData.append('fileId', fileId);
-    formData.append('fileSize', fileSize);
-    formData.append('file', fileObject);  // ★ File オブジェクトをそのまま追加
+    // ★ ファイルを Base64 に変換（チャンク分割で安全に）
+    console.log('[UPLOAD_BINARY] Converting file to Base64...');
+    const base64Data = await this.fileToBase64Chunked(fileObject);
+    console.log('[UPLOAD_BINARY] Base64 conversion complete:', base64Data.length, 'chars');
 
-    console.log('[UPLOAD_BINARY] Sending FormData to Netlify Function...');
+    // ★ JSON で送信
+    console.log('[UPLOAD_BINARY] Sending to Netlify Function...');
 
     const response = await fetch(this.functionUrl, {
       method: 'POST',
-      body: formData  // ★ FormData でバイナリを直接送信
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'upload-asset-binary',
+        uploadUrl: uploadUrl,
+        fileName: sanitizedFileName,
+        fileBase64: base64Data,  // ★ Base64 文字列
+        fileId,
+        fileSize,
+        isPreCompressed: true
+      }),
     });
 
     if (!response.ok) {
@@ -1096,6 +1101,66 @@ class GitHubUploader {
     
     console.log('[UPLOAD_BINARY] Complete - Asset ID:', data.data.asset_id);
     return data.data;
+  }
+
+  // ★ ファイルを Base64 に変換（チャンク処理でスタック溢れ防止）
+  async fileToBase64Chunked(file) {
+    try {
+      const CHUNK_SIZE = 256 * 1024;  // 256KB ずつ処理
+      const chunks = [];
+      let offset = 0;
+
+      console.log('[BASE64_CHUNK] Starting conversion for', file.size, 'bytes');
+
+      while (offset < file.size) {
+        const end = Math.min(offset + CHUNK_SIZE, file.size);
+        const chunk = file.slice(offset, end);
+        const arrayBuffer = await chunk.arrayBuffer();
+        
+        // ★ Uint8Array を String に変換（ただしチャンク単位）
+        const uint8Array = new Uint8Array(arrayBuffer);
+        let binaryString = '';
+        for (let i = 0; i < uint8Array.length; i++) {
+          binaryString += String.fromCharCode(uint8Array[i]);
+        }
+        
+        chunks.push(binaryString);
+        offset = end;
+        console.log('[BASE64_CHUNK] Processed:', offset, '/', file.size, 'bytes');
+      }
+
+      // すべてのチャンクを結合して Base64 エンコード
+      console.log('[BASE64_CHUNK] Combining', chunks.length, 'chunks...');
+      const fullBinary = chunks.join('');
+      const base64 = btoa(fullBinary);
+      
+      console.log('[BASE64_CHUNK] Encoded to Base64:', base64.length, 'chars');
+      return base64;
+    } catch (e) {
+      console.error('[BASE64_CHUNK] Error:', e.message);
+      throw e;
+    }
+  }
+
+  // ★ ファイルを Base64 に変換（チャンク処理でスタック溢れ防止）
+  async fileToBase64Chunked(file) {
+    const CHUNK_SIZE = 256 * 1024;  // 256KB ずつ処理
+    const chunks = [];
+    let offset = 0;
+
+    while (offset < file.size) {
+      const end = Math.min(offset + CHUNK_SIZE, file.size);
+      const chunk = file.slice(offset, end);
+      const arrayBuffer = await chunk.arrayBuffer();
+      const binary = String.fromCharCode.apply(null, new Uint8Array(arrayBuffer));
+      chunks.push(binary);
+      offset = end;
+      console.log('[BASE64_CHUNK] Processed:', offset, '/', file.size, 'bytes');
+    }
+
+    // すべてのチャンクを結合して Base64 エンコード
+    const fullBinary = chunks.join('');
+    return btoa(fullBinary);
   }
 
   async getGithubJson() {
