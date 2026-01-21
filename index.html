@@ -812,37 +812,72 @@ async function parallelLimit(tasks, limit) {
 
 /**
  * 統一 Base64 変換（ファイル選択 ≈ フォトライブラリ）
+ * ★ 動画ファイルの場合、Base64化前に自動圧縮
  */
 async function toBase64Fast(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    
-    reader.onload = () => {
-      try {
-        const result = reader.result;
-        const parts = result.split(',');
-        if (parts.length < 2) throw new Error('Invalid data URL');
+  return new Promise(async (resolve, reject) => {
+    try {
+      let processedFile = file;
+      
+      // ★ 動画ファイルで2.5MB以上なら圧縮
+      const MAX_SIZE = 2.5 * 1024 * 1024; // 2.5MB
+      const isVideo = file.type && file.type.startsWith('video/');
+      
+      if (isVideo && file.size > MAX_SIZE) {
+        console.log(`[BASE64] 動画圧縮開始: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
         
-        const base64 = parts[1];
-        if (!base64) throw new Error('Empty Base64');
-        
-        resolve(base64);
-      } catch (e) {
-        reject(e);
+        try {
+          const compressor = new VideoCompressionEngineLocal();
+          processedFile = await compressor.compress(file, (progress, msg) => {
+            console.log(`[BASE64] 圧縮中: ${progress}%`);
+          });
+          
+          const originalMB = (file.size / 1024 / 1024).toFixed(2);
+          const compressedMB = (processedFile.size / 1024 / 1024).toFixed(2);
+          const ratio = ((1 - processedFile.size / file.size) * 100).toFixed(0);
+          
+          console.log(`[BASE64] 圧縮完了: ${originalMB}MB → ${compressedMB}MB (${ratio}% 削減)`);
+        } catch (compressionError) {
+          console.warn(`[BASE64] 圧縮失敗、元ファイルを使用:`, compressionError.message);
+          processedFile = file;
+        }
+      } else {
+        console.log(`[BASE64] 圧縮不要: ${isVideo ? '動画' : 'その他'}, ${(file.size / 1024 / 1024).toFixed(2)} MB`);
       }
-    };
-    
-    reader.onerror = () => reject(new Error('FileReader error'));
-    reader.readAsDataURL(file);
+      
+      // ★ Base64変換
+      const reader = new FileReader();
+      
+      reader.onload = () => {
+        try {
+          const result = reader.result;
+          const parts = result.split(',');
+          if (parts.length < 2) throw new Error('Invalid data URL');
+          
+          const base64 = parts[1];
+          if (!base64) throw new Error('Empty Base64');
+          
+          console.log(`[BASE64] 変換完了: ${base64.length} chars`);
+          resolve(base64);
+        } catch (e) {
+          reject(e);
+        }
+      };
+      
+      reader.onerror = () => reject(new Error('FileReader error'));
+      reader.readAsDataURL(processedFile);
 
-    // 30秒タイムアウト
-    setTimeout(() => {
-      reader.abort();
-      reject(new Error('Base64 timeout'));
-    }, 30000);
+      // 60秒タイムアウト（圧縮時間を考慮）
+      setTimeout(() => {
+        reader.abort();
+        reject(new Error('Base64 timeout'));
+      }, 60000);
+      
+    } catch (e) {
+      reject(e);
+    }
   });
 }
-
 /**
  * 統一 ファイル情報取得（ファイル選択 ≈ フォトライブラリ）
  */
