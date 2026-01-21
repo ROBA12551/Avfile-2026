@@ -1,269 +1,136 @@
 /**
  * js/video-compression.js
  * 
- * 動画圧縮エンジン
- * 702p 30fps で最適化
- * インターネット配信に最適なサイズに自動圧縮
+ * 動画圧縮エンジン（FFmpeg.wasm）
+ * 720p 30fps で実際に圧縮
  */
 
 class VideoCompressionEngine {
-  constructor(config = {}) {
+  constructor() {
+    this.ffmpegReady = false;
     this.ffmpeg = null;
-    this.isReady = false;
-    this.config = {
-      // 解像度: 702p (1244x702 または 1280x720 相当)
-      maxWidth: 1280,
-      maxHeight: 720,
-      
-      // フレームレート: 30fps
-      fps: 30,
-      
-      // ビットレート設定
-      videoBitrate: '1500k',    // 1500 kbps（高品質）
-      audioBitrate: '128k',     // 128 kbps（標準）
-      
-      // コーデック
-      videoCodec: 'libx264',    // H.264（最も互換性高い）
-      audioCodec: 'aac',        // AAC（標準）
-      
-      // エンコード品質
-      preset: 'medium',         // fast/medium/slow（品質とトレードオフ）
-      crf: 23,                  // 0-51（低いほど高品質、23=デフォルト）
-      
-      // 最大ファイルサイズ: 100MB
-      maxOutputSize: 100 * 1024 * 1024,
-      
-      // その他設定
-      movflags: 'faststart',    // 動画ストリーミング最適化
-      ...config,
-    };
-
-    console.log('🎥 VideoCompressionEngine initialized');
-    console.log(`Resolution: ${this.config.maxWidth}x${this.config.maxHeight}`);
-    console.log(`FPS: ${this.config.fps}`);
-    console.log(`Video Bitrate: ${this.config.videoBitrate}`);
-    console.log(`Audio Bitrate: ${this.config.audioBitrate}`);
   }
 
   /**
-   * ファイルを読み込み（Uint8Array）
+   * FFmpeg を初期化
    */
-  readFile(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
+  async initFFmpeg() {
+    if (this.ffmpegReady) {
+      return;
+    }
 
-      reader.onload = (e) => {
-        resolve(new Uint8Array(e.target.result));
-      };
+    try {
+      const { FFmpeg, fetchFile } = FFmpeg;
+      this.ffmpeg = new FFmpeg.FFmpeg();
+      
+      const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
+      this.ffmpeg.load({
+        coreURL: await fetchFile(`${baseURL}/ffmpeg-core.js`),
+      });
 
-      reader.onerror = (error) => {
-        console.error('❌ File read error:', error);
-        reject(error);
-      };
-
-      reader.readAsArrayBuffer(file);
-    });
-  }
-
-  /**
-   * 動画ファイルか判定
-   */
-  isVideoFile(file) {
-    const videoMimes = [
-      'video/mp4',
-      'video/webm',
-      'video/ogg',
-      'video/mpeg',
-      'video/quicktime',
-      'video/x-msvideo',
-      'video/x-matroska',
-      'video/3gpp',
-      'video/x-flv',
-      'application/x-mpegURL',
-    ];
-
-    return videoMimes.some(mime => file.type.startsWith(mime));
+      await this.ffmpeg.isLoaded();
+      this.ffmpegReady = true;
+      console.log('✅ FFmpeg 初期化完了');
+    } catch (error) {
+      console.error('❌ FFmpeg 初期化失敗:', error);
+      throw error;
+    }
   }
 
   /**
    * 動画を圧縮
    */
-  async compress(file, onProgress = () => {}) {
+  async compress(videoFile, onProgress = () => {}) {
     try {
-      const fileSizeMB = (file.size / 1024 / 1024).toFixed(1);
-      console.log(`📥 File: ${file.name} (${fileSizeMB}MB)`);
-      
-      onProgress(5, 'Checking file...');
+      // FFmpeg を初期化
+      await this.initFFmpeg();
 
-      // ファイルサイズ確認
-      const maxSize = 500 * 1024 * 1024; // 500MB まで圧縮対象
-      if (file.size > maxSize) {
-        throw new Error(`File size (${fileSizeMB}MB) exceeds ${maxSize / 1024 / 1024}MB limit`);
-      }
-
-      // ビデオファイルか確認
-      const isVideo = this.isVideoFile(file);
-
-      if (isVideo) {
-        console.log('✅ Video file detected - attempting compression');
-        return await this.compressVideo(file, onProgress);
-      } else {
-        console.log('⚠️ Not a video file - returning as-is');
-        onProgress(100, 'Ready');
-        return file;
-      }
-    } catch (error) {
-      console.error('❌ Compression error:', error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * FFmpeg で動画を圧縮
-   */
-  async compressVideo(file, onProgress = () => {}) {
-    try {
-      // FFmpeg が利用可能か確認
-      if (!window.FFmpeg || !window.FFmpeg.FFmpeg) {
-        console.warn('⚠️ FFmpeg not available - using fallback');
-        return await this.fallbackCompress(file, onProgress);
-      }
-
-      console.log('🚀 Starting FFmpeg compression...');
-
-      const FFmpeg = window.FFmpeg.FFmpeg;
-      const { FileSystemFlags } = window.FFmpeg;
-
-      this.ffmpeg = new FFmpeg();
-
-      onProgress(10, 'Loading FFmpeg...');
-
-      // FFmpeg をロード
-      await this.ffmpeg.load({
-        coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js',
-        wasmURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/ffmpeg-core.wasm',
-      });
-
-      console.log('✅ FFmpeg loaded');
-
-      onProgress(20, 'Reading file...');
-
-      // ファイルをメモリに読み込み
-      const fileData = await this.readFile(file);
       const inputFileName = 'input.mp4';
       const outputFileName = 'output.mp4';
 
-      this.ffmpeg.FS('writeFile', inputFileName, fileData);
-      console.log('✅ File written to FFmpeg filesystem');
+      onProgress(10, '📥 ファイルを読み込み中...');
 
-      onProgress(30, 'Analyzing video...');
+      // ファイルを FFmpeg に読み込む
+      await this.ffmpeg.writeFile(inputFileName, await fetchFile(videoFile));
 
-      // FFmpeg コマンド: 702p 30fps で圧縮
-      const ffmpegArgs = [
+      onProgress(20, '🎬 動画情報を取得中...');
+
+      // 動画情報を取得
+      const metadata = await this.getVideoMetadata(inputFileName);
+      console.log('📊 元の動画:', metadata);
+
+      onProgress(30, '⚙️ 圧縮設定中...');
+
+      // 圧縮コマンド（720p 30fps）
+      const command = [
         '-i', inputFileName,
-        
-        // 動画フィルター: スケーリング
-        '-vf', `scale=${this.config.maxWidth}:${this.config.maxHeight}:flags=lanczos`,
-        
-        // フレームレート: 30fps
-        '-r', String(this.config.fps),
-        
-        // ビデオコーデック: H.264
-        '-c:v', this.config.videoCodec,
-        
-        // ビットレート: 1500kbps（702p 30fps に最適）
-        '-b:v', this.config.videoBitrate,
-        
-        // 品質パラメータ
-        '-crf', String(this.config.crf),
-        
-        // エンコード速度（fast/medium/slow）
-        '-preset', this.config.preset,
-        
-        // オーディオコーデック: AAC
-        '-c:a', this.config.audioCodec,
-        
-        // オーディオビットレート: 128kbps
-        '-b:a', this.config.audioBitrate,
-        
-        // ストリーミング最適化
-        '-movflags', this.config.movflags,
-        
-        // マルチスレッド処理
-        '-threads', '4',
-        
-        // 出力ファイル
-        outputFileName
+        '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2',
+        '-r', '30',
+        '-c:v', 'libx264',
+        '-preset', 'medium',
+        '-crf', '28',
+        '-b:v', '1500k',
+        '-c:a', 'aac',
+        '-b:a', '128k',
+        '-movflags', '+faststart',
+        outputFileName,
       ];
 
-      console.log('🔧 FFmpeg command:', ffmpegArgs.join(' '));
+      onProgress(35, '🔄 圧縮処理中...');
 
-      onProgress(40, 'Compressing video...');
+      // 圧縮実行
+      await this.ffmpeg.run(...command);
 
-      // FFmpeg を実行
-      await this.ffmpeg.run(...ffmpegArgs);
+      onProgress(80, '💾 ファイルを出力中...');
 
-      console.log('✅ Compression complete');
+      // 圧縮済みファイルを取得
+      const compressedData = await this.ffmpeg.readFile(outputFileName);
+      const compressedBlob = new Blob([compressedData.buffer], { type: 'video/mp4' });
 
-      onProgress(80, 'Finalizing...');
+      onProgress(90, '🧹 クリーンアップ中...');
 
-      // 圧縮ファイルを取得
-      const compressedData = this.ffmpeg.FS('readFile', outputFileName);
-      const blob = new Blob([compressedData.buffer], { type: 'video/mp4' });
+      // ファイルをクリア
+      await this.ffmpeg.deleteFile(inputFileName);
+      await this.ffmpeg.deleteFile(outputFileName);
 
-      const compressedSizeMB = (blob.size / 1024 / 1024).toFixed(1);
-      const originalSizeMB = (file.size / 1024 / 1024).toFixed(1);
-      const ratio = ((1 - blob.size / file.size) * 100).toFixed(1);
+      onProgress(100, '✅ 圧縮完了');
 
-      console.log(`📊 Compression result:`);
-      console.log(`   Original: ${originalSizeMB}MB`);
-      console.log(`   Compressed: ${compressedSizeMB}MB`);
-      console.log(`   Compression ratio: ${ratio}%`);
+      const originalMB = (videoFile.size / 1024 / 1024).toFixed(1);
+      const compressedMB = (compressedBlob.size / 1024 / 1024).toFixed(1);
+      const ratio = ((1 - compressedBlob.size / videoFile.size) * 100).toFixed(0);
+      
+      console.log(`📊 圧縮結果: ${originalMB}MB → ${compressedMB}MB (${ratio}% 削減)`);
 
-      // メモリクリーンアップ
-      try {
-        this.ffmpeg.FS('unlink', inputFileName);
-        this.ffmpeg.FS('unlink', outputFileName);
-        console.log('✅ Cleanup complete');
-      } catch (e) {
-        console.warn('⚠️ Cleanup warning:', e.message);
-      }
-
-      onProgress(100, 'Upload ready!');
-
-      // 圧縮ファイルを返す
-      return blob;
+      return compressedBlob;
     } catch (error) {
-      console.error('❌ FFmpeg compression failed:', error.message);
-      console.log('⚠️ Falling back to simple compression');
-      return await this.fallbackCompress(file, onProgress);
+      console.error('❌ 圧縮エラー:', error);
+      throw new Error(`動画圧縮失敗: ${error.message}`);
     }
   }
 
   /**
-   * フォールバック圧縮（FFmpeg が利用できない場合）
+   * 動画のメタデータを取得
    */
-  async fallbackCompress(file, onProgress = () => {}) {
+  async getVideoMetadata(fileName) {
     try {
-      const fileSizeMB = (file.size / 1024 / 1024).toFixed(1);
-
-      onProgress(50, 'Optimizing file...');
-
-      // 100MB 以下ならそのまま返す
-      if (file.size <= 100 * 1024 * 1024) {
-        console.log('✅ File size OK - using as-is');
-        onProgress(100, 'Ready');
-        return file;
-      }
-
-      // 100MB を超える場合はエラー
-      throw new Error(`File too large (${fileSizeMB}MB). FFmpeg compression unavailable.`);
+      // ffprobe コマンドで動画情報を取得
+      // 簡易版では、リサイズ前の情報を推定する
+      return {
+        format: 'unknown',
+        duration: 'unknown',
+        bitrate: 'unknown',
+      };
     } catch (error) {
-      console.error('❌ Fallback compression failed:', error.message);
-      throw error;
+      return {};
     }
   }
 }
 
-// グローバルに利用可能にする
+// グローバルエクスポート
 window.VideoCompressionEngine = VideoCompressionEngine;
+
+// FFmpeg.wasm を動的にロード
+const script = document.createElement('script');
+script.async = true;
+script.src = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.6/dist/ffmpeg.min.js';
+document.head.appendChild(script);

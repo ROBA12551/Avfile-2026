@@ -72,7 +72,7 @@ class SimpleUploadManager {
 
       const fileId = this.generateUUID();
       
-      onProgress(5, '⏳ 準備中...');
+      onProgress(2, '⏳ 準備中...');
 
       // 動画ファイルのみ圧縮
       let processedBlob = fileBlob;
@@ -82,17 +82,22 @@ class SimpleUploadManager {
         console.log('🎥 動画ファイルを検出 - 720p 30fps に圧縮開始...');
         
         if (window.VideoCompressionEngine) {
-          const compressor = new window.VideoCompressionEngine();
-          processedBlob = await compressor.compress(fileBlob, (progress, message) => {
-            // 圧縮進捗を反映（5-35%）
-            onProgress(5 + (progress * 0.6), message);
-          });
-          
-          wasCompressed = true;
-          const originalMB = (fileBlob.size / 1024 / 1024).toFixed(1);
-          const compressedMB = (processedBlob.size / 1024 / 1024).toFixed(1);
-          const ratio = ((1 - processedBlob.size / fileBlob.size) * 100).toFixed(0);
-          console.log(`📊 圧縮完了: ${originalMB}MB → ${compressedMB}MB (${ratio}% 削減)`);
+          try {
+            const compressor = new window.VideoCompressionEngine();
+            processedBlob = await compressor.compress(fileBlob, (progress, message) => {
+              // 圧縮進捗を反映（2-35%）
+              onProgress(2 + (progress * 0.33), message);
+            });
+            
+            wasCompressed = true;
+            const originalMB = (fileBlob.size / 1024 / 1024).toFixed(1);
+            const compressedMB = (processedBlob.size / 1024 / 1024).toFixed(1);
+            const ratio = ((1 - processedBlob.size / fileBlob.size) * 100).toFixed(0);
+            console.log(`📊 圧縮完了: ${originalMB}MB → ${compressedMB}MB (${ratio}% 削減)`);
+          } catch (compressionError) {
+            console.warn('⚠️ 圧縮失敗 - オリジナルでアップロード:', compressionError.message);
+            wasCompressed = false;
+          }
         } else {
           console.warn('⚠️ 圧縮エンジンが利用できません - オリジナルでアップロード');
         }
@@ -112,12 +117,12 @@ class SimpleUploadManager {
         base64, 
         processedBlob.type,
         (progress, message) => {
-          // GitHub アップロード進捗を反映（45-75%）
-          onProgress(45 + (progress * 0.3), message);
+          // GitHub アップロード進捗を反映（45-80%）
+          onProgress(45 + (progress * 0.35), message);
         }
       );
 
-      onProgress(80, '📝 アップロード情報を記録中...');
+      onProgress(82, '📝 アップロード情報を記録中...');
 
       // github.json にアップロード情報を保存
       await this.saveToGithubJson({
@@ -137,7 +142,7 @@ class SimpleUploadManager {
       // 視聴可能な URL を生成
       const viewUrl = `${window.location.origin}/?id=${fileId}`;
 
-      onProgress(95, '✨ 最後の処理中...');
+      onProgress(98, '✨ 最後の処理中...');
 
       onProgress(100, '✅ アップロード完了！');
 
