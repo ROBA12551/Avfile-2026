@@ -1021,8 +1021,7 @@ class GitHubUploader {
     if (!data.success) throw new Error(data.error);
     return data.data;
   }
-
-// ★ バイナリ直接アップロード（FormData - Base64 なし）
+// ★ チャンク分割アップロード（6MB制限対応）
 async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   const sanitizedFileName = this.sanitizeFileName(fileName);
 
@@ -1038,41 +1037,113 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
     throw new Error('Invalid uploadUrl provided');
   }
 
-  // ★ FormData で直接送信（Base64 変換なし）
-  const formData = new FormData();
-  formData.append('action', 'upload-asset-binary');
-  formData.append('uploadUrl', uploadUrl);
-  formData.append('fileName', sanitizedFileName);
-  formData.append('fileId', fileId);
-  formData.append('fileSize', fileSize.toString());
-  formData.append('file', fileObject, sanitizedFileName); // ★ File オブジェクトを直接追加
+  const CHUNK_SIZE = 4 * 1024 * 1024; // 4MB チャンク
 
-  console.log('[UPLOAD_BINARY] Sending FormData to Netlify Function...');
-  console.log('[UPLOAD_BINARY] FormData entries:');
-  for (let [key, value] of formData.entries()) {
-    if (value instanceof File) {
-      console.log(`  ${key}: File(${value.name}, ${value.size} bytes)`);
-    } else {
-      console.log(`  ${key}: ${value}`);
+  // ★ ファイルが小さい場合は直接送信
+  if (fileSize <= CHUNK_SIZE) {
+    console.log('[UPLOAD_BINARY] Small file - direct upload');
+    
+    const formData = new FormData();
+    formData.append('action', 'upload-asset-binary');
+    formData.append('uploadUrl', uploadUrl);
+    formData.append('fileName', sanitizedFileName);
+    formData.append('fileId', fileId);
+    formData.append('fileSize', fileSize.toString());
+    formData.append('file', fileObject, sanitizedFileName);
+
+    const response = await fetch(this.functionUrl, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      console.error('[UPLOAD_BINARY] Error:', response.status, errorText);
+      throw new Error(`Binary upload failed: ${response.status} - ${errorText}`);
     }
+
+    const data = await response.json();
+    if (!data.success) throw new Error(data.error || 'Binary upload failed');
+    
+    console.log('[UPLOAD_BINARY] Complete - Asset ID:', data.data.asset_id);
+    return data.data;
   }
 
-  const response = await fetch(this.functionUrl, {
+  // ★ ファイルが大きい場合はチャンク分割
+  console.log('[UPLOAD_BINARY] Large file - chunked upload');
+  
+  const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
+  console.log(`[UPLOAD_BINARY] Splitting into ${totalChunks} chunks`);
+
+  const chunks = [];
+  for (let i = 0; i < totalChunks; i++) {
+    const start = i * CHUNK_SIZE;
+    const end = Math.min(start + CHUNK_SIZE, fileSize);
+    const chunk = fileObject.slice(start, end);
+    chunks.push(chunk);
+    console.log(`[UPLOAD_BINARY] Chunk ${i + 1}/${totalChunks}: ${start}-${end} (${chunk.size} bytes)`);
+  }
+
+  // ★ チャンクを順次アップロード
+  const uploadedChunks = [];
+  
+  for (let i = 0; i < chunks.length; i++) {
+    console.log(`[UPLOAD_BINARY] Uploading chunk ${i + 1}/${totalChunks}...`);
+    
+    const formData = new FormData();
+    formData.append('action', 'upload-chunk');
+    formData.append('uploadUrl', uploadUrl);
+    formData.append('fileName', sanitizedFileName);
+    formData.append('fileId', fileId);
+    formData.append('chunkIndex', i.toString());
+    formData.append('totalChunks', totalChunks.toString());
+    formData.append('chunk', chunks[i], `${sanitizedFileName}.part${i}`);
+
+    const response = await fetch(this.functionUrl, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      console.error('[UPLOAD_BINARY] Chunk upload error:', response.status, errorText);
+      throw new Error(`Chunk ${i + 1} upload failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (!data.success) throw new Error(data.error || 'Chunk upload failed');
+    
+    uploadedChunks.push(data.data);
+    console.log(`[UPLOAD_BINARY] Chunk ${i + 1}/${totalChunks} uploaded`);
+  }
+
+  // ★ チャンクを結合
+  console.log('[UPLOAD_BINARY] Merging chunks...');
+  
+  const mergeResponse = await fetch(this.functionUrl, {
     method: 'POST',
-    body: formData, // ★ FormData を直接送信（Content-Type は自動設定される）
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'merge-chunks',
+      uploadUrl: uploadUrl,
+      fileName: sanitizedFileName,
+      fileId: fileId,
+      fileSize: fileSize,
+      totalChunks: totalChunks,
+    }),
   });
 
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => '');
-    console.error('[UPLOAD_BINARY] Error:', response.status, errorText);
-    throw new Error(`Binary upload failed: ${response.status} - ${errorText}`);
+  if (!mergeResponse.ok) {
+    const errorText = await mergeResponse.text().catch(() => '');
+    console.error('[UPLOAD_BINARY] Merge error:', mergeResponse.status, errorText);
+    throw new Error(`Chunk merge failed: ${mergeResponse.status}`);
   }
 
-  const data = await response.json();
-  if (!data.success) throw new Error(data.error || 'Binary upload failed');
+  const mergeData = await mergeResponse.json();
+  if (!mergeData.success) throw new Error(mergeData.error || 'Chunk merge failed');
   
-  console.log('[UPLOAD_BINARY] Complete - Asset ID:', data.data.asset_id);
-  return data.data;
+  console.log('[UPLOAD_BINARY] Complete - Asset ID:', mergeData.data.asset_id);
+  return mergeData.data;
 }
 
   // ★ ファイルを Base64 に変換（チャンク処理でスタック溢れ防止）

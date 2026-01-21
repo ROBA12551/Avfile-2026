@@ -399,39 +399,65 @@ async function createViewOnServer(fileIds, passwordHash, origin) {
 }
 
 // ★ FormData パーサー
+// ★ FormData パーサー（改善版）
 function parseFormData(buffer, boundary) {
   const fields = {};
   const files = {};
   
-  const parts = buffer.toString('binary').split(`--${boundary}`);
-  
-  for (const part of parts) {
-    if (!part || part.trim() === '--' || part.trim() === '') continue;
-
-    const [headerSection, ...bodyParts] = part.split('\r\n\r\n');
-    if (!headerSection) continue;
-
-    const bodyContent = bodyParts.join('\r\n\r\n').replace(/\r\n$/, '');
-
-    const nameMatch = headerSection.match(/name="([^"]+)"/);
-    const filenameMatch = headerSection.match(/filename="([^"]+)"/);
+  try {
+    const bodyString = buffer.toString('binary');
+    const parts = bodyString.split(`--${boundary}`);
     
-    if (nameMatch) {
+    console.log(`[FORMDATA] Parsing ${parts.length} parts with boundary: ${boundary}`);
+    
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      
+      if (!part || part.trim() === '' || part.trim() === '--') {
+        continue;
+      }
+
+      // ヘッダーとボディを分割
+      const headerEndIndex = part.indexOf('\r\n\r\n');
+      if (headerEndIndex === -1) continue;
+
+      const headerSection = part.substring(0, headerEndIndex);
+      const bodyContent = part.substring(headerEndIndex + 4);
+      
+      // 最後の \r\n を削除
+      const cleanBody = bodyContent.replace(/\r\n$/, '');
+
+      // Content-Disposition をパース
+      const nameMatch = headerSection.match(/name="([^"]+)"/);
+      const filenameMatch = headerSection.match(/filename="([^"]+)"/);
+      
+      if (!nameMatch) continue;
+      
       const fieldName = nameMatch[1];
       
       if (filenameMatch) {
         // ファイルフィールド
+        const filename = filenameMatch[1];
+        const fileData = Buffer.from(cleanBody, 'binary');
+        
         files[fieldName] = {
-          filename: filenameMatch[1],
-          data: Buffer.from(bodyContent, 'binary')
+          filename: filename,
+          data: fileData
         };
-        logInfo(`[FORMDATA] File: ${fieldName} = ${filenameMatch[1]} (${files[fieldName].data.length} bytes)`);
+        
+        console.log(`[FORMDATA] File field: ${fieldName} = ${filename} (${fileData.length} bytes)`);
       } else {
         // テキストフィールド
-        fields[fieldName] = bodyContent.trim();
-        logInfo(`[FORMDATA] Field: ${fieldName} = ${fields[fieldName].substring(0, 50)}`);
+        fields[fieldName] = cleanBody.trim();
+        console.log(`[FORMDATA] Text field: ${fieldName} = ${fields[fieldName].substring(0, 50)}...`);
       }
     }
+    
+    console.log(`[FORMDATA] Parsing complete: ${Object.keys(fields).length} fields, ${Object.keys(files).length} files`);
+    
+  } catch (error) {
+    console.error(`[FORMDATA] Parse error: ${error.message}`);
+    throw error;
   }
   
   return { fields, files };
