@@ -633,14 +633,13 @@ exports.handler = async (event) => {
         response = await createRelease(body.releaseTag, body.metadata);
         break;
       }
-
 case 'upload-asset-binary': {
   logInfo(`[BINARY] Starting upload`);
   
   let fileName, uploadUrl, fileId, fileSize;
   let binaryData = null;
 
-  // ★ FormData の場合（バイナリ直接送信）
+  // ★ FormData の場合
   if (body._files && body._files.file) {
     logInfo(`[BINARY] Using FormData with binary file`);
     
@@ -650,9 +649,11 @@ case 'upload-asset-binary': {
     fileSize = parseInt(body.fileSize) || 0;
     binaryData = body._files.file.data;
     
-    logInfo(`[BINARY] Binary file: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
+    logInfo(`[BINARY] Binary file received: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
+    logInfo(`[BINARY] File name: ${fileName}`);
+    logInfo(`[BINARY] Upload URL: ${uploadUrl ? uploadUrl.substring(0, 50) + '...' : 'missing'}`);
   }
-  // ★ JSON の場合（Base64）- 後方互換性のため残す
+  // ★ JSON の場合（Base64）
   else if (body && body.fileBase64) {
     logInfo(`[BINARY] Using JSON with Base64`);
     
@@ -664,14 +665,22 @@ case 'upload-asset-binary': {
     
     logInfo(`[BINARY] Base64 decoded: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
   }
+  // ★ どちらもない場合
+  else {
+    logError(`[BINARY] No file data found`);
+    logError(`[BINARY] body keys: ${Object.keys(body).join(', ')}`);
+    logError(`[BINARY] body._files: ${body._files ? Object.keys(body._files).join(', ') : 'undefined'}`);
+    throw new Error('No file data provided (neither FormData nor Base64)');
+  }
 
   // バリデーション
   if (!fileName) throw new Error('fileName not found');
   if (!uploadUrl) throw new Error('uploadUrl not found');
-  if (!binaryData || binaryData.length === 0) throw new Error('File data not found');
+  if (!binaryData || binaryData.length === 0) throw new Error('File data is empty');
 
-  logInfo(`[BINARY] File: ${fileName}, Size: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
+  logInfo(`[BINARY] Validated - File: ${fileName}, Size: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
   
+  // 以下は既存のコード...
   // GitHub にアップロード
   logInfo(`[BINARY] Uploading to GitHub API...`);
   
@@ -699,24 +708,6 @@ case 'upload-asset-binary': {
     size: assetResponse.size,
     download_url: assetResponse.browser_download_url,
   };
-
-  // ★ 非同期で github.json に追記
-  if (fileId) {
-    const fileInfo = {
-      fileId,
-      fileName,
-      downloadUrl: result.download_url,
-      fileSize: fileSize || result.size,
-      uploadedAt: new Date().toISOString(),
-      metadata: {
-        extension: fileName.split('.').pop(),
-        mimeType: body.mimeType || 'application/octet-stream'
-      }
-    };
-    
-    updateGithubJsonAsync(fileInfo)
-      .catch(err => logError(`[BINARY] Async update error: ${err.message}`));
-  }
 
   response = result;
   break;
