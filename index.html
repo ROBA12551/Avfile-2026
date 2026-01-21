@@ -811,77 +811,6 @@ async function parallelLimit(tasks, limit) {
   return results;
 }
 
-/**
- * 統一 Base64 変換（ファイル選択 ≈ フォトライブラリ）
- * ★ 動画ファイルの場合、Base64化前に自動圧縮
- */
-async function toBase64Fast(file) {
-  return new Promise(async (resolve, reject) => {
-    try {
-      let processedFile = file;
-
-      // ★ 動画ファイルで1.5MB以上なら圧縮
-      const MAX_SIZE = 1.5 * 1024 * 1024; // 1.5MB
-      const isVideo = file.type && file.type.startsWith('video/');
-      
-      if (isVideo && file.size > MAX_SIZE) {
-        console.log(`[BASE64] 動画圧縮開始: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
-        
-        try {
-          const compressor = new VideoCompressionEngineLocal();
-          processedFile = await compressor.compress(file, (progress, msg) => {
-            console.log(`[BASE64] 圧縮中: ${progress}%`);
-          });
-          
-          const originalMB = (file.size / 1024 / 1024).toFixed(2);
-          const compressedMB = (processedFile.size / 1024 / 1024).toFixed(2);
-          const ratio = ((1 - processedFile.size / file.size) * 100).toFixed(0);
-          
-          console.log(`[BASE64] 圧縮完了: ${originalMB}MB → ${compressedMB}MB (${ratio}% 削減)`);
-        } catch (compressionError) {
-          console.warn(`[BASE64] 圧縮失敗、元ファイルを使用:`, compressionError.message);
-          processedFile = file;
-        }
-      } else {
-        console.log(`[BASE64] 圧縮不要: ${isVideo ? '動画' : 'その他'}, ${(file.size / 1024 / 1024).toFixed(2)} MB`);
-      }
-      
-      // ★ Base64変換
-      const reader = new FileReader();
-      
-      reader.onload = () => {
-        try {
-          const result = reader.result;
-          const parts = result.split(',');
-          if (parts.length < 2) throw new Error('Invalid data URL');
-          
-          const base64 = parts[1];
-          if (!base64) throw new Error('Empty Base64');
-          
-          console.log(`[BASE64] 変換完了: ${base64.length} chars`);
-          resolve(base64);
-        } catch (e) {
-          reject(e);
-        }
-      };
-      
-      reader.onerror = () => reject(new Error('FileReader error'));
-      reader.readAsDataURL(processedFile);
-
-      // 60秒タイムアウト（圧縮時間を考慮）
-      setTimeout(() => {
-        reader.abort();
-        reject(new Error('Base64 timeout'));
-      }, 60000);
-      
-    } catch (e) {
-      reject(e);
-    }
-  });
-}
-/**
- * 統一 ファイル情報取得（ファイル選択 ≈ フォトライブラリ）
- */
 // ★ ランダムなアルファベット7桁文字列を生成（数字なし）
 function generateRandomFileName() {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
@@ -1057,57 +986,55 @@ class GitHubUploader {
     if (!data.success) throw new Error(data.error);
     return data.data;
   }
+// ★ 修正版: Base64を使わず、バイナリデータを直接送信
+async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
+  const sanitizedFileName = this.sanitizeFileName(fileName);
 
-  // ★ Netlify Functions 経由でアップロード（Token 不要）
-  async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
-    const sanitizedFileName = this.sanitizeFileName(fileName);
+  console.log('[UPLOAD_BINARY] Original fileName:', fileName);
+  console.log('[UPLOAD_BINARY] Sanitized fileName:', sanitizedFileName);
+  console.log('[UPLOAD_BINARY] File size:', (fileSize / 1024 / 1024).toFixed(2), 'MB');
 
-    console.log('[UPLOAD_BINARY] Original fileName:', fileName);
-    console.log('[UPLOAD_BINARY] Sanitized fileName:', sanitizedFileName);
-    console.log('[UPLOAD_BINARY] File size:', (fileSize / 1024 / 1024).toFixed(2), 'MB');
-
-    if (!fileObject) {
-      throw new Error('Invalid file object provided');
-    }
-
-    if (!uploadUrl || typeof uploadUrl !== 'string') {
-      throw new Error('Invalid uploadUrl provided');
-    }
-
-    // ★ ファイルを Base64 に変換
-    console.log('[UPLOAD_BINARY] Converting to Base64...');
-    const base64 = await toBase64Fast(fileObject);
-    console.log('[UPLOAD_BINARY] Base64 length:', base64.length, 'chars');
-
-    // ★ Netlify Functions に送信
-    console.log('[UPLOAD_BINARY] Sending to Netlify Functions...');
-
-    const response = await fetch(this.functionUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'upload-asset-binary',
-        uploadUrl: uploadUrl,
-        fileName: sanitizedFileName,
-        fileBase64: base64,
-        fileId,
-        fileSize,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '');
-      console.error('[UPLOAD_BINARY] Error:', response.status, errorText);
-      throw new Error(`Upload failed: ${response.status} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    if (!data.success) throw new Error(data.error || 'Upload failed');
-    
-    console.log('[UPLOAD_BINARY] Complete - Asset ID:', data.data.asset_id);
-    return data.data;
+  if (!fileObject) {
+    throw new Error('Invalid file object provided');
   }
 
+  if (!uploadUrl || typeof uploadUrl !== 'string') {
+    throw new Error('Invalid uploadUrl provided');
+  }
+
+  // ★ ファイルを ArrayBuffer に変換（Base64不要）
+  console.log('[UPLOAD_BINARY] Converting to ArrayBuffer...');
+  const arrayBuffer = await fileObject.arrayBuffer();
+  console.log('[UPLOAD_BINARY] ArrayBuffer size:', (arrayBuffer.byteLength / 1024 / 1024).toFixed(2), 'MB');
+
+  // ★ FormData で Netlify Functions に送信
+  console.log('[UPLOAD_BINARY] Sending to Netlify Functions via FormData...');
+
+  const formData = new FormData();
+  formData.append('action', 'upload-asset-binary');
+  formData.append('uploadUrl', uploadUrl);
+  formData.append('fileName', sanitizedFileName);
+  formData.append('fileId', fileId);
+  formData.append('fileSize', fileSize.toString());
+  formData.append('file', fileObject, sanitizedFileName); // ★ ファイル本体
+
+  const response = await fetch(this.functionUrl, {
+    method: 'POST',
+    body: formData, // ★ FormData として送信（Content-Typeは自動設定される）
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    console.error('[UPLOAD_BINARY] Error:', response.status, errorText);
+    throw new Error(`Upload failed: ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  if (!data.success) throw new Error(data.error || 'Upload failed');
+  
+  console.log('[UPLOAD_BINARY] Complete - Asset ID:', data.data.asset_id);
+  return data.data;
+}
   // ★ github.json を非同期更新
   async updateGithubJsonAsync(fileId, fileName, downloadUrl, fileSize) {
     try {

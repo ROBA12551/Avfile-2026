@@ -640,10 +640,20 @@ case 'upload-asset-binary': {
   let fileName, uploadUrl, fileId, fileSize;
   let binaryData = null;
 
-  const contentType = event.headers['content-type'] || event.headers['Content-Type'] || '';
-
-  // JSON の場合（Base64）
-  if (body && body.fileBase64) {
+  // ★ FormData の場合（バイナリ直接送信）
+  if (body._files && body._files.file) {
+    logInfo(`[BINARY] Using FormData with binary file`);
+    
+    fileName = body.fileName;
+    uploadUrl = body.uploadUrl;
+    fileId = body.fileId;
+    fileSize = parseInt(body.fileSize) || 0;
+    binaryData = body._files.file.data;
+    
+    logInfo(`[BINARY] Binary file: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
+  }
+  // ★ JSON の場合（Base64）- 後方互換性のため残す
+  else if (body && body.fileBase64) {
     logInfo(`[BINARY] Using JSON with Base64`);
     
     fileName = body.fileName;
@@ -690,7 +700,7 @@ case 'upload-asset-binary': {
     download_url: assetResponse.browser_download_url,
   };
 
-  // ★ 非同期で github.json に追記（待たない）
+  // ★ 非同期で github.json に追記
   if (fileId) {
     const fileInfo = {
       fileId,
@@ -704,7 +714,6 @@ case 'upload-asset-binary': {
       }
     };
     
-    // 非同期で更新（レスポンスは待たない）
     updateGithubJsonAsync(fileInfo)
       .catch(err => logError(`[BINARY] Async update error: ${err.message}`));
   }
