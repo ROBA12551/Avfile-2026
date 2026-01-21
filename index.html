@@ -798,45 +798,58 @@ function setupUploadHandlers() {
     await uploadMultiple(files);
   };
 }
-
 async function uploadMultiple(files) {
-  const uploader = new SimpleUploadManager();
-  const github = uploader.githubUploader;
+    if (!files || files.length === 0) return;
 
-  uploadArea.style.display = 'none';
-  processingArea.style.display = 'block';
+    if (files.length > 5) {
+        alert('You can upload up to 5 files at once.');
+        return;
+    }
 
-  const viewId = crypto.randomUUID();
-  const uploadedFileIds = [];
+    const uploadArea = document.getElementById('uploadArea');
+    const processingArea = document.getElementById('processingArea');
+    const successArea = document.getElementById('successArea');
 
-  for (let i = 0; i < files.length; i++) {
-    const result = await uploader.uploadFile(
-      files[i],
-      files[i].name,
-      (p) => {
-        progressFill.style.width = p + '%';
-        progressText.textContent = `Uploading ${i + 1}/${files.length} (${Math.round(p)}%)`;
-      }
-    );
-    uploadedFileIds.push(result.fileId);
-  }
+    uploadArea.style.display = 'none';
+    processingArea.style.display = 'block';
 
-  const json = await github.getGithubJson();
-  json.views = json.views || [];
-  json.views.push({
-    viewId,
-    files: uploadedFileIds,
-    createdAt: new Date().toISOString()
-  });
+    const uploadManager = new SimpleUploadManager();
+    const uploadedIds = [];
 
-  await github.saveGithubJson(json);
+    try {
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
 
-  const shareUrl = `${location.origin}/?id=${viewId}`;
-  shareUrlInput.value = shareUrl;
+            const result = await uploadManager.uploadFile(
+                file,
+                file.name,
+                (progress) => {
+                    document.getElementById('progressFill').style.width = progress + '%';
+                    document.getElementById('progressText').textContent =
+                        `Uploading ${i + 1}/${files.length} (${Math.round(progress)}%)`;
+                }
+            );
 
-  processingArea.style.display = 'none';
-  successArea.style.display = 'block';
+            uploadedIds.push(result.fileId);
+        }
+
+        // ★ ここが重要：1つのURLにまとめる
+        const shareUrl = `${location.origin}/?ids=${uploadedIds.join(',')}`;
+
+        const shareUrlEl = document.getElementById('shareUrl');
+        shareUrlEl.value = shareUrl;
+
+        processingArea.style.display = 'none';
+        successArea.style.display = 'block';
+
+        navigator.clipboard.writeText(shareUrl);
+
+    } catch (err) {
+        console.error(err);
+        alert(err.message || 'Upload failed');
+    }
 }
+
 
 /* =====================
    View Page (Multi)
