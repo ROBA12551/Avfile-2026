@@ -228,6 +228,154 @@
             margin-top: 1rem;
         }
 
+        /* File History Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-content {
+            background: linear-gradient(135deg, #0f0f1e 0%, #1a1a2e 100%);
+            margin: 5% auto;
+            padding: 2rem;
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            border-radius: 12px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid rgba(102, 126, 234, 0.2);
+            padding-bottom: 1rem;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 1.5rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .close-btn {
+            color: #e0e0e0;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            border: none;
+            background: none;
+            transition: color 0.3s;
+        }
+
+        .close-btn:hover {
+            color: #667eea;
+        }
+
+        .file-list {
+            flex: 1;
+            overflow-y: auto;
+            padding-right: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .file-list::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .file-list::-webkit-scrollbar-track {
+            background: rgba(102, 126, 234, 0.1);
+            border-radius: 4px;
+        }
+
+        .file-list::-webkit-scrollbar-thumb {
+            background: rgba(102, 126, 234, 0.4);
+            border-radius: 4px;
+        }
+
+        .file-list::-webkit-scrollbar-thumb:hover {
+            background: rgba(102, 126, 234, 0.6);
+        }
+
+        .file-item {
+            background: rgba(102, 126, 234, 0.08);
+            border: 1px solid rgba(102, 126, 234, 0.2);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .file-item:hover {
+            background: rgba(102, 126, 234, 0.15);
+            border-color: rgba(102, 126, 234, 0.4);
+            transform: translateX(5px);
+        }
+
+        .file-item-name {
+            font-weight: 500;
+            color: #667eea;
+            margin-bottom: 0.5rem;
+            word-break: break-all;
+        }
+
+        .file-item-url {
+            font-size: 0.8rem;
+            color: #909090;
+            word-break: break-all;
+            margin-bottom: 0.5rem;
+        }
+
+        .file-item-date {
+            font-size: 0.75rem;
+            color: #707070;
+        }
+
+        .file-item-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .file-item-actions button {
+            flex: 1;
+            padding: 0.4rem 0.8rem;
+            font-size: 0.8rem;
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .file-item-actions button:hover {
+            background: rgba(102, 126, 234, 0.2);
+            border-color: rgba(102, 126, 234, 0.5);
+        }
+
+        .empty-message {
+            text-align: center;
+            color: #909090;
+            padding: 2rem;
+        }
+
         .spinner {
             width: 40px;
             height: 40px;
@@ -422,7 +570,7 @@
             </div>
             <div class="nav-links">
                 <a href="/">Home</a>
-                <a href="policy.html">Terms</a>
+                <a href="/policy">Terms</a>
             </div>
         </div>
     </nav>
@@ -475,6 +623,7 @@
                             <button class="btn" id="copyUrlBtn">Copy</button>
                         </div>
                         <button class="btn" id="uploadMoreBtn" style="margin-top: 1rem;">Upload Another</button>
+                        <button class="btn" id="fileHistoryBtn" style="margin-top: 1rem; background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);">📋 File History</button>
                     </div>
                 </div>
 
@@ -499,6 +648,19 @@
                     <h2>File Not Found</h2>
                     <p id="errorMsg" class="error-message">The file you're looking for doesn't exist.</p>
                     <a href="/" style="color: #667eea; text-decoration: none; display: inline-block; margin-top: 1rem; padding: 0.75rem 1.5rem; border: 1px solid #667eea; border-radius: 8px;">Back to Home</a>
+                </div>
+            </div>
+
+            <!-- File History Modal -->
+            <div id="fileHistoryModal" class="modal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2>📋 File History</h2>
+                        <button class="close-btn" id="closeModalBtn">&times;</button>
+                    </div>
+                    <div id="fileList" class="file-list">
+                        <div class="empty-message">No files uploaded yet</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -545,7 +707,7 @@
     </main>
 
     <footer class="footer">
-        <p>&copy; 2026 Avfile. <a href="policy.html">Privacy & Terms</a> • Fast File Sharing</p>
+        <p>&copy; 2025 Avfile. <a href="/policy">Privacy & Terms</a> • Fast File Sharing</p>
     </footer>
 
     <!-- Bottom Banner -->
@@ -556,6 +718,7 @@
     <!-- FFmpeg.wasm Library - Must load synchronously -->
     <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.10.1/dist/ffmpeg.min.js"></script>
 
+    <!-- App Scripts -->
     <script src="js/storage.js?v=16"></script>
     <script src="js/video-compression.js?v=16"></script>
     <script src="js/github-api.js?v=16"></script>
@@ -676,6 +839,23 @@
                 navigator.clipboard.writeText(document.getElementById('shareUrl').value);
                 alert('Link copied to clipboard');
             });
+
+            // File History Modal Handlers
+            const modal = document.getElementById('fileHistoryModal');
+            const closeBtn = document.getElementById('closeModalBtn');
+            const fileHistoryBtn = document.getElementById('fileHistoryBtn');
+
+            fileHistoryBtn?.addEventListener('click', showFileHistory);
+            closeBtn?.addEventListener('click', () => {
+                modal.style.display = 'none';
+            });
+
+            // モーダルの外側をクリックで閉じる
+            window.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.style.display = 'none';
+                }
+            });
         }
 
         async function handleFileUpload(file) {
@@ -691,7 +871,8 @@
                 const uploadManager = new SimpleUploadManager();
                 const result = await uploadManager.uploadFile(file, file.name, (progress) => {
                     document.getElementById('progressFill').style.width = progress + '%';
-                    document.getElementById('progressText').textContent = progress + '%';
+                    // 小数点を2桁に制限
+                    document.getElementById('progressText').textContent = Math.round(progress * 100) / 100 + '%';
                 });
 
                 const shareUrl = result.viewUrl;
@@ -699,6 +880,9 @@
 
                 processingArea.style.display = 'none';
                 successArea.style.display = 'block';
+
+                // ファイルを履歴に保存
+                saveFileToHistory(file.name, shareUrl);
 
                 navigator.clipboard.writeText(shareUrl);
             } catch (error) {
@@ -726,6 +910,97 @@
             document.body.removeChild(link);
         }
 
+        /**
+         * ファイル履歴を Local Storage に保存
+         */
+        function saveFileToHistory(fileName, fileUrl) {
+            const history = JSON.parse(localStorage.getItem('avfile_history') || '[]');
+            
+            // 重複排除
+            const existing = history.findIndex(f => f.url === fileUrl);
+            if (existing !== -1) {
+                history.splice(existing, 1);
+            }
+            
+            // 新しいファイルを最前に追加
+            history.unshift({
+                name: fileName,
+                url: fileUrl,
+                timestamp: new Date().toISOString(),
+                date: new Date().toLocaleString('ja-JP')
+            });
+            
+            // 最新 50 件のみ保持
+            if (history.length > 50) {
+                history.pop();
+            }
+            
+            localStorage.setItem('avfile_history', JSON.stringify(history));
+        }
+
+        /**
+         * ファイル履歴をモーダルに表示
+         */
+        function showFileHistory() {
+            const history = JSON.parse(localStorage.getItem('avfile_history') || '[]');
+            const fileListDiv = document.getElementById('fileList');
+            const modal = document.getElementById('fileHistoryModal');
+            
+            if (history.length === 0) {
+                fileListDiv.innerHTML = '<div class="empty-message">No files uploaded yet</div>';
+                modal.style.display = 'block';
+                return;
+            }
+            
+            let html = '';
+            history.forEach((file, index) => {
+                const fileNameEscaped = escapeHtml(file.name);
+                const fileUrlEscaped = escapeHtml(file.url);
+                
+                html += `
+                    <div class="file-item">
+                        <div class="file-item-name">📄 ${fileNameEscaped}</div>
+                        <div class="file-item-url">${fileUrlEscaped}</div>
+                        <div class="file-item-date">📅 ${file.date}</div>
+                        <div class="file-item-actions">
+                            <button onclick="copyToClipboard('${fileUrlEscaped.replace(/'/g, "\\'")}')" title="Copy URL">Copy</button>
+                            <button onclick="openFileLink('${fileUrlEscaped.replace(/'/g, "\\'")}')" title="Open">Open</button>
+                            <button onclick="removeFileFromHistory(${index})" title="Remove" style="background: rgba(255, 107, 107, 0.1); color: #ff6b6b; border-color: rgba(255, 107, 107, 0.3);">Delete</button>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            fileListDiv.innerHTML = html;
+            modal.style.display = 'block';
+        }
+
+        /**
+         * ファイル履歴から削除
+         */
+        function removeFileFromHistory(index) {
+            const history = JSON.parse(localStorage.getItem('avfile_history') || '[]');
+            history.splice(index, 1);
+            localStorage.setItem('avfile_history', JSON.stringify(history));
+            showFileHistory(); // 再表示
+        }
+
+        /**
+         * クリップボードにコピー
+         */
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Link copied to clipboard!');
+            });
+        }
+
+        /**
+         * ファイルリンクを開く
+         */
+        function openFileLink(url) {
+            window.open(url, '_blank');
+        }
+
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
@@ -733,7 +1008,7 @@
         }
 
         // FFmpeg.wasm 確認
-        console.log('🔍 FFmpeg.wasm チェック:');
+        console.log(' FFmpeg.wasm チェック:');
         console.log('  - window.FFmpeg:', typeof window.FFmpeg);
         console.log('  - window.FFmpeg.createFFmpeg:', typeof window.FFmpeg?.createFFmpeg);
         console.log('  - window.FFmpeg.fetchFile:', typeof window.FFmpeg?.fetchFile);
