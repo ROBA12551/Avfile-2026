@@ -1,27 +1,14 @@
 /**
  * netlify/functions/github-upload.js
  * Avfile - GitHub Releases Uploader + github.json Registry + View Creator
- *
- * Actions:
- * - create-release
- * - upload-asset
- * - get-github-json
- * - save-github-json
- * - create-view   ← views を Functions 側で一本化（shortId発行 + views追記）
  */
 
 const https = require('https');
 
-/* =========================
-   Environment
-========================= */
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_OWNER = process.env.GITHUB_OWNER;
 const GITHUB_REPO  = process.env.GITHUB_REPO;
 
-/* =========================
-   Logging
-========================= */
 function logInfo(msg) {
   console.log(`[INFO] ${new Date().toISOString()} ${msg}`);
 }
@@ -29,10 +16,6 @@ function logError(msg) {
   console.error(`[ERROR] ${new Date().toISOString()} ${msg}`);
 }
 
-/* =========================
-   Rate Limit (simple, best-effort)
-   Note: Netlify Functions can be stateless; this is a soft limiter.
-========================= */
 const requestCache = new Map();
 function checkRateLimit(clientId) {
   const now = Date.now();
@@ -52,11 +35,7 @@ function checkRateLimit(clientId) {
   return record.count <= 60;
 }
 
-/* =========================
-   Helpers
-========================= */
 function unwrapData(x) {
-  // Protect against accidental nesting {data:{data:{...}}}
   while (x && typeof x === 'object' && x.data) x = x.data;
   return x;
 }
@@ -76,9 +55,6 @@ function generateShortId(len = 6) {
   return out;
 }
 
-/* =========================
-   GitHub API (api.github.com)
-========================= */
 async function githubRequest(method, path, body = null, headers = {}) {
   return new Promise((resolve, reject) => {
     const options = {
@@ -113,7 +89,6 @@ async function githubRequest(method, path, body = null, headers = {}) {
           try {
             resolve(data ? JSON.parse(data) : {});
           } catch {
-            // Some endpoints can return empty or non-json
             resolve({});
           }
         } else {
@@ -132,15 +107,12 @@ async function githubRequest(method, path, body = null, headers = {}) {
   });
 }
 
-/* =========================
-   GitHub Upload API (uploads.github.com)
-========================= */
 async function githubUploadRequest(method, fullUrl, body, headers = {}) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(fullUrl);
 
     const options = {
-      hostname: parsed.hostname, // uploads.github.com
+      hostname: parsed.hostname,
       port: 443,
       path: parsed.pathname + parsed.search,
       method,
@@ -183,9 +155,6 @@ async function githubUploadRequest(method, fullUrl, body, headers = {}) {
   });
 }
 
-/* =========================
-   Release
-========================= */
 async function createRelease(tag, metadata) {
   const path = `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases`;
 
@@ -207,9 +176,6 @@ async function createRelease(tag, metadata) {
   };
 }
 
-/* =========================
-   Upload Asset
-========================= */
 async function uploadAsset(uploadUrl, fileData, fileName) {
   const clean = uploadUrl.replace('{?name,label}', '');
   const assetUrl = `${clean}?name=${encodeURIComponent(fileName)}`;
@@ -229,9 +195,6 @@ async function uploadAsset(uploadUrl, fileData, fileName) {
   };
 }
 
-/* =========================
-   github.json (repo contents)
-========================= */
 async function getGithubJson() {
   const path = `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`;
 
@@ -240,7 +203,6 @@ async function getGithubJson() {
     const decoded = Buffer.from(res.content, 'base64').toString('utf-8');
     let parsed = JSON.parse(decoded);
 
-    // 🔥 data.data.data... を全部剥がす + 正規化
     parsed = normalizeGithubJson(parsed);
 
     return { data: parsed, sha: res.sha };
@@ -272,14 +234,10 @@ async function saveGithubJson(jsonData, sha = null) {
   await githubRequest('PUT', path, payload);
 }
 
-/* =========================
-   Create View (Functions side, unified)
-========================= */
 async function createViewOnServer(fileIds, passwordHash, origin) {
   const current = await getGithubJson();
   const json = current.data;
 
-  // collision-safe viewId generation
   let viewId = null;
   for (let i = 0; i < 12; i++) {
     const cand = generateShortId(6);
@@ -308,9 +266,6 @@ async function createViewOnServer(fileIds, passwordHash, origin) {
   };
 }
 
-/* =========================
-   Handler
-========================= */
 exports.handler = async (event) => {
   // CORS preflight
   if (event.httpMethod === 'OPTIONS') {
@@ -368,11 +323,8 @@ exports.handler = async (event) => {
 
       case 'save-github-json': {
         const current = await getGithubJson();
-
-        // 🔥 unwrap + normalize to prevent nested data/data/data
         let cleanData = body.jsonData;
         cleanData = normalizeGithubJson(cleanData);
-
         await saveGithubJson(cleanData, current.sha);
         response = { success: true };
         break;
@@ -381,11 +333,8 @@ exports.handler = async (event) => {
       case 'create-view': {
         const fileIds = Array.isArray(body.fileIds) ? body.fileIds : [];
         if (fileIds.length === 0) throw new Error('fileIds required');
-
-        // passwordHash is already sha256 from client (or null)
         const passwordHash = body.passwordHash || null;
         const origin = body.origin || '';
-
         response = await createViewOnServer(fileIds, passwordHash, origin);
         break;
       }
