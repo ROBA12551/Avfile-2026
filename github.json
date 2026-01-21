@@ -71,9 +71,21 @@
       "uploadedAt": "2026-01-21T05:32:59.309Z",
       "releaseTag": "file_afdedd5e-549e-4866-8755-1cc8d48e4538",
       "assetId": 343637629
+    },
+    {
+      "fileId": "6228ba35-f320-4fc9-804d-7c98f19166a4",
+      "fileName": "kling_20260121_Image_to_Video__1161_0.mp4",
+      "downloadUrl": "https://github.com/ROBA12551/Avfile-2026/releases/download/file_6228ba35-f320-4fc9-804d-7c98f19166a4/kling_20260121_Image_to_Video__1161_0.mp4",
+      "githubReleaseUrl": "https://github.com/ROBA12551/Avfile-2026/releases/tag/file_6228ba35-f320-4fc9-804d-7c98f19166a4",
+      "fileSize": 632978,
+      "originalSize": 13639250,
+      "compressed": true,
+      "uploadedAt": "2026-01-21T05:35:33.309Z",
+      "releaseTag": "file_6228ba35-f320-4fc9-804d-7c98f19166a4",
+      "assetId": 343638450
     }
   ],
-  "lastUpdated": "2026-01-21T05:33:02.046Z",
+  "lastUpdated": "2026-01-21T05:35:33.309Z",
   "views": [
     {
       "viewId": "INdQzi",
