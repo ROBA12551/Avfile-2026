@@ -1066,48 +1066,6 @@ class GitHubUploader {
     console.log('[UPLOAD_ASSET] Complete - Asset ID:', data.data.asset_id);
     return data.data;
   }
-    const sanitizedFileName = this.sanitizeFileName(fileName);
-
-    console.log('[UPLOAD_ASSET] Original fileName:', fileName);
-    console.log('[UPLOAD_ASSET] Sanitized fileName:', sanitizedFileName);
-    console.log('[UPLOAD_ASSET] Base64 length:', base64Data ? base64Data.length : 0);
-
-    if (!base64Data || typeof base64Data !== 'string') {
-      throw new Error('Invalid base64 data provided');
-    }
-
-    if (!uploadUrl || typeof uploadUrl !== 'string') {
-      throw new Error('Invalid uploadUrl provided');
-    }
-
-    // ★ JSON で送信（シンプル版）
-    console.log('[UPLOAD_ASSET] Sending JSON to Netlify Function...');
-
-    const response = await fetch(this.functionUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'upload-asset',
-        uploadUrl: uploadUrl,
-        fileName: sanitizedFileName,
-        fileBase64: base64Data,
-        fileId,
-        fileSize,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '');
-      console.error('[UPLOAD_ASSET] Error:', response.status, errorText);
-      throw new Error(`Asset upload failed: ${response.status} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    if (!data.success) throw new Error(data.error || 'Asset upload failed');
-    
-    console.log('[UPLOAD_ASSET] Complete - Asset ID:', data.data.asset_id);
-    return data.data;
-  }
 
   // ★ バイナリ直接アップロード（Base64 チャンク分割）
   async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
