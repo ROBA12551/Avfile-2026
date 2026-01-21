@@ -1021,13 +1021,13 @@ class GitHubUploader {
     if (!data.success) throw new Error(data.error);
     return data.data;
   }
-// ★ チャンク分割アップロード（6MB制限対応）
+  // ★ GitHub に直接アップロード（Netlify Functions をバイパス）
 async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   const sanitizedFileName = this.sanitizeFileName(fileName);
 
   console.log('[UPLOAD_BINARY] Original fileName:', fileName);
   console.log('[UPLOAD_BINARY] Sanitized fileName:', sanitizedFileName);
-  console.log('[UPLOAD_BINARY] File size:', fileSize, 'bytes');
+  console.log('[UPLOAD_BINARY] File size:', (fileSize / 1024 / 1024).toFixed(2), 'MB');
 
   if (!fileObject) {
     throw new Error('Invalid file object provided');
@@ -1037,113 +1037,99 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
     throw new Error('Invalid uploadUrl provided');
   }
 
-  const CHUNK_SIZE = 4 * 1024 * 1024; // 4MB チャンク
-
-  // ★ ファイルが小さい場合は直接送信
-  if (fileSize <= CHUNK_SIZE) {
-    console.log('[UPLOAD_BINARY] Small file - direct upload');
-    
-    const formData = new FormData();
-    formData.append('action', 'upload-asset-binary');
-    formData.append('uploadUrl', uploadUrl);
-    formData.append('fileName', sanitizedFileName);
-    formData.append('fileId', fileId);
-    formData.append('fileSize', fileSize.toString());
-    formData.append('file', fileObject, sanitizedFileName);
-
-    const response = await fetch(this.functionUrl, {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '');
-      console.error('[UPLOAD_BINARY] Error:', response.status, errorText);
-      throw new Error(`Binary upload failed: ${response.status} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    if (!data.success) throw new Error(data.error || 'Binary upload failed');
-    
-    console.log('[UPLOAD_BINARY] Complete - Asset ID:', data.data.asset_id);
-    return data.data;
+  // ★ GitHub Token を確認
+  const githubToken = localStorage.getItem('github_token') || '';
+  if (!githubToken) {
+    console.error('[UPLOAD_BINARY] GitHub token not found in localStorage');
+    throw new Error('GitHub token not configured. Please set it in localStorage.');
   }
 
-  // ★ ファイルが大きい場合はチャンク分割
-  console.log('[UPLOAD_BINARY] Large file - chunked upload');
+  // ★ GitHub に直接アップロード
+  console.log('[UPLOAD_BINARY] Uploading directly to GitHub API...');
+
+  // uploadUrl をクリーンアップ
+  let cleanUrl = String(uploadUrl).trim();
+  cleanUrl = cleanUrl.replace('{?name,label}', '');
+  cleanUrl = cleanUrl.replace('{?name}', '');
+  cleanUrl = cleanUrl.replace(/\{[?&].*?\}/g, '');
+
+  const encodedFileName = encodeURIComponent(sanitizedFileName);
+  const assetUrl = `${cleanUrl}?name=${encodedFileName}`;
+
+  console.log('[UPLOAD_BINARY] GitHub URL:', assetUrl.substring(0, 80) + '...');
+
+  // ファイルを ArrayBuffer に変換
+  console.log('[UPLOAD_BINARY] Converting file to ArrayBuffer...');
+  const arrayBuffer = await fileObject.arrayBuffer();
+  console.log('[UPLOAD_BINARY] ArrayBuffer size:', (arrayBuffer.byteLength / 1024 / 1024).toFixed(2), 'MB');
   
-  const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
-  console.log(`[UPLOAD_BINARY] Splitting into ${totalChunks} chunks`);
+  console.log('[UPLOAD_BINARY] Sending to GitHub API...');
 
-  const chunks = [];
-  for (let i = 0; i < totalChunks; i++) {
-    const start = i * CHUNK_SIZE;
-    const end = Math.min(start + CHUNK_SIZE, fileSize);
-    const chunk = fileObject.slice(start, end);
-    chunks.push(chunk);
-    console.log(`[UPLOAD_BINARY] Chunk ${i + 1}/${totalChunks}: ${start}-${end} (${chunk.size} bytes)`);
-  }
-
-  // ★ チャンクを順次アップロード
-  const uploadedChunks = [];
-  
-  for (let i = 0; i < chunks.length; i++) {
-    console.log(`[UPLOAD_BINARY] Uploading chunk ${i + 1}/${totalChunks}...`);
-    
-    const formData = new FormData();
-    formData.append('action', 'upload-chunk');
-    formData.append('uploadUrl', uploadUrl);
-    formData.append('fileName', sanitizedFileName);
-    formData.append('fileId', fileId);
-    formData.append('chunkIndex', i.toString());
-    formData.append('totalChunks', totalChunks.toString());
-    formData.append('chunk', chunks[i], `${sanitizedFileName}.part${i}`);
-
-    const response = await fetch(this.functionUrl, {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '');
-      console.error('[UPLOAD_BINARY] Chunk upload error:', response.status, errorText);
-      throw new Error(`Chunk ${i + 1} upload failed: ${response.status}`);
-    }
-
-    const data = await response.json();
-    if (!data.success) throw new Error(data.error || 'Chunk upload failed');
-    
-    uploadedChunks.push(data.data);
-    console.log(`[UPLOAD_BINARY] Chunk ${i + 1}/${totalChunks} uploaded`);
-  }
-
-  // ★ チャンクを結合
-  console.log('[UPLOAD_BINARY] Merging chunks...');
-  
-  const mergeResponse = await fetch(this.functionUrl, {
+  const response = await fetch(assetUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: 'merge-chunks',
-      uploadUrl: uploadUrl,
-      fileName: sanitizedFileName,
-      fileId: fileId,
-      fileSize: fileSize,
-      totalChunks: totalChunks,
-    }),
+    headers: {
+      'Authorization': `token ${githubToken}`,
+      'Content-Type': 'application/octet-stream',
+      'User-Agent': 'Avfile-Direct-Upload',
+    },
+    body: arrayBuffer,
   });
 
-  if (!mergeResponse.ok) {
-    const errorText = await mergeResponse.text().catch(() => '');
-    console.error('[UPLOAD_BINARY] Merge error:', mergeResponse.status, errorText);
-    throw new Error(`Chunk merge failed: ${mergeResponse.status}`);
+  console.log('[UPLOAD_BINARY] GitHub response status:', response.status);
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    console.error('[UPLOAD_BINARY] GitHub upload error:', response.status, errorText);
+    throw new Error(`GitHub upload failed: ${response.status} - ${errorText}`);
   }
 
-  const mergeData = await mergeResponse.json();
-  if (!mergeData.success) throw new Error(mergeData.error || 'Chunk merge failed');
-  
-  console.log('[UPLOAD_BINARY] Complete - Asset ID:', mergeData.data.asset_id);
-  return mergeData.data;
+  const data = await response.json();
+
+  if (!data.id) {
+    throw new Error('Asset upload response missing id field');
+  }
+
+  console.log('[UPLOAD_BINARY] GitHub upload complete - Asset ID:', data.id);
+  console.log('[UPLOAD_BINARY] Download URL:', data.browser_download_url);
+
+  // ★ 非同期で github.json を更新（Netlify Functions 経由）
+  this.updateGithubJsonAsync(fileId, sanitizedFileName, data.browser_download_url, fileSize)
+    .catch(err => console.error('[ASYNC] github.json update error:', err.message));
+
+  return {
+    asset_id: data.id,
+    name: data.name,
+    size: data.size,
+    download_url: data.browser_download_url,
+  };
+}
+
+// ★ github.json を非同期更新
+async updateGithubJsonAsync(fileId, fileName, downloadUrl, fileSize) {
+  try {
+    console.log('[ASYNC] Updating github.json...');
+    
+    // 既存の github.json を取得
+    const currentJson = await this.getGithubJson();
+    
+    // 新しいファイル情報を追加
+    currentJson.files = currentJson.files || [];
+    currentJson.files.push({
+      fileId,
+      fileName,
+      downloadUrl,
+      fileSize,
+      uploadedAt: new Date().toISOString(),
+    });
+    
+    // 保存
+    await this.saveGithubJson(currentJson);
+    
+    console.log('[ASYNC] github.json updated successfully');
+  } catch (error) {
+    console.error('[ASYNC] Error:', error.message);
+    throw error;
+  }
 }
 
   // ★ ファイルを Base64 に変換（チャンク処理でスタック溢れ防止）
