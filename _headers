@@ -1,0 +1,48 @@
+# Cross-Origin headers for SharedArrayBuffer (FFmpeg.wasm requirement)
+/*
+  Cross-Origin-Embedder-Policy: require-corp
+  Cross-Origin-Opener-Policy: same-origin
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  X-XSS-Protection: 1; mode=block
+  Referrer-Policy: strict-origin-when-cross-origin
+
+# Specific JavaScript files - HIGHEST PRIORITY
+/js/video-compression.js
+  Content-Type: application/javascript; charset=utf-8
+  X-Content-Type-Options: nosniff
+  Cache-Control: public, max-age=3600
+
+/js/github-api.js
+  Content-Type: application/javascript; charset=utf-8
+  X-Content-Type-Options: nosniff
+  Cache-Control: public, max-age=3600
+
+/js/simple-upload.js
+  Content-Type: application/javascript; charset=utf-8
+  X-Content-Type-Options: nosniff
+  Cache-Control: public, max-age=3600
+
+/js/storage.js
+  Content-Type: application/javascript; charset=utf-8
+  X-Content-Type-Options: nosniff
+  Cache-Control: public, max-age=3600
+
+# All JS files in /js/
+/js/*
+  Content-Type: application/javascript; charset=utf-8
+  X-Content-Type-Options: nosniff
+
+# HTML files
+/*.html
+  Content-Type: text/html; charset=utf-8
+  X-Content-Type-Options: nosniff
+
+# CSS files
+/*.css
+  Content-Type: text/css; charset=utf-8
+  X-Content-Type-Options: nosniff
+
+# Images - long cache
+/images/*
+  Cache-Control: public, max-age=31536000
