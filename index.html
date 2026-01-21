@@ -894,15 +894,17 @@ class GitHubUploader {
         throw new Error(`Compressed file size (${(blobData.size / 1024 / 1024).toFixed(2)}MB) exceeds maximum (${(MAX_UPLOAD_SIZE / 1024 / 1024).toFixed(0)}MB). Please try a smaller video or lower resolution.`);
       }
 
-      const formData = new FormData();
-      formData.append('file', blobData, fileName);
+      // FormData ではなく arrayBuffer を直接送信 (オーバーヘッド削減)
+      const arrayBuffer = await blobData.arrayBuffer();
       
-      console.log('[GITHUB] Sending to:', uploadUrl);
+      console.log('[GITHUB] Sending ArrayBuffer to:', uploadUrl);
+      console.log('[GITHUB] ArrayBuffer size:', arrayBuffer.byteLength, 'bytes');
       
       const response = await fetch(uploadUrl, {
         method: 'POST',
-        body: formData,
+        body: arrayBuffer,
         headers: {
+          'Content-Type': blobData.type || 'application/octet-stream',
           'Authorization': `token ${this.token}`,
         }
       });
@@ -1043,7 +1045,7 @@ class Carousel {
 // App
 const MAX_FILES = 10;
 const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB (表示用)
-const MAX_UPLOAD_SIZE = 450 * 1024 * 1024; // 450MB (GitHub制限: 2GB, 安全マージン)
+const MAX_UPLOAD_SIZE = 420 * 1024 * 1024; // 420MB (GitHub制限: 2GB, オーバーヘッド30MB余裕)
 const VIDEO_COMPRESSION_THRESHOLD = 150 * 1024 * 1024; // デスクトップ: 150MB以上は圧縮
 const MOBILE_VIDEO_COMPRESSION_THRESHOLD = 50 * 1024 * 1024; // スマホ: 50MB以上は圧縮
 const MOBILE_MAX_RESOLUTION = '360p'; // スマホ: 360p に強制圧縮
@@ -1620,8 +1622,8 @@ async function convertAndCompressVideo(videoFile) {
       ffmpeg.FS('writeFile', inputFileName, new Uint8Array(buffer));
       console.log('[COMPRESS] File written to FFmpeg FS');
 
-      console.log('[COMPRESS] Running compression (720p 30fps, CRF 25)...');
-      // 標準圧縮 (720p 30fps, CRF 25 で中程度品質)
+      console.log('[COMPRESS] Running compression (720p 30fps, CRF 26)...');
+      // 標準圧縮 (720p 30fps, CRF 26 でバランス品質)
       await Promise.race([
         ffmpeg.run(
           '-i', inputFileName,
@@ -1629,7 +1631,7 @@ async function convertAndCompressVideo(videoFile) {
           '-r', '30',
           '-c:v', 'libx264',
           '-preset', 'medium',      // 品質重視
-          '-crf', '25',             // 品質25 (中程度品質 - サイズ削減)
+          '-crf', '26',             // 品質26 (バランス品質)
           '-c:a', 'aac',
           '-b:a', '128k',
           '-movflags', '+faststart',
