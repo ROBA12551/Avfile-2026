@@ -1,12 +1,23 @@
+/**
+ * js/simple-upload.js
+ * 
+ * Gofile 風ファイル共有 - 実際 GitHub Releases アップロード
+ */
 
 class SimpleUploadManager {
-  constructor(config = {}) {
-    this.config = {
-      apiBaseUrl: 'https://api.github.com',
-      requestTimeout: 30000,
-      ...config,
-    };
-    this.jsonFileName = 'github.json';
+  constructor() {
+    this.githubUploader = new window.GitHubUploader();
+  }
+
+  /**
+   * UUID を生成
+   */
+  generateUUID() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = (Math.random() * 16) | 0;
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
   }
 
   /**
@@ -21,17 +32,6 @@ class SimpleUploadManager {
       };
       reader.onerror = reject;
       reader.readAsDataURL(blob);
-    });
-  }
-
-  /**
-   * UUID を生成
-   */
-  generateUUID() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = (Math.random() * 16) | 0;
-      const v = c === 'x' ? r : (r & 0x3) | 0x8;
-      return v.toString(16);
     });
   }
 
@@ -51,197 +51,7 @@ class SimpleUploadManager {
   }
 
   /**
-   * ファイルをアップロード
-   */
-  async uploadFile(fileBlob, fileName, onProgress = () => {}) {
-    try {
-      // onProgress がない場合のデフォルト
-      if (typeof onProgress !== 'function') {
-        onProgress = (progress, message) => {
-          console.log(`[${progress}%] ${message}`);
-        };
-      }
-
-      const fileId = this.generateUUID();
-      
-      onProgress(2, '⏳ 準備中...');
-
-      // 動画ファイルのみ圧縮
-      let processedBlob = fileBlob;
-      let wasCompressed = false;
-
-      if (this.isVideoFile(fileBlob)) {
-        console.log('🎥 動画ファイルを検出 - 720p 30fps に圧縮開始...');
-        
-        if (window.VideoCompressionEngine) {
-          try {
-            const compressor = new window.VideoCompressionEngine();
-            processedBlob = await compressor.compress(fileBlob, (progress, message) => {
-              // 圧縮進捗を反映（2-35%）
-              onProgress(2 + (progress * 0.33), message);
-            });
-            
-            wasCompressed = true;
-            const originalMB = (fileBlob.size / 1024 / 1024).toFixed(1);
-            const compressedMB = (processedBlob.size / 1024 / 1024).toFixed(1);
-            const ratio = ((1 - processedBlob.size / fileBlob.size) * 100).toFixed(0);
-            console.log(`📊 圧縮完了: ${originalMB}MB → ${compressedMB}MB (${ratio}% 削減)`);
-          } catch (compressionError) {
-            console.warn('⚠️ 圧縮失敗 - オリジナルでアップロード:', compressionError.message);
-            wasCompressed = false;
-          }
-        } else {
-          console.warn('⚠️ 圧縮エンジンが利用できません - オリジナルでアップロード');
-        }
-      }
-
-      onProgress(40, '📤 Base64 エンコード中...');
-
-      // Base64 にエンコード
-      const base64 = await this.fileToBase64(processedBlob);
-
-      onProgress(45, '☁️ GitHub にアップロード中...');
-
-      // GitHub Releases にアップロード
-      const uploadResult = await this.uploadToGitHubReleases(
-        fileId, 
-        fileName, 
-        base64, 
-        processedBlob.type,
-        (progress, message) => {
-          // GitHub アップロード進捗を反映（45-80%）
-          onProgress(45 + (progress * 0.35), message);
-        }
-      );
-
-      onProgress(82, '📝 アップロード情報を記録中...');
-
-      // github.json にアップロード情報を保存
-      await this.saveToGithubJson({
-        fileId: fileId,
-        fileName: fileName,
-        downloadUrl: uploadResult.download_url,
-        githubReleaseUrl: uploadResult.html_url,
-        fileSize: processedBlob.size,
-        compressed: wasCompressed,
-        uploadedAt: new Date().toISOString(),
-        releaseTag: uploadResult.release_tag,
-        assetId: uploadResult.asset_id,
-      });
-
-      onProgress(90, '🔗 共有リンク生成中...');
-
-      // 視聴可能な URL を生成
-      const viewUrl = `${window.location.origin}/?id=${fileId}`;
-
-      onProgress(98, '✨ 最後の処理中...');
-
-      onProgress(100, '✅ アップロード完了！');
-
-      console.log('✅ ファイルがアップロードされました');
-      console.log('📺 視聴URL:', viewUrl);
-      console.log('📥 ダウンロードURL:', uploadResult.download_url);
-
-      return {
-        success: true,
-        fileName: fileName,
-        fileId: fileId,
-        viewUrl: viewUrl,
-        downloadUrl: uploadResult.download_url,
-        fileSize: processedBlob.size,
-        githubUrl: uploadResult.html_url,
-        uploadedAt: new Date().toISOString(),
-        wasCompressed: wasCompressed,
-      };
-    } catch (error) {
-      console.error('❌ アップロードエラー:', error.message);
-      throw new Error(`ファイルアップロード失敗: ${error.message}`);
-    }
-  }
-
-  /**
-   * GitHub Releases にアップロード
-   */
-  async uploadToGitHubReleases(fileId, fileName, base64, fileType, onProgress) {
-    try {
-      const releaseTag = `file_${fileId}`;
-      const fileExtension = this.getFileExtension(fileType);
-      const assetFileName = `${fileName.substring(0, fileName.lastIndexOf('.') || fileName.length)}.${fileExtension}`;
-
-      onProgress(10, '📝 Release を作成中...');
-
-      // 1. Release を作成（ファイル名を含める）
-      const createReleaseResponse = await fetch('/.netlify/functions/github-upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'create-release',
-          releaseTag: releaseTag,
-          metadata: {
-            title: `${fileName}`,
-            description: `
-File ID: ${fileId}
-Original Name: ${fileName}
-Type: ${fileType}
-Uploaded: ${new Date().toISOString()}
-            `.trim(),
-          },
-        }),
-      });
-
-      if (!createReleaseResponse.ok) {
-        throw new Error(`Release 作成失敗: ${createReleaseResponse.statusText}`);
-      }
-
-      const createData = await createReleaseResponse.json();
-      if (!createData.success) {
-        throw new Error(createData.error || 'Release 作成失敗');
-      }
-
-      console.log('✅ Release 作成:', createData.data.release_id);
-
-      onProgress(40, '📤 ファイルをアップロード中...');
-
-      // 2. Asset（ファイル）をアップロード（オリジナルファイル名）
-      const uploadAssetResponse = await fetch('/.netlify/functions/github-upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'upload-asset',
-          uploadUrl: createData.data.upload_url,
-          fileName: assetFileName,
-          fileBase64: base64,
-        }),
-      });
-
-      if (!uploadAssetResponse.ok) {
-        throw new Error(`ファイルアップロード失敗: ${uploadAssetResponse.statusText}`);
-      }
-
-      const uploadData = await uploadAssetResponse.json();
-      if (!uploadData.success) {
-        throw new Error(uploadData.error || 'ファイルアップロード失敗');
-      }
-
-      console.log('✅ ファイルアップロード:', uploadData.data.asset_id);
-
-      onProgress(100, '✨ 完了');
-
-      return {
-        release_id: createData.data.release_id,
-        release_tag: releaseTag,
-        asset_id: uploadData.data.asset_id,
-        download_url: uploadData.data.download_url,
-        html_url: createData.data.html_url,
-      };
-    } catch (error) {
-      console.error('❌ GitHub アップロードエラー:', error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * ファイルタイプから拡張子を取得
+   * ファイル拡張子を取得
    */
   getFileExtension(fileType) {
     const extensionMap = {
@@ -259,137 +69,171 @@ Uploaded: ${new Date().toISOString()}
   }
 
   /**
-   * github.json を取得（存在しなければ自動作成）
+   * ファイルをアップロード（実際に GitHub Releases にアップロード）
    */
-  async getGithubJson() {
+  async uploadFile(fileBlob, fileName, onProgress = () => {}) {
     try {
-      const response = await fetch('/.netlify/functions/github-upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'get-github-json',
-        }),
+      if (typeof onProgress !== 'function') {
+        onProgress = (progress, message) => console.log(`[${progress}%] ${message}`);
+      }
+
+      const fileId = this.generateUUID();
+      onProgress(2, '⏳ 準備中...');
+
+      // 動画ファイルのみ圧縮
+      let processedBlob = fileBlob;
+      let wasCompressed = false;
+
+      if (this.isVideoFile(fileBlob)) {
+        console.log('🎥 動画ファイルを検出 - 720p 30fps に圧縮開始...');
+        
+        if (window.VideoCompressionEngine) {
+          try {
+            const compressor = new window.VideoCompressionEngine();
+            processedBlob = await compressor.compress(fileBlob, (progress, message) => {
+              onProgress(2 + (progress * 0.33), message);
+            });
+            
+            wasCompressed = true;
+            const originalMB = (fileBlob.size / 1024 / 1024).toFixed(1);
+            const compressedMB = (processedBlob.size / 1024 / 1024).toFixed(1);
+            const ratio = ((1 - processedBlob.size / fileBlob.size) * 100).toFixed(0);
+            console.log(`📊 圧縮完了: ${originalMB}MB → ${compressedMB}MB (${ratio}% 削減)`);
+          } catch (error) {
+            console.warn('⚠️ 圧縮失敗 - オリジナルでアップロード:', error.message);
+            wasCompressed = false;
+          }
+        } else {
+          console.warn('⚠️ 圧縮エンジンが利用できません');
+        }
+      }
+
+      onProgress(40, '📤 Base64 エンコード中...');
+      const base64 = await this.fileToBase64(processedBlob);
+
+      onProgress(45, '☁️ GitHub にアップロード中...');
+
+      // Release を作成
+      const releaseTag = `file_${fileId}`;
+      const fileExtension = this.getFileExtension(processedBlob.type);
+      const assetFileName = `${fileName.substring(0, fileName.lastIndexOf('.') || fileName.length)}.${fileExtension}`;
+
+      const releaseData = await this.githubUploader.createRelease(
+        releaseTag,
+        fileName,
+        `
+File ID: ${fileId}
+Original Name: ${fileName}
+Type: ${processedBlob.type}
+Uploaded: ${new Date().toISOString()}
+Compressed: ${wasCompressed ? 'Yes' : 'No'}
+        `.trim()
+      );
+
+      onProgress(65, '📤 ファイルをアップロード中...');
+
+      // Asset をアップロード
+      const assetData = await this.githubUploader.uploadAsset(
+        releaseData.upload_url,
+        assetFileName,
+        base64
+      );
+
+      onProgress(80, '📝 アップロード情報を記録中...');
+
+      // github.json にファイル情報を追加
+      const githubJson = await this.githubUploader.getGithubJson();
+      githubJson.files = githubJson.files || [];
+      githubJson.files.push({
+        fileId: fileId,
+        fileName: fileName,
+        downloadUrl: assetData.download_url,
+        githubReleaseUrl: releaseData.html_url,
+        fileSize: processedBlob.size,
+        originalSize: fileBlob.size,
+        compressed: wasCompressed,
+        uploadedAt: new Date().toISOString(),
+        releaseTag: releaseTag,
+        assetId: assetData.asset_id,
       });
+      githubJson.lastUpdated = new Date().toISOString();
 
-      if (!response.ok) {
-        console.warn('⚠️ github.json が見つかりません - 新規作成します');
-        return { files: [] };
-      }
+      await this.githubUploader.saveGithubJson(githubJson);
 
-      const data = await response.json();
-      if (!data.success) {
-        console.warn('⚠️ github.json 取得失敗 - 新規作成します');
-        return { files: [] };
-      }
+      onProgress(90, '🔗 共有リンク生成中...');
+      const viewUrl = `${window.location.origin}/?id=${fileId}`;
 
-      return data.data;
+      onProgress(98, '✨ 最後の処理中...');
+      onProgress(100, '✅ アップロード完了！');
+
+      console.log('✅ ファイルが GitHub にアップロードされました');
+      console.log('📺 視聴URL:', viewUrl);
+      console.log('📥 ダウンロードURL:', assetData.download_url);
+
+      return {
+        success: true,
+        fileName: fileName,
+        fileId: fileId,
+        viewUrl: viewUrl,
+        downloadUrl: assetData.download_url,
+        fileSize: processedBlob.size,
+        originalSize: fileBlob.size,
+        githubUrl: releaseData.html_url,
+        uploadedAt: new Date().toISOString(),
+        wasCompressed: wasCompressed,
+      };
     } catch (error) {
-      console.warn('⚠️ github.json 取得エラー:', error.message);
-      return { files: [] };
+      console.error('❌ アップロードエラー:', error.message);
+      throw new Error(`ファイルアップロード失敗: ${error.message}`);
     }
   }
 
   /**
-   * github.json に情報を追加・更新
-   */
-  async saveToGithubJson(fileInfo) {
-    try {
-      // 現在の github.json を取得
-      const jsonData = await this.getGithubJson();
-
-      // 新しいファイル情報を追加
-      jsonData.files = jsonData.files || [];
-      jsonData.files.push({
-        fileId: fileInfo.fileId,
-        fileName: fileInfo.fileName,
-        downloadUrl: fileInfo.downloadUrl,
-        githubReleaseUrl: fileInfo.githubReleaseUrl,
-        fileSize: fileInfo.fileSize,
-        compressed: fileInfo.compressed,
-        uploadedAt: fileInfo.uploadedAt,
-        releaseTag: fileInfo.releaseTag,
-        assetId: fileInfo.assetId,
-      });
-
-      // 最後に更新した時刻
-      jsonData.lastUpdated = new Date().toISOString();
-
-      // github.json を GitHub に保存
-      const saveResponse = await fetch('/.netlify/functions/github-upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'save-github-json',
-          jsonData: jsonData,
-        }),
-      });
-
-      if (!saveResponse.ok) {
-        throw new Error(`github.json 保存失敗: ${saveResponse.statusText}`);
-      }
-
-      const saveData = await saveResponse.json();
-      if (!saveData.success) {
-        throw new Error(saveData.error || 'github.json 保存失敗');
-      }
-
-      console.log('✅ github.json に記録しました');
-    } catch (error) {
-      console.error('❌ github.json 保存エラー:', error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * github.json からすべてのファイル情報を取得
-   */
-  async getAllFiles() {
-    try {
-      const jsonData = await this.getGithubJson();
-      return jsonData.files || [];
-    } catch (error) {
-      console.error('❌ エラー:', error.message);
-      return [];
-    }
-  }
-
-  /**
-   * github.json から特定のファイル情報を取得
+   * GitHub から特定のファイルを取得
    */
   async getFileInfo(fileId) {
     try {
-      const files = await this.getAllFiles();
+      const githubJson = await this.githubUploader.getGithubJson();
+      const files = githubJson.files || [];
       return files.find(f => f.fileId === fileId) || null;
     } catch (error) {
-      console.error('❌ エラー:', error.message);
+      console.error('❌ ファイル取得エラー:', error.message);
       return null;
     }
   }
 
   /**
-   * 共有リンクをクリップボードにコピー
+   * すべてのファイル情報を取得
    */
-  copyToClipboard(text) {
-    return new Promise((resolve, reject) => {
+  async getAllFiles() {
+    try {
+      const githubJson = await this.githubUploader.getGithubJson();
+      return githubJson.files || [];
+    } catch (error) {
+      console.error('❌ ファイル一覧取得エラー:', error.message);
+      return [];
+    }
+  }
+
+  /**
+   * クリップボードにコピー
+   */
+  async copyToClipboard(text) {
+    try {
       if (navigator.clipboard) {
-        navigator.clipboard.writeText(text)
-          .then(() => {
-            console.log('✅ コピー完了');
-            resolve();
-          })
-          .catch(reject);
+        await navigator.clipboard.writeText(text);
       } else {
-        // フォールバック
         const textarea = document.createElement('textarea');
         textarea.value = text;
         document.body.appendChild(textarea);
         textarea.select();
         document.execCommand('copy');
         document.body.removeChild(textarea);
-        console.log('✅ コピー完了');
-        resolve();
       }
-    });
+      console.log('✅ コピー完了');
+    } catch (error) {
+      console.error('❌ コピーエラー:', error.message);
+    }
   }
 }
 
