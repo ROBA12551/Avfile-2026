@@ -138,16 +138,38 @@ async function createRelease(tag, metadata) {
   };
 }
 
+// ★ 修正: uploadAsset関数のURL処理を改善
 async function uploadAsset(uploadUrl, fileData, fileName) {
   try {
     logInfo(`Preparing asset upload: ${fileName}`);
 
-    const clean = uploadUrl.replace('{?name,label}', '');
-    const assetUrl = `${clean}?name=${encodeURIComponent(fileName)}`;
+    // ★ 重要: uploadUrl のURI Templateを正しく処理
+    let assetUrl = String(uploadUrl).trim();
+    
+    // URI Template の各パターンを削除
+    assetUrl = assetUrl.replace('{?name,label}', '');
+    assetUrl = assetUrl.replace('{?name}', '');
+    assetUrl = assetUrl.replace(/\{[?&].*?\}/, '');
+    
+    // クエリ文字列のセパレータを決定
+    const separator = assetUrl.includes('?') ? '&' : '?';
+    assetUrl = `${assetUrl}${separator}name=${encodeURIComponent(fileName)}`;
 
-    const data = await githubUploadRequest('POST', assetUrl, fileData, { 'Content-Type': 'application/octet-stream' });
+    logInfo(`Cleaned Upload URL: ${assetUrl.substring(0, 80)}...`);
 
-    logInfo(`Asset uploaded: ${data.id || 'unknown'}`);
+    // URLの妥当性をチェック
+    try {
+      new URL(assetUrl);
+    } catch (e) {
+      logError(`Invalid URL format: ${assetUrl}`);
+      throw new Error(`Invalid upload URL: ${e.message}`);
+    }
+
+    const data = await githubUploadRequest('POST', assetUrl, fileData, { 
+      'Content-Type': 'application/octet-stream' 
+    });
+
+    logInfo(`Asset uploaded successfully: ${data.id || 'unknown'}`);
 
     return {
       asset_id: data.id,
@@ -214,14 +236,14 @@ async function createViewOnServer(fileIds, passwordHash, origin) {
 
   json.views = json.views || [];
   
-  // ★ 共有URL を作成
+  // 共有URL を作成
   const shareUrl = `${(origin || '').replace(/\/$/, '')}/d/${viewId}`;
 
   json.views.push({
     viewId,
     files: fileIds,
     password: passwordHash || null,
-    shareUrl: shareUrl,  // ★ URL を保存
+    shareUrl: shareUrl,
     createdAt: new Date().toISOString(),
   });
 
@@ -275,7 +297,7 @@ exports.handler = async (event) => {
           body.fileName
         );
 
-        // ★ ファイル情報を github.json に保存
+        // ファイル情報を github.json に保存
         const current = await getGithubJson();
         const json = current.data;
         json.files = json.files || [];
@@ -283,7 +305,7 @@ exports.handler = async (event) => {
         const fileInfo = {
           fileId: body.fileId,
           fileName: body.fileName,
-          downloadUrl: assetResponse.download_url,  // ★ URL を保存
+          downloadUrl: assetResponse.download_url,
           fileSize: body.fileSize,
           uploadedAt: new Date().toISOString(),
         };
@@ -298,7 +320,7 @@ exports.handler = async (event) => {
       case 'get-github-json':
         logInfo('Action: get-github-json');
         const result = await getGithubJson();
-        response = result.data;  // ★ FIX: data だけを返す
+        response = result.data;
         break;
 
       case 'save-github-json': {
