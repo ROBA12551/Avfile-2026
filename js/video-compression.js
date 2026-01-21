@@ -1,9 +1,10 @@
 /**
  * js/video-compression.js
  * 
- * FFmpeg.wasm v0.12.6 による動画圧縮
+ * FFmpeg.wasm v0.10.1 による動画圧縮
  * 720p 30fps に自動圧縮
  * 
+ * 公式 API: createFFmpeg(), fetchFile()
  * 参考: https://github.com/ffmpegwasm/ffmpeg.wasm
  */
 
@@ -26,14 +27,21 @@ class VideoCompressionEngine {
       console.log('⏳ FFmpeg 初期化開始...');
       
       // window.FFmpeg が存在するか確認
-      if (!window.FFmpeg) {
-        throw new Error('window.FFmpeg が利用できません');
+      if (!window.FFmpeg || !window.FFmpeg.createFFmpeg) {
+        console.error('window.FFmpeg:', window.FFmpeg);
+        console.error('window.FFmpeg.createFFmpeg:', window.FFmpeg?.createFFmpeg);
+        throw new Error('window.FFmpeg.createFFmpeg が利用できません');
       }
 
-      const { FFmpeg, fetchFile } = window.FFmpeg;
+      // 正しい API: createFFmpeg を使用
+      const { createFFmpeg, fetchFile } = window.FFmpeg;
+      
+      console.log('✅ FFmpeg API を確認:');
+      console.log('  - createFFmpeg:', typeof createFFmpeg);
+      console.log('  - fetchFile:', typeof fetchFile);
       
       // FFmpeg インスタンスを作成
-      this.ffmpeg = new FFmpeg.FFmpeg();
+      this.ffmpeg = createFFmpeg({ log: true });
 
       if (this.ffmpeg.isLoaded()) {
         console.log('✅ FFmpeg は既にロード済み');
@@ -44,11 +52,7 @@ class VideoCompressionEngine {
       console.log('⏳ FFmpeg コア（WASM）をロード中...');
       
       // FFmpeg コアをロード
-      const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
-      await this.ffmpeg.load({
-        coreURL: `${baseURL}/ffmpeg-core.js`,
-        wasmURL: `${baseURL}/ffmpeg-core.wasm`,
-      });
+      await this.ffmpeg.load();
 
       this.ffmpegReady = true;
       console.log('✅ FFmpeg 初期化完了');
@@ -75,7 +79,7 @@ class VideoCompressionEngine {
 
       // ファイルを FFmpeg に読み込む
       const inputData = await fetchFile(videoFile);
-      await this.ffmpeg.writeFile(inputFileName, inputData);
+      await this.ffmpeg.FS('writeFile', inputFileName, inputData);
 
       const originalMB = (videoFile.size / 1024 / 1024).toFixed(2);
       console.log(`✅ ファイルロード完了: ${originalMB}MB`);
@@ -103,18 +107,18 @@ class VideoCompressionEngine {
       console.log('コマンド:', command.join(' '));
 
       // FFmpeg を実行
-      await this.ffmpeg.exec(command);
+      await this.ffmpeg.run(...command);
 
       onProgress(80, '📤 圧縮ファイルを取得中...');
       console.log('📤 圧縮ファイルを取得中...');
 
       // 圧縮ファイルを取得
-      const outputData = await this.ffmpeg.readFile(outputFileName);
+      const outputData = await this.ffmpeg.FS('readFile', outputFileName);
       const compressedBlob = new Blob([outputData.buffer], { type: 'video/mp4' });
 
       // ファイルをクリーンアップ
-      await this.ffmpeg.deleteFile(inputFileName);
-      await this.ffmpeg.deleteFile(outputFileName);
+      await this.ffmpeg.FS('unlink', inputFileName);
+      await this.ffmpeg.FS('unlink', outputFileName);
 
       const compressedMB = (compressedBlob.size / 1024 / 1024).toFixed(2);
       const ratio = ((1 - compressedBlob.size / videoFile.size) * 100).toFixed(0);
