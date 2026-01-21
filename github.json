@@ -83,9 +83,21 @@
       "uploadedAt": "2026-01-21T05:35:33.309Z",
       "releaseTag": "file_6228ba35-f320-4fc9-804d-7c98f19166a4",
       "assetId": 343638450
+    },
+    {
+      "fileId": "3336b1d1-4b49-4e0e-84dc-2820f78a3ebf",
+      "fileName": "_headers",
+      "downloadUrl": "https://github.com/ROBA12551/Avfile-2026/releases/download/file_3336b1d1-4b49-4e0e-84dc-2820f78a3ebf/default.bin",
+      "githubReleaseUrl": "https://github.com/ROBA12551/Avfile-2026/releases/tag/file_3336b1d1-4b49-4e0e-84dc-2820f78a3ebf",
+      "fileSize": 580,
+      "originalSize": 580,
+      "compressed": false,
+      "uploadedAt": "2026-01-21T05:36:41.306Z",
+      "releaseTag": "file_3336b1d1-4b49-4e0e-84dc-2820f78a3ebf",
+      "assetId": 343638787
     }
   ],
-  "lastUpdated": "2026-01-21T05:35:36.122Z",
+  "lastUpdated": "2026-01-21T05:36:41.306Z",
   "views": [
     {
       "viewId": "INdQzi",
