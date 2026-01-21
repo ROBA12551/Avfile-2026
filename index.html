@@ -879,26 +879,63 @@ class GitHubUploader {
   async uploadAssetBinary(uploadUrl, fileName, blobData, fileId, fileSize) {
     console.log('[GITHUB] uploadAssetBinary:', fileName, 'Size:', (fileSize / 1024 / 1024).toFixed(2) + 'MB');
     
-    const formData = new FormData();
-    formData.append('file', blobData, fileName);
-    
-    const response = await fetch(uploadUrl, {
-      method: 'POST',
-      body: formData,
-      headers: {
-        'Authorization': `token ${this.token}`,
+    try {
+      // Blobデータのタイプをチェック
+      if (!blobData || !(blobData instanceof Blob)) {
+        console.error('[GITHUB] Invalid blob data:', typeof blobData);
+        throw new Error('Invalid blob data');
       }
-    });
-    
-    if (!response.ok) {
-      const err = await response.text();
-      console.error('[GITHUB] Upload error:', response.status, err);
-      throw new Error(`Upload failed: ${response.status}`);
+
+      console.log('[GITHUB] Blob details - Type:', blobData.type, 'Size:', blobData.size);
+
+      const formData = new FormData();
+      formData.append('file', blobData, fileName);
+      
+      console.log('[GITHUB] Sending to:', uploadUrl);
+      
+      const response = await fetch(uploadUrl, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Authorization': `token ${this.token}`,
+        }
+      });
+      
+      console.log('[GITHUB] Response status:', response.status);
+
+      if (!response.ok) {
+        const contentType = response.headers.get('content-type');
+        let err = '';
+        
+        if (contentType && contentType.includes('application/json')) {
+          const errJson = await response.json();
+          err = JSON.stringify(errJson);
+        } else {
+          err = await response.text();
+        }
+        
+        console.error('[GITHUB] Upload error:', response.status, err);
+        throw new Error(`Upload failed: ${response.status} - ${err}`);
+      }
+      
+      const contentType = response.headers.get('content-type');
+      let data;
+      
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+        console.log('[GITHUB] Upload success:', data.name, data.size);
+      } else {
+        const text = await response.text();
+        console.log('[GITHUB] Upload response (not JSON):', text.substring(0, 200));
+        data = { name: fileName, size: fileSize };
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('[GITHUB] uploadAssetBinary error:', error.message);
+      console.error('[GITHUB] Stack:', error.stack);
+      throw error;
     }
-    
-    const data = await response.json();
-    console.log('[GITHUB] Upload success:', data.name, data.size);
-    return data;
   }
 
   async getGithubJson() {
@@ -1204,14 +1241,23 @@ async function uploadMultiple(files) {
         }
       }
       
-      let base64 = '';
       let uploadBlob = null;
+      let base64 = '';
       
       // 動画の場合はBlobで直接アップロード
       if (isVideo) {
-        console.log('[UPLOAD] Video file - using binary upload');
-        uploadBlob = new Blob([await uploadFile.arrayBuffer()], { type: uploadFile.type });
-        console.log('[UPLOAD] Blob created:', fileName, 'Size:', (uploadBlob.size / 1024 / 1024).toFixed(2) + 'MB');
+        try {
+          console.log('[UPLOAD] Creating Blob for video:', fileName);
+          const arrayBuffer = await uploadFile.arrayBuffer();
+          console.log('[UPLOAD] ArrayBuffer created, Size:', arrayBuffer.byteLength);
+          
+          uploadBlob = new Blob([arrayBuffer], { type: uploadFile.type || 'video/mp4' });
+          console.log('[UPLOAD] Blob created successfully:', fileName, 'Size:', (uploadBlob.size / 1024 / 1024).toFixed(2) + 'MB', 'Type:', uploadBlob.type);
+        } catch (err) {
+          console.error('[UPLOAD] Blob creation error:', err.message);
+          console.error('[UPLOAD] File object:', uploadFile.name, uploadFile.type, uploadFile.size);
+          throw new Error(`Failed to create Blob: ${err.message}`);
+        }
       } else {
         // 画像などはBase64変換
         try {
