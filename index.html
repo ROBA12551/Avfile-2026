@@ -31,6 +31,9 @@
     <link rel="shortcut icon" href="/images/folder.png">
     <link rel="apple-touch-icon" href="/images/folder.png">
     
+    <!-- FFmpeg.wasm -->
+    <script async src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.6/dist/ffmpeg.min.js"></script>
+    
     <title>Avfile - Fast File Sharing Service | Unlimited Storage</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -970,6 +973,8 @@ class Carousel {
 
 // App
 const MAX_FILES = 10;
+const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
+const VIDEO_COMPRESSION_THRESHOLD = 200 * 1024 * 1024; // 200MB以上は圧縮
 const pathMatch = location.pathname.match(/^\/d\/([a-zA-Z0-9]+)/);
 const viewId = pathMatch?.[1] || null;
 
@@ -1061,6 +1066,45 @@ async function uploadMultiple(files) {
       
       console.log('[UPLOAD] Starting file:', file.name, 'Size:', file.size, 'Type:', file.type);
       
+      // ファイルサイズチェック
+      if (file.size > MAX_FILE_SIZE) {
+        throw new Error(`File size exceeds limit: ${(file.size / 1024 / 1024).toFixed(2)}MB (max 500MB)`);
+      }
+      
+      // すべての動画形式を自動的にMP4に変換
+      let uploadFile = file;
+      const videoRegex = /\.(mp4|webm|ogg|mkv|avi|mov|flv|wmv|m4v|ts|m2ts|mts|3gp|3g2|asf|f4v|m3u8|mxf)$/i;
+      const isVideo = videoRegex.test(file.name) || file.type.startsWith('video/');
+      
+      if (isVideo) {
+        // MOV形式または200MB以上は圧縮
+        const isMov = file.type === 'video/quicktime' || file.name.toLowerCase().endsWith('.mov');
+        const needsCompression = file.size > VIDEO_COMPRESSION_THRESHOLD;
+        
+        if (isMov || needsCompression) {
+          console.log('[UPLOAD] Video optimization needed:', file.name, 'Size:', (file.size / 1024 / 1024).toFixed(2) + 'MB');
+          document.getElementById('statusMessage').textContent = `${i + 1} / ${files.length} - Optimizing video...`;
+          try {
+            uploadFile = await convertAndCompressVideo(file);
+            const savedMB = ((file.size - uploadFile.size) / 1024 / 1024).toFixed(2);
+            console.log('[UPLOAD] Video optimization successful:', uploadFile.name, '- Saved', savedMB + 'MB');
+          } catch (err) {
+            console.warn('[UPLOAD] Video optimization failed, trying direct upload:', err.message);
+            uploadFile = file;
+          }
+        } else if (!file.type.includes('mp4') && !file.name.toLowerCase().endsWith('.mp4')) {
+          console.log('[UPLOAD] Converting to MP4:', file.name);
+          document.getElementById('statusMessage').textContent = `${i + 1} / ${files.length} - Converting to MP4...`;
+          try {
+            uploadFile = await convertMovToMp4(file);
+            console.log('[UPLOAD] Conversion successful:', uploadFile.name, uploadFile.size);
+          } catch (err) {
+            console.warn('[UPLOAD] Video conversion failed, trying direct upload:', err.message);
+            uploadFile = file;
+          }
+        }
+      }
+      
       let base64 = '';
       try {
         base64 = await new Promise((resolve, reject) => {
@@ -1073,7 +1117,7 @@ async function uploadMultiple(files) {
                 console.error('[UPLOAD] No base64 data');
                 reject(new Error('Failed to convert file to base64'));
               }
-              console.log('[UPLOAD] Base64 created:', file.name, 'length:', b64.length);
+              console.log('[UPLOAD] Base64 created:', uploadFile.name, 'length:', b64.length);
               resolve(b64);
             } catch (e) {
               console.error('[UPLOAD] Base64 error:', e);
@@ -1089,22 +1133,22 @@ async function uploadMultiple(files) {
               console.log('[UPLOAD] Reading:', Math.round((e.loaded / e.total) * 100) + '%');
             }
           };
-          reader.readAsDataURL(file);
+          reader.readAsDataURL(uploadFile);
         });
       } catch (err) {
-        console.error('[UPLOAD] Failed to read file:', err, 'file:', file.name);
-        throw new Error(`Failed to read file: ${file.name}. Please try again.`);
+        console.error('[UPLOAD] Failed to read file:', err, 'file:', uploadFile.name);
+        throw new Error(`Failed to read file: ${uploadFile.name}. Please try again.`);
       }
 
-      const releaseData = await uploader.createRelease(`file_${fileId}`, file.name);
-      await uploader.uploadAsset(releaseData.upload_url, file.name, base64, fileId, file.size);
+      const releaseData = await uploader.createRelease(`file_${fileId}`, uploadFile.name);
+      await uploader.uploadAsset(releaseData.upload_url, uploadFile.name, base64, fileId, uploadFile.size);
 
       const githubJson = await uploader.getGithubJson();
       githubJson.files = githubJson.files || [];
       githubJson.files.push({
-        fileId, fileName: file.name,
+        fileId, fileName: uploadFile.name,
         downloadUrl: releaseData.assets_url || releaseData.upload_url,
-        fileSize: file.size, uploadedAt: new Date().toISOString(),
+        fileSize: uploadFile.size, uploadedAt: new Date().toISOString(),
       });
 
       await uploader.saveGithubJson(githubJson);
@@ -1222,6 +1266,211 @@ async function loadView(viewId) {
 }
 
 window.addEventListener('beforeunload', () => Cache.clearAll());
+
+// MOV → MP4 変換関数
+async function convertMovToMp4(movFile) {
+  try {
+    console.log('[CONVERT] Video conversion starting...', 'File:', movFile.name, 'Type:', movFile.type, 'Size:', movFile.size);
+    
+    // FFmpeg を確認
+    if (!window.FFmpeg || !window.FFmpeg.FFmpeg) {
+      console.warn('[CONVERT] FFmpeg not available, returning original file');
+      return movFile;
+    }
+
+    const FFmpeg = window.FFmpeg.FFmpeg;
+    const ffmpeg = new FFmpeg.FFmpeg();
+    
+    // タイムアウト設定 (30秒)
+    const timeout = 30000;
+    let timeoutId;
+    
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        console.warn('[CONVERT] Conversion timeout');
+        reject(new Error('Conversion timeout after 30 seconds'));
+      }, timeout);
+    });
+
+    try {
+      // コアファイルのURLを指定
+      console.log('[CONVERT] Loading FFmpeg core...');
+      ffmpeg.load({
+        coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js',
+      });
+
+      if (!ffmpeg.isLoaded()) {
+        console.log('[CONVERT] Waiting for FFmpeg to load...');
+        await Promise.race([ffmpeg.load(), timeoutPromise]);
+      }
+
+      const inputFileName = 'input_video';
+      const outputFileName = 'output.mp4';
+
+      // ファイル拡張子から入力ファイル名を決定
+      const inputExt = movFile.name.split('.').pop().toLowerCase();
+      const inputFullName = `${inputFileName}.${inputExt}`;
+
+      console.log('[CONVERT] Reading file data...');
+      const buffer = await movFile.arrayBuffer();
+      
+      // FFmpeg FS にファイルを書き込む
+      ffmpeg.FS('writeFile', inputFullName, new Uint8Array(buffer));
+      console.log('[CONVERT] File written to FFmpeg FS');
+
+      console.log('[CONVERT] Running conversion...');
+      // より積極的な圧縮コマンド
+      await Promise.race([
+        ffmpeg.run(
+          '-i', inputFullName,
+          '-c:v', 'libx264',      // H.264コーデック (軽量)
+          '-preset', 'ultrafast', // 最速変換
+          '-crf', '28',           // 品質 (28 = 低圧縮)
+          '-c:a', 'aac',          // AAC音声
+          '-b:a', '128k',         // 128k音声ビットレート
+          '-movflags', '+faststart',
+          outputFileName
+        ),
+        timeoutPromise
+      ]);
+
+      clearTimeout(timeoutId);
+
+      console.log('[CONVERT] Conversion completed, reading output...');
+      const outputData = ffmpeg.FS('readFile', outputFileName);
+      
+      // クリーンアップ
+      ffmpeg.FS('unlink', inputFullName);
+      ffmpeg.FS('unlink', outputFileName);
+
+      // MP4 Blob を作成
+      const mp4Blob = new Blob([outputData.buffer], { type: 'video/mp4' });
+      const originalName = movFile.name.replace(/\.[^.]+$/i, '.mp4');
+      
+      // File オブジェクトを作成
+      const mp4File = new File([mp4Blob], originalName, { type: 'video/mp4' });
+      
+      const originalMB = (movFile.size / 1024 / 1024).toFixed(2);
+      const convertedMB = (mp4File.size / 1024 / 1024).toFixed(2);
+      const ratio = ((1 - mp4File.size / movFile.size) * 100).toFixed(0);
+      
+      console.log(`[CONVERT] Success: ${originalMB}MB ${inputExt.toUpperCase()} → ${convertedMB}MB MP4 (${ratio}% reduction)`);
+      
+      return mp4File;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      console.error('[CONVERT] Conversion error:', error.message);
+      console.error('[CONVERT] Stack:', error.stack);
+      // 変換失敗時は元のファイルを返す
+      return movFile;
+    }
+  } catch (error) {
+    console.error('[CONVERT] Outer error:', error);
+    return movFile;
+  }
+}
+
+// 動画を高品質に圧縮
+async function convertAndCompressVideo(videoFile) {
+  try {
+    console.log('[COMPRESS] Video compression starting...');
+    
+    // FFmpeg を確認
+    if (!window.FFmpeg || !window.FFmpeg.FFmpeg) {
+      console.warn('[COMPRESS] FFmpeg not available, returning original file');
+      return videoFile;
+    }
+
+    const FFmpeg = window.FFmpeg.FFmpeg;
+    const ffmpeg = new FFmpeg.FFmpeg();
+    
+    // タイムアウト設定 (60秒)
+    const timeout = 60000;
+    let timeoutId;
+    
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        console.warn('[COMPRESS] Compression timeout');
+        reject(new Error('Compression timeout after 60 seconds'));
+      }, timeout);
+    });
+
+    try {
+      // コアファイルのURLを指定
+      console.log('[COMPRESS] Loading FFmpeg core...');
+      ffmpeg.load({
+        coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js',
+      });
+
+      if (!ffmpeg.isLoaded()) {
+        console.log('[COMPRESS] Waiting for FFmpeg to load...');
+        await Promise.race([ffmpeg.load(), timeoutPromise]);
+      }
+
+      const inputExt = videoFile.name.split('.').pop().toLowerCase();
+      const inputFileName = `input.${inputExt}`;
+      const outputFileName = 'output.mp4';
+
+      console.log('[COMPRESS] Reading file data...');
+      const buffer = await videoFile.arrayBuffer();
+      
+      // FFmpeg FS にファイルを書き込む
+      ffmpeg.FS('writeFile', inputFileName, new Uint8Array(buffer));
+      console.log('[COMPRESS] File written to FFmpeg FS');
+
+      console.log('[COMPRESS] Running compression (720p 30fps)...');
+      // 高品質圧縮 (720p 30fps)
+      await Promise.race([
+        ffmpeg.run(
+          '-i', inputFileName,
+          '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2',
+          '-r', '30',
+          '-c:v', 'libx264',
+          '-preset', 'medium',      // 品質重視
+          '-crf', '23',             // 品質23 (かなり高品質)
+          '-c:a', 'aac',
+          '-b:a', '128k',
+          '-movflags', '+faststart',
+          outputFileName
+        ),
+        timeoutPromise
+      ]);
+
+      clearTimeout(timeoutId);
+
+      console.log('[COMPRESS] Compression completed, reading output...');
+      const outputData = ffmpeg.FS('readFile', outputFileName);
+      
+      // クリーンアップ
+      ffmpeg.FS('unlink', inputFileName);
+      ffmpeg.FS('unlink', outputFileName);
+
+      // MP4 Blob を作成
+      const mp4Blob = new Blob([outputData.buffer], { type: 'video/mp4' });
+      const originalName = videoFile.name.replace(/\.[^.]+$/i, '.mp4');
+      
+      // File オブジェクトを作成
+      const mp4File = new File([mp4Blob], originalName, { type: 'video/mp4' });
+      
+      const originalMB = (videoFile.size / 1024 / 1024).toFixed(2);
+      const compressedMB = (mp4File.size / 1024 / 1024).toFixed(2);
+      const ratio = ((1 - mp4File.size / videoFile.size) * 100).toFixed(0);
+      
+      console.log(`[COMPRESS] Success: ${originalMB}MB → ${compressedMB}MB (${ratio}% reduction)`);
+      
+      return mp4File;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      console.error('[COMPRESS] Error:', error.message);
+      console.error('[COMPRESS] Stack:', error.stack);
+      // 圧縮失敗時は元のファイルを返す
+      return videoFile;
+    }
+  } catch (error) {
+    console.error('[COMPRESS] Outer error:', error);
+    return videoFile;
+  }
+}
 
 if (viewId) {
   showLoading();
