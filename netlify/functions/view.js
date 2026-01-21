@@ -58,46 +58,58 @@ async function githubRequest(method, path, body = null) {
   });
 }
 
-// ★ GitHub Releases URL を jsDelivr CDN に変換
-function convertToJsDelivrUrl(downloadUrl) {
-  if (!downloadUrl || !downloadUrl.includes('github.com')) {
-    return downloadUrl;
-  }
-
+// ★ Release タグからダウンロードURLを構築
+async function getDownloadUrlForFileId(fileId) {
   try {
-    // URL format: https://github.com/OWNER/REPO/releases/download/TAG/FILENAME
-    // または: https://api.github.com/repos/OWNER/REPO/releases/assets/ID
+    logInfo(`Getting release URL for fileId: ${fileId}`);
     
-    // github.com/releases/download の場合
-    const match1 = downloadUrl.match(/github\.com\/([^/]+)\/([^/]+)\/releases\/download\/([^/]+)\/(.+)$/);
-    if (match1) {
-      const [, owner, repo, tag, filename] = match1;
-      const jsDelivrUrl = `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${tag}/${filename}`;
-      logInfo(`Converted URL: ${downloadUrl} → ${jsDelivrUrl}`);
-      return jsDelivrUrl;
+    // Release tag の形式: file_XXX
+    const releaseTag = `file_${fileId}`;
+    
+    // GitHub API で release を取得
+    const release = await githubRequest(
+      'GET',
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/tags/${releaseTag}`
+    );
+    
+    if (!release || !release.assets || release.assets.length === 0) {
+      logError(`No assets found for release: ${releaseTag}`);
+      return null;
     }
-
-    // github releases redirect の場合（通常はこちら）
-    // https://github.com/user/repo/releases/download/tag/file.ext
-    if (downloadUrl.includes('/releases/download/')) {
-      const parts = downloadUrl.split('/');
-      const owner = parts[3];
-      const repo = parts[4];
-      // releases/download の後ろを取得
-      const idx = downloadUrl.indexOf('/releases/download/');
-      const tagAndFile = downloadUrl.substring(idx + '/releases/download/'.length);
-      const [tag, ...fileParts] = tagAndFile.split('/');
-      const filename = fileParts.join('/');
-      
-      const jsDelivrUrl = `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${tag}/${filename}`;
-      logInfo(`Converted URL: ${downloadUrl} → ${jsDelivrUrl}`);
-      return jsDelivrUrl;
-    }
-
+    
+    // 最初のアセットのダウンロードURLを取得
+    const downloadUrl = release.assets[0].browser_download_url;
+    logInfo(`Got download URL: ${downloadUrl}`);
+    
     return downloadUrl;
   } catch (e) {
+    logError(`Failed to get download URL for ${fileId}: ${e.message}`);
+    return null;
+  }
+}
+
+// ★ GitHub Releases URL を jsDelivr CDN に変換（修正版）
+function convertToJsDelivrUrl(githubReleaseUrl, tag, fileName) {
+  try {
+    // githubReleaseUrl 形式:
+    // https://github.com/OWNER/REPO/releases/download/TAG/FILENAME
+    
+    const match = githubReleaseUrl.match(/github\.com\/([^/]+)\/([^/]+)\/releases\/download\//);
+    if (!match) {
+      logError(`URL doesn't match expected pattern: ${githubReleaseUrl}`);
+      return githubReleaseUrl;
+    }
+    
+    const [, owner, repo] = match;
+    
+    // jsDelivr URL: https://cdn.jsdelivr.net/gh/OWNER/REPO@TAG/FILENAME
+    const jsDelivrUrl = `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${tag}/${fileName}`;
+    logInfo(`Converted: ${githubReleaseUrl} → ${jsDelivrUrl}`);
+    
+    return jsDelivrUrl;
+  } catch (e) {
     logError(`URL conversion error: ${e.message}`);
-    return downloadUrl;
+    return githubReleaseUrl;
   }
 }
 
@@ -196,28 +208,45 @@ exports.handler = async (event) => {
 
     logInfo(`View found: ${view.viewId}`);
 
-    // ★ github.json から downloadUrl を取得し、jsDelivr に変換
-    const files = (view.files || [])
-      .map(fid => {
-        logInfo(`Looking for file: ${fid}`);
-        const file = (data.files || []).find(f => f && f.fileId === fid);
-        if (!file) {
-          logError(`File not found: ${fid}`);
-          return null;
+    // ★ fileIds からファイル情報を取得し、GitHub APIから正しいダウンロードURLを取得
+    const files = [];
+    for (const fileId of (view.fileIds || [])) {
+      try {
+        logInfo(`Processing fileId: ${fileId}`);
+        
+        // github.json からファイル情報を取得
+        const fileInfo = (data.files || []).find(f => f && f.fileId === fileId);
+        if (!fileInfo) {
+          logError(`File not found in github.json: ${fileId}`);
+          continue;
         }
-        logInfo(`Found file: ${file.fileName}`);
         
-        // ★ URL を jsDelivr に変換（CORS エラーを回避）
-        const downloadUrl = convertToJsDelivrUrl(file.downloadUrl);
+        logInfo(`Found file in github.json: ${fileInfo.fileName}`);
         
-        return {
-          fileId: file.fileId,
-          fileName: file.fileName,
-          fileSize: file.fileSize,
-          downloadUrl: downloadUrl  // ★ 変換後の URL を返す
-        };
-      })
-      .filter(Boolean);
+        // ★ GitHub API から実際のダウンロードURLを取得
+        const downloadUrl = await getDownloadUrlForFileId(fileId);
+        if (!downloadUrl) {
+          logError(`Could not get download URL for: ${fileId}`);
+          continue;
+        }
+        
+        // ★ GitHub URL を jsDelivr に変換
+        const releaseTag = `file_${fileId}`;
+        const jsDelivrUrl = convertToJsDelivrUrl(downloadUrl, releaseTag, fileInfo.fileName);
+        
+        files.push({
+          fileId: fileInfo.fileId,
+          fileName: fileInfo.fileName,
+          fileSize: fileInfo.fileSize,
+          downloadUrl: jsDelivrUrl  // ★ jsDelivr URL を返す
+        });
+        
+        logInfo(`Added file: ${fileInfo.fileName} → ${jsDelivrUrl}`);
+      } catch (e) {
+        logError(`Error processing fileId ${fileId}: ${e.message}`);
+        continue;
+      }
+    }
 
     logInfo(`Returning ${files.length} files`);
 
