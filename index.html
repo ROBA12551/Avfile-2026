@@ -1529,43 +1529,53 @@ async function uploadMultiple(files) {
 
     const fileDataList = await parallelLimit(fileDataTasks, 5);
     console.log('[UPLOAD] ✓ Phase 1 完了 (' + (Date.now() - startTime) + 'ms)');
+// ★ Phase 1.5: 動画圧縮（4MB 以上）
+console.log('[UPLOAD] Phase 1.5: 動画圧縮チェック');
 
-    // ★ Phase 1.5: 動画圧縮（4MB 以上）
-    console.log('[UPLOAD] Phase 1.5: 動画圧縮チェック');
-
-    for (let i = 0; i < fileDataList.length; i++) {
-      const fileData = fileDataList[i];
-      const { file, info, fileName } = fileData;
-      
-      console.log(`[COMPRESS_CHECK_${i}] File: ${fileName}, Size: ${(file.size / 1024 / 1024).toFixed(2)} MB, Type: ${info.type}`);
-      
-      // 動画ファイルで 4MB 以上なら圧縮
-      if (info.type === 'video' && file.size > MAX_SIZE_WITHOUT_COMPRESSION) {
-        console.log(`[COMPRESS_${i}] ${fileName}: ${(file.size / 1024 / 1024).toFixed(2)} MB - 圧縮開始`);
-        
-        document.getElementById('statusMessage').textContent = 
-          `動画を圧縮中... (${i + 1}/${fileDataList.length})`;
-        
-        const compressor = new VideoCompressionEngineLocal();
-        const compressedFile = await compressor.compress(file, (progress, msg) => {
-          document.getElementById('statusMessage').textContent = 
-            `動画圧縮中 ${i + 1}/${fileDataList.length}: ${progress}%`;
-          document.getElementById('progressPercent').textContent = `${progress}%`;
-          document.getElementById('progressFill').style.width = `${progress}%`;
-        });
-        
-        const originalMB = (file.size / 1024 / 1024).toFixed(2);
-        const compressedMB = (compressedFile.size / 1024 / 1024).toFixed(2);
-        const ratio = ((1 - compressedFile.size / file.size) * 100).toFixed(0);
-        
-        console.log(`[COMPRESS_${i}] 完了: ${originalMB}MB → ${compressedMB}MB (${ratio}% 削減)`);
-        
-        fileDataList[i].file = compressedFile;
-      } else {
-        console.log(`[COMPRESS_${i}] スキップ - Size: ${(file.size / 1024 / 1024).toFixed(2)} MB (閾値: 4.0 MB)`);
-      }
+for (let i = 0; i < fileDataList.length; i++) {
+  const fileData = fileDataList[i];
+  const { file, info, fileName } = fileData;
+  
+  console.log(`[COMPRESS_CHECK_${i}] ===== ファイル情報 =====`);
+  console.log(`[COMPRESS_CHECK_${i}] fileName: ${fileName}`);
+  console.log(`[COMPRESS_CHECK_${i}] file.size: ${file.size} bytes (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+  console.log(`[COMPRESS_CHECK_${i}] info.type: ${info.type}`);
+  console.log(`[COMPRESS_CHECK_${i}] MAX_SIZE_WITHOUT_COMPRESSION: ${MAX_SIZE_WITHOUT_COMPRESSION} bytes (${(MAX_SIZE_WITHOUT_COMPRESSION / 1024 / 1024).toFixed(2)} MB)`);
+  console.log(`[COMPRESS_CHECK_${i}] file.size > MAX_SIZE_WITHOUT_COMPRESSION: ${file.size > MAX_SIZE_WITHOUT_COMPRESSION}`);
+  console.log(`[COMPRESS_CHECK_${i}] info.type === 'video': ${info.type === 'video'}`);
+  
+  // 動画ファイルで MAX_SIZE_WITHOUT_COMPRESSION 以上なら圧縮
+  if (info.type === 'video' && file.size > MAX_SIZE_WITHOUT_COMPRESSION) {
+    console.log(`[COMPRESS_${i}] ✅ 圧縮条件に該当 - 圧縮開始`);
+    console.log(`[COMPRESS_${i}] ${fileName}: ${(file.size / 1024 / 1024).toFixed(2)} MB - 圧縮開始`);
+    
+    document.getElementById('statusMessage').textContent = 
+      `動画を圧縮中... (${i + 1}/${fileDataList.length})`;
+    
+    const compressor = new VideoCompressionEngineLocal();
+    const compressedFile = await compressor.compress(file, (progress, msg) => {
+      document.getElementById('statusMessage').textContent = 
+        `動画圧縮中 ${i + 1}/${fileDataList.length}: ${progress}%`;
+      document.getElementById('progressPercent').textContent = `${progress}%`;
+      document.getElementById('progressFill').style.width = `${progress}%`;
+    });
+    
+    const originalMB = (file.size / 1024 / 1024).toFixed(2);
+    const compressedMB = (compressedFile.size / 1024 / 1024).toFixed(2);
+    const ratio = ((1 - compressedFile.size / file.size) * 100).toFixed(0);
+    
+    console.log(`[COMPRESS_${i}] 完了: ${originalMB}MB → ${compressedMB}MB (${ratio}% 削減)`);
+    
+    fileDataList[i].file = compressedFile;
+  } else {
+    console.log(`[COMPRESS_${i}] ❌ スキップ - 圧縮条件に該当せず`);
+    if (info.type !== 'video') {
+      console.log(`[COMPRESS_${i}] 理由: 動画ファイルではない (type: ${info.type})`);
+    } else {
+      console.log(`[COMPRESS_${i}] 理由: サイズが閾値以下 (${(file.size / 1024 / 1024).toFixed(2)} MB <= ${(MAX_SIZE_WITHOUT_COMPRESSION / 1024 / 1024).toFixed(2)} MB)`);
     }
-
+  }
+}
     console.log('[UPLOAD] ✓ Phase 1.5 完了 (' + (Date.now() - startTime) + 'ms)');
 
     // ★ Phase 2: Asset アップロード（並列5個）
