@@ -1302,7 +1302,6 @@ document.getElementById('uploadMoreBtn').onclick = () => { showUpload(); documen
 document.getElementById('openLinkBtn').onclick = () => window.open(document.getElementById('shareUrl').value);
 document.getElementById('retryBtn').onclick = () => { showUpload(); document.getElementById('fileInput').value = ''; };
 document.getElementById('backBtn').onclick = () => showUpload();
-// uploadMultiple() をシンプルに
 async function uploadMultiple(files) {
   showStatus();
   const uploader = new GitHubUploader();
@@ -1326,12 +1325,7 @@ async function uploadMultiple(files) {
       console.log(`[FILE_${idx}] Uploading...`);
       const assetData = await uploader.uploadAssetBinary(release.upload_url, fileName, file);
 
-      console.log(`[FILE_${idx}] Saving to github.json...`);
-      await uploader.addFileToGithubJson({
-        fileId, fileName, fileSize: assetData.size, mimeType: info.mimeType,
-        releaseId: release.release_id, releaseTag, downloadUrl: assetData.browser_download_url,
-        metadata: { extension: fileName.split('.').pop(), originalName: file.name }
-      });
+      // ★ 削除: await uploader.addFileToGithubJson({...});
 
       fileIds.push(fileId);
       console.log(`[FILE_${idx}] Complete`);
