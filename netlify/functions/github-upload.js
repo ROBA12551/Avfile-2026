@@ -255,89 +255,47 @@ async function handleCreateView(body) {
     shareUrl: `${body.origin}/?id=${body.fileIds[0]}`
   };
 }
-
-// =====================
-// メインハンドラ
-// =====================
-
 exports.handler = async (event) => {
   const headers = {
     'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type'
+    'Access-Control-Allow-Origin': '*'
   };
 
   try {
-    if (event.httpMethod === 'OPTIONS') {
-      return { statusCode: 200, headers, body: '' };
-    }
-
-    if (!GITHUB_TOKEN || !GITHUB_OWNER || !GITHUB_REPO) {
-      return {
-        statusCode: 500,
-        headers,
-        body: JSON.stringify({ success: false, error: 'Missing environment variables' })
-      };
-    }
-
+    const uploadUrl = event.headers['x-upload-url'];
+    const fileName = event.headers['x-upload-name'];
     const action = event.queryStringParameters?.action;
 
-    if (action === 'upload-chunk') {
-      const result = await handleUploadChunk(event);
+    // ★ バイナリアセットアップロード
+    if (action === 'upload-asset-binary' || (!action && uploadUrl && fileName)) {
+      const buffer = event.isBase64Encoded
+        ? Buffer.from(event.body, 'base64')
+        : event.body instanceof Buffer
+        ? event.body
+        : Buffer.from(event.body, 'binary');
+
+      const result = await uploadBinaryToGithub(uploadUrl, fileName, buffer);
+
       return {
         statusCode: 200,
         headers,
-        body: JSON.stringify({ success: true, data: result })
+        body: JSON.stringify({
+          success: true,
+          data: {
+            asset_id: result.id,
+            download_url: result.browser_download_url,
+            name: result.name,
+            size: result.size
+          }
+        })
       };
     }
 
-    if (action === 'finalize-chunks') {
-      const body = JSON.parse(event.body || '{}');
-      const result = await handleFinalizeChunks(body);
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({ success: true, data: result })
-      };
-    }
-
+    // 既存の JSON ベースの処理
     const body = JSON.parse(event.body || '{}');
-    const bodyAction = body.action;
-
-    let result;
-
-    switch (bodyAction) {
-      case 'create-release':
-        result = await handleCreateRelease(body);
-        break;
-      case 'upload-asset-binary':
-        result = await handleUploadAssetBinary(body);
-        break;
-      case 'add-file':
-        result = await handleAddFileToGithubJson(body);
-        break;
-      case 'get-github-json':
-        result = await handleGetGithubJson();
-        break;
-      case 'create-view':
-        result = await handleCreateView(body);
-        break;
-      case 'get-token':
-        result = { token: GITHUB_TOKEN };
-        break;
-      default:
-        throw new Error(`Unknown action: ${bodyAction}`);
-    }
-
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({ success: true, data: result })
-    };
-
+    
+    // ... 既存のコード
   } catch (error) {
-    console.error('[ERROR]', error.message);
     return {
       statusCode: 500,
       headers,

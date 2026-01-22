@@ -928,27 +928,17 @@ class GitHubUploader {
     this.functionUrl = '/.netlify/functions/github-upload';
     this.githubToken = null;
   }
-
 async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   console.log('[UPLOAD_BINARY] Uploading via Netlify Functions...');
   
-  const arrayBuffer = await fileObject.arrayBuffer();
-  const bytes = new Uint8Array(arrayBuffer);
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  const base64Data = btoa(binary);
-
   const response = await fetch(this.functionUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: 'upload-asset-binary',
-      uploadUrl: uploadUrl,
-      fileName: this.sanitizeFileName(fileName),
-      fileData: base64Data
-    })
+    headers: {
+      'X-Upload-Url': uploadUrl,
+      'X-Upload-Name': this.sanitizeFileName(fileName),
+      'Content-Type': 'application/octet-stream'
+    },
+    body: fileObject  // Base64 ではなく Blob をそのまま送信
   });
 
   const data = await response.json();
@@ -959,7 +949,6 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
     browser_download_url: data.data.download_url
   };
 }
-
   // 既存の getGitHubToken() は変わらない
   async getGitHubToken() {
     if (this.githubToken) {
