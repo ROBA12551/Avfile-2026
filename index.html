@@ -1109,7 +1109,6 @@ class Cache {
     window._cache = {};
   }
 }
-
 class GitHubUploader {
   constructor() {
     this.functionUrl = '/.netlify/functions/github-upload';
@@ -1117,52 +1116,37 @@ class GitHubUploader {
   }
 
   /**
-   * ★ 修正版: addFileToGithubJson メソッド
-   * エラーハンドリングを強化
+   * ★ uploadAssetBinary メソッド
+   * ChunkedBinaryUploader に委譲して大ファイル対応
    */
-  async addFileToGithubJson(fileData) {
-    console.log('[ADD_FILE] Saving file info:', {
-      fileId: fileData.fileId,
-      fileName: fileData.fileName,
-      fileSize: fileData.fileSize,
-      downloadUrlPrefix: fileData.downloadUrl?.substring(0, 60) + '...'
+  async uploadAssetBinary(uploadUrl, fileName, fileObject) {
+    console.log('[UPLOAD_BINARY] Starting upload:', {
+      fileName: fileName,
+      fileSize: fileObject.size,
+      fileSizeMB: (fileObject.size / 1024 / 1024).toFixed(2) + ' MB',
+      mimeType: fileObject.type
     });
     
     try {
-      const response = await fetch(this.functionUrl, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-          action: 'add-file',
-          fileData: {
-            fileId: String(fileData.fileId),
-            fileName: String(fileData.fileName),
-            fileSize: Number(fileData.fileSize),
-            downloadUrl: String(fileData.downloadUrl)
-          }
-        })
-      });
-
-      console.log('[ADD_FILE] Response status:', response.status);
-
-      if (!response.ok) {
-        const text = await response.text();
-        console.error('[ADD_FILE] Error response:', {
-          status: response.status,
-          statusText: response.statusText,
-          response: text.substring(0, 500)
-        });
-        throw new Error(`Add file failed: ${response.status}`);
+      // ★ ChunkedBinaryUploader に委譲
+      if (!window.chunkedBinaryUploader) {
+        throw new Error('ChunkedBinaryUploader not initialized');
       }
 
-      const data = await response.json();
-      console.log('[ADD_FILE] Success:', data);
-      return data.data;
+      const result = await window.chunkedBinaryUploader.uploadAssetBinary(
+        uploadUrl,
+        fileName,
+        fileObject
+      );
+
+      console.log('[UPLOAD_BINARY] Success:', {
+        size: result.size,
+        downloadUrl: result.browser_download_url?.substring(0, 80)
+      });
+      
+      return result;
     } catch (e) {
-      console.error('[ADD_FILE] Error:', {
+      console.error('[UPLOAD_BINARY] Error:', {
         message: e.message,
         stack: e.stack
       });
@@ -1171,8 +1155,8 @@ class GitHubUploader {
   }
 
   /**
-   * ★ 修正版: createRelease メソッド
-   * 詳細なログを追加
+   * ★ createRelease メソッド
+   * GitHub リリースを作成
    */
   async createRelease(releaseTag, fileName) {
     console.log('[RELEASE] Creating:', {
@@ -1224,75 +1208,52 @@ class GitHubUploader {
   }
 
   /**
-   * ★ 修正版: uploadAssetBinary メソッド
-   * テキスト形式で base64 を直接送信（JSON.stringify しない）
+   * ★ addFileToGithubJson メソッド
+   * エラーハンドリングを強化
    */
-  async uploadAssetBinary(uploadUrl, fileName, fileObject) {
-    console.log('[UPLOAD_BINARY] Starting upload:', {
-      fileName: fileName,
-      fileSize: fileObject.size,
-      fileSizeMB: (fileObject.size / 1024 / 1024).toFixed(2) + ' MB',
-      mimeType: fileObject.type
+  async addFileToGithubJson(fileData) {
+    console.log('[ADD_FILE] Saving file info:', {
+      fileId: fileData.fileId,
+      fileName: fileData.fileName,
+      fileSize: fileData.fileSize,
+      downloadUrlPrefix: fileData.downloadUrl?.substring(0, 60) + '...'
     });
     
     try {
-      const arrayBuffer = await fileObject.arrayBuffer();
-      const uint8Array = new Uint8Array(arrayBuffer);
-      
-      // Base64 に変換（チャンクで処理して stack overflow を避ける）
-      console.log('[UPLOAD_BINARY] Converting to Base64...');
-      let base64 = '';
-      const chunkSize = 10000;
-      for (let i = 0; i < uint8Array.length; i += chunkSize) {
-        base64 += String.fromCharCode.apply(null, uint8Array.subarray(i, i + chunkSize));
-      }
-      base64 = btoa(base64);
-
-      console.log('[UPLOAD_BINARY] Base64 conversion complete:', {
-        originalSize: fileObject.size,
-        base64Size: base64.length,
-        originalSizeMB: (fileObject.size / 1024 / 1024).toFixed(2) + ' MB',
-        base64SizeMB: (base64.length / 1024 / 1024).toFixed(2) + ' MB'
-      });
-
-      // ✅ 修正: base64 文字列を直接テキストとして送信（JSON.stringify しない）
-      console.log('[UPLOAD_BINARY] Sending request to Netlify function...');
       const response = await fetch(this.functionUrl, {
         method: 'POST',
-        headers: {
-          'X-Upload-Url': uploadUrl,
-          'X-Is-Base64': 'true',
-          'Content-Type': 'text/plain'  // ★ テキスト形式
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
-        body: base64  // ★ JSON.stringify() しない
+        body: JSON.stringify({
+          action: 'add-file',
+          fileData: {
+            fileId: String(fileData.fileId),
+            fileName: String(fileData.fileName),
+            fileSize: Number(fileData.fileSize),
+            downloadUrl: String(fileData.downloadUrl)
+          }
+        })
       });
 
-      console.log('[UPLOAD_BINARY] Response status:', response.status);
-      
+      console.log('[ADD_FILE] Response status:', response.status);
+
       if (!response.ok) {
         const text = await response.text();
-        console.error('[UPLOAD_BINARY] Error response:', {
+        console.error('[ADD_FILE] Error response:', {
           status: response.status,
           statusText: response.statusText,
           response: text.substring(0, 500)
         });
-        throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
+        throw new Error(`Add file failed: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log('[UPLOAD_BINARY] Success response:', {
-        success: data.success,
-        assetId: data.data.asset_id,
-        size: data.data.size,
-        name: data.data.name
-      });
-      
-      return {
-        size: data.data.size,
-        browser_download_url: data.data.download_url
-      };
+      console.log('[ADD_FILE] Success:', data);
+      return data.data;
     } catch (e) {
-      console.error('[UPLOAD_BINARY] Error:', {
+      console.error('[ADD_FILE] Error:', {
         message: e.message,
         stack: e.stack
       });
@@ -1300,6 +1261,8 @@ class GitHubUploader {
     }
   }
 }
+
+console.log('[GITHUB_UPLOADER] Initialized with chunked upload support');
 /**
  * カルーセル管理
  */
