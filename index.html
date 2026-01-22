@@ -1140,7 +1140,7 @@ async function uploadMultiple(files) {
     
     // ★ FFmpeg初期化状態を確認（最大30秒待機）
     console.log('[UPLOAD] Waiting for FFmpeg readiness check...');
-    const ffmpegReady = await waitForFFmpegReady(30000);
+    const ffmpegReady = await waitForFFmpegReady(180000);
     console.log('[UPLOAD] FFmpeg preparation complete. Ready:', ffmpegReady);
 
     if (files.length > MAX_FILES) {

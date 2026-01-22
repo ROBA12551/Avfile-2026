@@ -24,7 +24,6 @@ class VideoCompressor {
 
     console.log("[VIDEO_COMPRESSOR] Class initialized (FFmpeg class mode)");
   }
-
 async initFFmpeg() {
   if (this.isLoaded || this.isLoading) return;
   this.isLoading = true;
@@ -32,21 +31,23 @@ async initFFmpeg() {
   try {
     const coreURL = `${location.origin}/js/ffmpeg/ffmpeg-core.js`;
     const wasmURL = `${location.origin}/js/ffmpeg/ffmpeg-core.wasm`;
-
-    // ★重要：Worker はこれで「avfile.io の worker.js」を使う
     const classWorkerURL = `${location.origin}/js/ffmpeg/worker.js`;
 
     console.log("[VIDEO_COMPRESSOR] Loading core:", coreURL);
     console.log("[VIDEO_COMPRESSOR] Loading wasm:", wasmURL);
     console.log("[VIDEO_COMPRESSOR] Using classWorkerURL:", classWorkerURL);
 
-    // ★workerURL じゃない。classWorkerURL が本命。
+    console.log("[VIDEO_COMPRESSOR] Calling ffmpeg.load()...");
+    const t0 = performance.now();
+
     await this.ffmpeg.load({ classWorkerURL, coreURL, wasmURL });
 
+    const t1 = performance.now();
+    console.log(`[VIDEO_COMPRESSOR] ✓ FFmpeg LOADED in ${(t1 - t0).toFixed(0)}ms`);
+
     this.isLoaded = true;
-    console.log("[VIDEO_COMPRESSOR] ✓ FFmpeg LOADED");
   } catch (e) {
-    console.error("[VIDEO_COMPRESSOR] ✗ Failed to load FFmpeg:", e?.message || e);
+    console.error("[VIDEO_COMPRESSOR] ✗ Failed to load FFmpeg:", e);
     this.isLoaded = false;
   } finally {
     this.isLoading = false;
