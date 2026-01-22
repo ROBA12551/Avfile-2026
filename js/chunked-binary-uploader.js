@@ -5,8 +5,8 @@
 
 class ChunkedBinaryUploader {
   constructor() {
-    this.CHUNK_THRESHOLD = 50 * 1024 * 1024;  // 50MB以上でチャンク分割
-    this.CHUNK_SIZE = 5 * 1024 * 1024;        // 5MBごとに分割
+    this.CHUNK_THRESHOLD = 3 * 1024 * 1024;  // 3MB以上でチャンク分割
+    this.CHUNK_SIZE = 500 * 1024;        // 500KBごとに分割
     this.functionUrl = '/.netlify/functions/github-upload';
   }
 
