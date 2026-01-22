@@ -43,6 +43,7 @@ function uploadBinaryToGithub(uploadUrl, buffer) {
     }
   });
 }
+
 function callGithubApi(method, path, body) {
   return new Promise((resolve, reject) => {
     const options = {
@@ -142,3 +143,93 @@ async function addFileToGithubJson(fileData) {
     throw e;
   }
 }
+
+// ★★★ メインハンドラ（これが必須）★★★
+exports.handler = async (event) => {
+  const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+
+  try {
+    const uploadUrl = event.headers['x-upload-url'];
+    
+    // バイナリアップロード
+    if (uploadUrl) {
+      const isBase64 = event.headers['x-is-base64'] === 'true';
+      const buffer = isBase64
+        ? Buffer.from(event.body, 'base64')
+        : Buffer.from(event.body, 'binary');
+      
+      const result = await uploadBinaryToGithub(uploadUrl, buffer);
+
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          success: true,
+          data: {
+            asset_id: result.id,
+            download_url: result.browser_download_url,
+            name: result.name,
+            size: result.size
+          }
+        })
+      };
+    }
+
+    // JSON アクション処理
+    const body = JSON.parse(event.body || '{}');
+
+    if (body.action === 'create-release') {
+      const result = await callGithubApi('POST', `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases`, {
+        tag_name: body.releaseTag,
+        name: body.metadata?.title || body.releaseTag,
+        body: body.metadata?.description || '',
+        draft: false,
+        prerelease: false
+      });
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          success: true,
+          data: { 
+            release_id: result.id, 
+            tag_name: result.tag_name, 
+            upload_url: result.upload_url 
+          }
+        })
+      };
+    }
+
+    // ★ 追加: add-file アクション
+    if (body.action === 'add-file') {
+      await addFileToGithubJson(body.fileData);
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ success: true })
+      };
+    }
+
+    if (body.action === 'get-token') {
+      return { 
+        statusCode: 200, 
+        headers, 
+        body: JSON.stringify({ success: true, data: { token: GITHUB_TOKEN } }) 
+      };
+    }
+
+    return { 
+      statusCode: 400, 
+      headers, 
+      body: JSON.stringify({ success: false, error: 'Unknown action' }) 
+    };
+
+  } catch (error) {
+    console.error('[ERROR]', error.message);
+    return { 
+      statusCode: 500, 
+      headers, 
+      body: JSON.stringify({ success: false, error: error.message }) 
+    };
+  }
+};
