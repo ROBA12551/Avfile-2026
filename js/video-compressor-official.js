@@ -1,6 +1,6 @@
 /**
  * js/video-compressor-official.js
- * ★ FFmpeg.wasm 公式ドキュメント対応版（遅延初期化）
+ * ★ FFmpeg.wasm 公式ドキュメント対応版（createFFmpeg API）
  * https://ffmpegwasm.netlify.app/ を参照
  * 720p/30fps + 低ビットレート設定で最大50-80%の圧縮
  */
@@ -8,8 +8,6 @@
 class VideoCompressor {
   constructor() {
     this.ffmpeg = null;
-    this.FFmpeg = null;
-    this.fetchFile = null;
     this.isLoaded = false;
     this.isLoading = false;
     
@@ -60,78 +58,86 @@ class VideoCompressor {
   scheduleInitFFmpeg() {
     console.log('[VIDEO_COMPRESSOR] Scheduling FFmpeg initialization...');
     
-    if (typeof FFmpeg !== 'undefined' && FFmpeg && FFmpeg.FFmpeg) {
-      console.log('[VIDEO_COMPRESSOR] FFmpeg available, initializing...');
+    // すぐに1回チェック
+    if (typeof FFmpeg !== 'undefined' && FFmpeg && FFmpeg.createFFmpeg) {
+      console.log('[VIDEO_COMPRESSOR] ✓ FFmpeg.wasm immediately available');
       this.initFFmpeg();
-    } else {
-      console.log('[VIDEO_COMPRESSOR] Waiting for FFmpeg.wasm to load...');
-      
-      let waitCount = 0;
-      const maxWait = 60; // 60 * 500ms = 30秒
-      
-      const checkFFmpeg = setInterval(() => {
-        if (typeof FFmpeg !== 'undefined' && FFmpeg && FFmpeg.FFmpeg) {
-          clearInterval(checkFFmpeg);
-          console.log('[VIDEO_COMPRESSOR] FFmpeg.wasm loaded, initializing...');
-          this.initFFmpeg();
-        } else if (++waitCount > maxWait) {
-          clearInterval(checkFFmpeg);
-          console.error('[VIDEO_COMPRESSOR] FFmpeg.wasm failed to load after timeout');
-          console.warn('[VIDEO_COMPRESSOR] Video compression will be skipped');
-        }
-      }, 500);
+      return;
     }
+    
+    console.log('[VIDEO_COMPRESSOR] Waiting for FFmpeg.wasm to load...');
+    
+    let waitCount = 0;
+    const maxWait = 120; // 120 * 500ms = 60秒
+    
+    const checkFFmpeg = setInterval(() => {
+      waitCount++;
+      const isAvailable = typeof FFmpeg !== 'undefined' && FFmpeg && FFmpeg.createFFmpeg && FFmpeg.fetchFile;
+      
+      if (waitCount % 10 === 0) {
+        console.log(`[VIDEO_COMPRESSOR] Checking FFmpeg... (attempt ${waitCount}/${maxWait}, available: ${isAvailable})`);
+      }
+      
+      if (isAvailable) {
+        clearInterval(checkFFmpeg);
+        console.log('[VIDEO_COMPRESSOR] ✓ FFmpeg.wasm loaded, initializing...');
+        this.initFFmpeg();
+      } else if (waitCount > maxWait) {
+        clearInterval(checkFFmpeg);
+        console.error('[VIDEO_COMPRESSOR] ✗ FFmpeg.wasm failed to load after 60 seconds');
+        console.warn('[VIDEO_COMPRESSOR] Total attempts:', waitCount);
+        console.warn('[VIDEO_COMPRESSOR] Video compression will be skipped');
+        this.isLoading = false;
+      }
+    }, 500);
   }
 
   /**
-   * ★ 公式ドキュメント通りのFFmpeg初期化
+   * ★ FFmpeg.wasm createFFmpeg API を使用した初期化
    */
   async initFFmpeg() {
-    if (this.isLoaded || this.isLoading) return;
+    if (this.isLoaded || this.isLoading) {
+      console.log('[VIDEO_COMPRESSOR] FFmpeg init already in progress or completed');
+      return;
+    }
+    
     this.isLoading = true;
 
     try {
-      // ★ グローバルFFmpegオブジェクトから必要なものを取得
-      if (typeof FFmpeg === 'undefined' || !FFmpeg || !FFmpeg.FFmpeg) {
-        throw new Error('FFmpeg.wasm not available');
+      console.log('[VIDEO_COMPRESSOR] FFmpeg init starting...');
+      
+      // ★ createFFmpeg関数が利用可能か確認
+      if (typeof FFmpeg === 'undefined' || !FFmpeg || !FFmpeg.createFFmpeg) {
+        throw new Error('FFmpeg.createFFmpeg not available');
       }
 
-      this.FFmpeg = FFmpeg.FFmpeg;
-      this.fetchFile = FFmpeg.fetchFile;
+      if (!FFmpeg.fetchFile) {
+        throw new Error('FFmpeg.fetchFile not available');
+      }
 
-      // ★ FFmpegインスタンス作成
-      this.ffmpeg = new this.FFmpeg();
+      // ★ 1. FFmpegインスタンスを作成（createFFmpeg API）
+      console.log('[VIDEO_COMPRESSOR] Creating FFmpeg instance with createFFmpeg...');
+      this.ffmpeg = FFmpeg.createFFmpeg({
+        log: true,  // ログ出力を有効にする
+        corePath: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js'
+      });
 
+      console.log('[VIDEO_COMPRESSOR] FFmpeg instance created');
+
+      // ★ 2. FFmpegのロード（Coreファイルをダウンロード・準備する）
       console.log('[VIDEO_COMPRESSOR] Loading FFmpeg WASM...');
-      
-      // ★ ログメッセージの設定
-      this.ffmpeg.on('log', ({ type, message }) => {
-        if (type === 'error') {
-          console.error('[FFMPEG]', message);
-        } else {
-          console.log('[FFMPEG]', message);
-        }
-      });
-
-      // ★ プログレスの設定
-      this.ffmpeg.on('progress', ({ ratio }) => {
-        console.log('[FFMPEG_PROGRESS]', Math.round(ratio * 100) + '%');
-      });
-
-      // ★ 公式推奨: CoreURL と wasmURL を明示的に指定
-      await this.ffmpeg.load({
-        coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js',
-        wasmURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/ffmpeg-core.wasm',
-      });
+      await this.ffmpeg.load();
 
       this.isLoaded = true;
       this.isLoading = false;
       console.log('[VIDEO_COMPRESSOR] ✓ FFmpeg loaded successfully');
+      console.log('[VIDEO_COMPRESSOR] Ready for video compression');
 
     } catch (error) {
       this.isLoading = false;
       this.isLoaded = false;
       console.error('[VIDEO_COMPRESSOR] ✗ Failed to load FFmpeg:', error.message);
+      console.error('[VIDEO_COMPRESSOR] Stack trace:', error.stack);
     }
   }
 
@@ -139,6 +145,12 @@ class VideoCompressor {
    * 動画ファイルが圧縮対象か判定
    */
   shouldCompress(file) {
+    console.log('[VIDEO_COMPRESSOR] shouldCompress check:', {
+      file: file.name,
+      isLoaded: this.isLoaded,
+      isLoading: this.isLoading
+    });
+
     if (!this.isLoaded) {
       console.log('[VIDEO_COMPRESSOR] FFmpeg not loaded, skipping compression');
       return false;
@@ -150,19 +162,19 @@ class VideoCompressor {
     const isLargeFile = file.size > this.VIDEO_COMPRESSION_THRESHOLD;
     
     const shouldCompress = isVideoFile && isLargeFile;
-    console.log('[VIDEO_COMPRESSOR] Check:', {
+    console.log('[VIDEO_COMPRESSOR] Compression check result:', {
       file: file.name,
       size: (file.size / 1024 / 1024).toFixed(2) + 'MB',
-      video: isVideoFile,
-      large: isLargeFile,
-      compress: shouldCompress
+      isVideo: isVideoFile,
+      isLarge: isLargeFile,
+      shouldCompress: shouldCompress
     });
 
     return shouldCompress;
   }
 
   /**
-   * ★ 動画を圧縮（公式ドキュメント準拠）
+   * ★ 動画を圧縮（createFFmpeg API準拠）
    */
   async compressVideo(file, onProgress = () => {}) {
     if (!this.isLoaded) {
@@ -183,16 +195,16 @@ class VideoCompressor {
 
       onProgress(5, 'ファイルを読み込み中...');
 
-      // ★ ファイルを FFmpeg FileSystem に書き込み（公式API）
+      // ★ ファイルを FFmpeg FileSystem に書き込み
       console.log('[VIDEO_COMPRESSOR] Writing file to FFmpeg FS...');
-      await this.ffmpeg.writeFile(inputFileName, await this.fetchFile(file));
+      await this.ffmpeg.FS('writeFile', inputFileName, await FFmpeg.fetchFile(file));
       console.log('[VIDEO_COMPRESSOR] File written');
 
       onProgress(10, 'ビデオエンコード中...');
 
-      // ★ FFmpeg コマンド実行（公式推奨形式：配列）
+      // ★ FFmpeg コマンド実行（run API）
       const audioCodec = this.getAudioCodec(outputFormat);
-      const command = [
+      const args = [
         '-i', inputFileName,
         '-vf', `scale=${this.COMPRESSION_SETTINGS.resolution}`,
         '-r', String(this.COMPRESSION_SETTINGS.fps),
@@ -207,20 +219,20 @@ class VideoCompressor {
       ];
 
       console.log('[VIDEO_COMPRESSOR] Running FFmpeg command');
-      await this.ffmpeg.exec(command);
+      await this.ffmpeg.run(...args);
 
       onProgress(85, '圧縮ファイルを取得中...');
 
-      // ★ ファイルを読み出す（公式API）
+      // ★ ファイルを読み出す
       console.log('[VIDEO_COMPRESSOR] Reading compressed file...');
-      const data = await this.ffmpeg.readFile(outputFileName);
+      const data = await this.ffmpeg.FS('readFile', outputFileName);
       const mimeType = this.getMimeType(outputFormat);
       const compressedBlob = new Blob([data.buffer], { type: mimeType });
 
       // ★ ファイルを削除（クリーンアップ）
       console.log('[VIDEO_COMPRESSOR] Cleaning up temporary files...');
-      await this.ffmpeg.deleteFile(inputFileName);
-      await this.ffmpeg.deleteFile(outputFileName);
+      await this.ffmpeg.FS('unlink', inputFileName);
+      await this.ffmpeg.FS('unlink', outputFileName);
 
       const originalSize = file.size;
       const compressedSize = compressedBlob.size;
@@ -311,4 +323,4 @@ class VideoCompressor {
 // ★ グローバルインスタンス作成（遅延初期化対応）
 window.videoCompressor = new VideoCompressor();
 
-console.log('[VIDEO_COMPRESSOR] Initialized');
+console.log('[VIDEO_COMPRESSOR] Class initialized, waiting for FFmpeg.wasm...');
