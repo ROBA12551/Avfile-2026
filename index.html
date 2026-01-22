@@ -923,8 +923,16 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
     body: base64
   });
 
+  console.log('[UPLOAD_BINARY] Status:', response.status);
+  
+  if (!response.ok) {
+    const text = await response.text();
+    console.error('[UPLOAD_BINARY] Error:', text);
+    throw new Error(`Upload failed: ${response.status}`);
+  }
+
   const data = await response.json();
-  if (!data.success) throw new Error(data.error);
+  console.log('[UPLOAD_BINARY] Success');
   
   return {
     size: data.data.size,
