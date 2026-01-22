@@ -1081,27 +1081,36 @@ class GitHubUploader {
   }
 }
 
-// ★ FFmpeg初期化を待機する関数
 async function waitForFFmpegReady(maxWaitTime = 30000) {
   console.log('[UPLOAD] Checking FFmpeg status...');
+  if (!window.videoCompressor) return false;
+
   console.log('[UPLOAD] isLoaded:', window.videoCompressor.isLoaded);
   console.log('[UPLOAD] isLoading:', window.videoCompressor.isLoading);
-  
+
+  // ★ここが重要：まだなら init を開始
+  if (!window.videoCompressor.isLoaded && !window.videoCompressor.isLoading) {
+    console.log('[UPLOAD] Kicking FFmpeg init...');
+    window.videoCompressor.initFFmpeg().catch(err => {
+      console.warn('[UPLOAD] FFmpeg init failed:', err?.message || err);
+    });
+  }
+
   const startTime = Date.now();
-  
-  // FFmpegが読み込み途中なら完了を待つ
+
   while (window.videoCompressor.isLoading) {
     if (Date.now() - startTime > maxWaitTime) {
       console.warn('[UPLOAD] FFmpeg initialization timeout (was loading)');
       return false;
     }
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await new Promise(r => setTimeout(r, 200));
   }
-  
+
   const isReady = window.videoCompressor.isLoaded;
   console.log('[UPLOAD] FFmpeg ready:', isReady);
   return isReady;
 }
+
 
 // ★ 複数ファイルの同時アップロード（最大10個の並列処理）
 async function uploadMultiple(files) {
