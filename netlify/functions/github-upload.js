@@ -43,7 +43,6 @@ function uploadBinaryToGithub(uploadUrl, buffer) {
     }
   });
 }
-
 function callGithubApi(method, path, body) {
   return new Promise((resolve, reject) => {
     const options = {
@@ -61,8 +60,18 @@ function callGithubApi(method, path, body) {
       let data = '';
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', () => {
-        const json = JSON.parse(data);
-        resolve(json);
+        try {
+          const json = JSON.parse(data);
+          
+          // ✅ HTTP ステータスをチェック
+          if (res.statusCode >= 400) {
+            reject(new Error(`GitHub API Error ${res.statusCode}: ${json.message || data}`));
+          } else {
+            resolve(json);
+          }
+        } catch (e) {
+          reject(new Error(`Failed to parse response: ${data}`));
+        }
       });
     });
 
@@ -72,19 +81,33 @@ function callGithubApi(method, path, body) {
   });
 }
 
-// ★ 追加: github.json にファイルを追加
+// ★ 修正: github.json にファイルを追加
 async function addFileToGithubJson(fileData) {
   try {
-    // 既存の github.json を取得
-    const getRes = await callGithubApi(
-      'GET',
-      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`
-    );
-
+    let sha = null;
     let files = [];
-    if (getRes.content) {
-      const content = Buffer.from(getRes.content, 'base64').toString();
-      files = JSON.parse(content);
+
+    // 既存の github.json を取得
+    try {
+      const getRes = await callGithubApi(
+        'GET',
+        `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`
+      );
+
+      if (getRes.content) {
+        const content = Buffer.from(getRes.content, 'base64').toString();
+        files = JSON.parse(content);
+      }
+      sha = getRes.sha;
+    } catch (e) {
+      // ✅ github.json が存在しない場合は新規作成
+      if (e.message.includes('404')) {
+        console.log('[ADD_FILE] github.json not found, creating new');
+        files = [];
+        sha = null;
+      } else {
+        throw e;
+      }
     }
 
     // 新しいファイル情報を追加
@@ -97,14 +120,20 @@ async function addFileToGithubJson(fileData) {
     });
 
     // github.json を更新
+    const updatePayload = {
+      message: `Add file: ${fileData.fileName}`,
+      content: Buffer.from(JSON.stringify(files, null, 2)).toString('base64')
+    };
+
+    // ✅ 既存ファイルの場合は sha を含める
+    if (sha) {
+      updatePayload.sha = sha;
+    }
+
     await callGithubApi(
       'PUT',
       `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`,
-      {
-        message: `Add file: ${fileData.fileName}`,
-        content: Buffer.from(JSON.stringify(files, null, 2)).toString('base64'),
-        sha: getRes.sha
-      }
+      updatePayload
     );
 
     return { success: true };
@@ -113,92 +142,3 @@ async function addFileToGithubJson(fileData) {
     throw e;
   }
 }
-
-exports.handler = async (event) => {
-  const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
-
-  try {
-    const uploadUrl = event.headers['x-upload-url'];
-    
-    // バイナリアップロード
-    if (uploadUrl) {
-      const isBase64 = event.headers['x-is-base64'] === 'true';
-      const buffer = isBase64
-        ? Buffer.from(event.body, 'base64')
-        : Buffer.from(event.body, 'binary');
-      
-      const result = await uploadBinaryToGithub(uploadUrl, buffer);
-
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({
-          success: true,
-          data: {
-            asset_id: result.id,
-            download_url: result.browser_download_url,
-            name: result.name,
-            size: result.size
-          }
-        })
-      };
-    }
-
-    // JSON アクション処理
-    const body = JSON.parse(event.body || '{}');
-
-    if (body.action === 'create-release') {
-      const result = await callGithubApi('POST', `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases`, {
-        tag_name: body.releaseTag,
-        name: body.metadata?.title || body.releaseTag,
-        body: body.metadata?.description || '',
-        draft: false,
-        prerelease: false
-      });
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({
-          success: true,
-          data: { 
-            release_id: result.id, 
-            tag_name: result.tag_name, 
-            upload_url: result.upload_url 
-          }
-        })
-      };
-    }
-
-    // ★ 追加: add-file アクション
-    if (body.action === 'add-file') {
-      await addFileToGithubJson(body.fileData);
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({ success: true })
-      };
-    }
-
-    if (body.action === 'get-token') {
-      return { 
-        statusCode: 200, 
-        headers, 
-        body: JSON.stringify({ success: true, data: { token: GITHUB_TOKEN } }) 
-      };
-    }
-
-    return { 
-      statusCode: 400, 
-      headers, 
-      body: JSON.stringify({ success: false, error: 'Unknown action' }) 
-    };
-
-  } catch (error) {
-    console.error('[ERROR]', error.message);
-    return { 
-      statusCode: 500, 
-      headers, 
-      body: JSON.stringify({ success: false, error: error.message }) 
-    };
-  }
-};
