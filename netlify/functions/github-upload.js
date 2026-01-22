@@ -1,8 +1,3 @@
-/**
- * =====================================================
- * netlify/functions/github-upload.js - 完全新規実装
- * =====================================================
- */
 
 const https = require('https');
 
@@ -12,49 +7,6 @@ const GITHUB_REPO = process.env.GITHUB_REPO;
 
 const uploadCache = {};
 
-// GitHub API 呼び出し
-function callGithubApi(method, path, body) {
-  return new Promise((resolve, reject) => {
-    const options = {
-      hostname: 'api.github.com',
-      port: 443,
-      path: path,
-      method: method,
-      headers: {
-        'Authorization': `token ${GITHUB_TOKEN}`,
-        'User-Agent': 'Netlify-Function',
-        'Content-Type': 'application/json'
-      }
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(data);
-          if (res.statusCode >= 400) {
-            reject(new Error(`GitHub API Error ${res.statusCode}: ${json.message || data}`));
-          } else {
-            resolve(json);
-          }
-        } catch (e) {
-          reject(new Error(`Parse error: ${data}`));
-        }
-      });
-    });
-
-    req.on('error', reject);
-    
-    if (body) {
-      req.write(JSON.stringify(body));
-    }
-    
-    req.end();
-  });
-}
-
-// バイナリアップロード
 function uploadBinaryToGithub(uploadUrl, fileName, buffer) {
   return new Promise((resolve, reject) => {
     try {
@@ -80,7 +32,7 @@ function uploadBinaryToGithub(uploadUrl, fileName, buffer) {
           try {
             const json = JSON.parse(data);
             if (res.statusCode >= 400) {
-              reject(new Error(`GitHub upload error ${res.statusCode}: ${json.message}`));
+              reject(new Error(`GitHub error ${res.statusCode}: ${json.message}`));
             } else {
               resolve(json);
             }
@@ -99,18 +51,11 @@ function uploadBinaryToGithub(uploadUrl, fileName, buffer) {
   });
 }
 
-// =====================
-// ハンドラー
-// =====================
-
 async function handleCreateRelease(body) {
-  const releaseTag = body.releaseTag;
-  const metadata = body.metadata || {};
-
   const releaseBody = {
-    tag_name: releaseTag,
-    name: metadata.title || releaseTag,
-    body: metadata.description || '',
+    tag_name: body.releaseTag,
+    name: body.metadata?.title || body.releaseTag,
+    body: body.metadata?.description || '',
     draft: false,
     prerelease: false
   };
@@ -128,133 +73,43 @@ async function handleCreateRelease(body) {
   };
 }
 
-async function handleUploadAssetBinary(body) {
-  const uploadUrl = body.uploadUrl;
-  const fileName = body.fileName;
-  const fileData = body.fileData;
-
-  if (!uploadUrl || !fileName || !fileData) {
-    throw new Error('Missing parameters: uploadUrl, fileName, fileData');
-  }
-
-  const buffer = Buffer.from(fileData, 'base64');
-  const result = await uploadBinaryToGithub(uploadUrl, fileName, buffer);
-
-  return {
-    asset_id: result.id,
-    download_url: result.browser_download_url,
-    name: result.name,
-    size: result.size
-  };
-}
-
-async function handleUploadChunk(event) {
-  const params = event.queryStringParameters || {};
-  const uploadId = params.uploadId;
-  const chunkIndex = parseInt(params.chunkIndex);
-  const totalChunks = parseInt(params.totalChunks);
-  const fileName = params.fileName;
-
-  if (!uploadId || chunkIndex === undefined || !event.body) {
-    throw new Error('Missing parameters');
-  }
-
-  const chunkBuffer = event.isBase64Encoded
-    ? Buffer.from(event.body, 'base64')
-    : Buffer.from(event.body, 'binary');
-
-  if (!uploadCache[uploadId]) {
-    uploadCache[uploadId] = {
-      chunks: {},
-      fileName: fileName,
-      totalChunks: totalChunks
+function callGithubApi(method, path, body) {
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: 'api.github.com',
+      port: 443,
+      path: path,
+      method: method,
+      headers: {
+        'Authorization': `token ${GITHUB_TOKEN}`,
+        'User-Agent': 'Netlify',
+        'Content-Type': 'application/json'
+      }
     };
-  }
 
-  uploadCache[uploadId].chunks[chunkIndex] = chunkBuffer;
-  const received = Object.keys(uploadCache[uploadId].chunks).length;
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (res.statusCode >= 400) {
+            reject(new Error(`GitHub API ${res.statusCode}: ${json.message}`));
+          } else {
+            resolve(json);
+          }
+        } catch (e) {
+          reject(new Error(`Parse error: ${data}`));
+        }
+      });
+    });
 
-  return {
-    success: true,
-    receivedChunks: received,
-    totalChunks: totalChunks
-  };
+    req.on('error', reject);
+    if (body) req.write(JSON.stringify(body));
+    req.end();
+  });
 }
 
-async function handleFinalizeChunks(body) {
-  const uploadId = body.uploadId;
-  const fileName = body.fileName;
-  const uploadUrl = body.uploadUrl;
-
-  const cache = uploadCache[uploadId];
-  if (!cache) {
-    throw new Error('Upload session not found');
-  }
-
-  const indices = Object.keys(cache.chunks).map(i => parseInt(i)).sort((a, b) => a - b);
-  const chunksArray = indices.map(i => cache.chunks[i]);
-  const merged = Buffer.concat(chunksArray);
-
-  const result = await uploadBinaryToGithub(uploadUrl, fileName, merged);
-
-  delete uploadCache[uploadId];
-
-  return {
-    fileId: uploadId,
-    fileName: fileName,
-    size: merged.length,
-    downloadUrl: result.browser_download_url
-  };
-}
-
-async function handleAddFileToGithubJson(body) {
-  const fileData = body.fileData;
-
-  const getRes = await callGithubApi(
-    'GET',
-    `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`
-  );
-
-  let jsonData = [];
-  if (getRes.content) {
-    const content = Buffer.from(getRes.content, 'base64').toString();
-    jsonData = JSON.parse(content);
-  }
-
-  jsonData.push(fileData);
-
-  const updateBody = {
-    message: `Add file: ${fileData.fileName}`,
-    content: Buffer.from(JSON.stringify(jsonData, null, 2)).toString('base64'),
-    sha: getRes.sha
-  };
-
-  await callGithubApi(
-    'PUT',
-    `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`,
-    updateBody
-  );
-
-  return { success: true };
-}
-
-async function handleGetGithubJson() {
-  const res = await callGithubApi(
-    'GET',
-    `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`
-  );
-
-  const content = Buffer.from(res.content, 'base64').toString();
-  const data = JSON.parse(content);
-
-  return data;
-}
-
-async function handleCreateView(body) {
-  return {
-    shareUrl: `${body.origin}/?id=${body.fileIds[0]}`
-  };
-}
 exports.handler = async (event) => {
   const headers = {
     'Content-Type': 'application/json',
@@ -262,16 +117,18 @@ exports.handler = async (event) => {
   };
 
   try {
+    if (event.httpMethod === 'OPTIONS') {
+      return { statusCode: 200, headers, body: '' };
+    }
+
     const uploadUrl = event.headers['x-upload-url'];
     const fileName = event.headers['x-upload-name'];
     const action = event.queryStringParameters?.action;
 
-    // ★ バイナリアセットアップロード
-    if (action === 'upload-asset-binary' || (!action && uploadUrl && fileName)) {
+    // バイナリアップロード
+    if (uploadUrl && fileName) {
       const buffer = event.isBase64Encoded
         ? Buffer.from(event.body, 'base64')
-        : event.body instanceof Buffer
-        ? event.body
         : Buffer.from(event.body, 'binary');
 
       const result = await uploadBinaryToGithub(uploadUrl, fileName, buffer);
@@ -291,11 +148,33 @@ exports.handler = async (event) => {
       };
     }
 
-    // 既存の JSON ベースの処理
     const body = JSON.parse(event.body || '{}');
-    
-    // ... 既存のコード
+
+    if (body.action === 'create-release') {
+      const result = await handleCreateRelease(body);
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ success: true, data: result })
+      };
+    }
+
+    if (body.action === 'get-token') {
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ success: true, data: { token: GITHUB_TOKEN } })
+      };
+    }
+
+    return {
+      statusCode: 400,
+      headers,
+      body: JSON.stringify({ success: false, error: 'Unknown action' })
+    };
+
   } catch (error) {
+    console.error('[ERROR]', error.message);
     return {
       statusCode: 500,
       headers,
