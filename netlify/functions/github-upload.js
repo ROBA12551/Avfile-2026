@@ -72,6 +72,48 @@ function callGithubApi(method, path, body) {
   });
 }
 
+// ★ 追加: github.json にファイルを追加
+async function addFileToGithubJson(fileData) {
+  try {
+    // 既存の github.json を取得
+    const getRes = await callGithubApi(
+      'GET',
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`
+    );
+
+    let files = [];
+    if (getRes.content) {
+      const content = Buffer.from(getRes.content, 'base64').toString();
+      files = JSON.parse(content);
+    }
+
+    // 新しいファイル情報を追加
+    files.push({
+      fileId: fileData.fileId,
+      fileName: fileData.fileName,
+      fileSize: fileData.fileSize,
+      downloadUrl: fileData.downloadUrl,
+      uploadedAt: new Date().toISOString()
+    });
+
+    // github.json を更新
+    await callGithubApi(
+      'PUT',
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`,
+      {
+        message: `Add file: ${fileData.fileName}`,
+        content: Buffer.from(JSON.stringify(files, null, 2)).toString('base64'),
+        sha: getRes.sha
+      }
+    );
+
+    return { success: true };
+  } catch (e) {
+    console.error('[ADD_FILE] Error:', e.message);
+    throw e;
+  }
+}
+
 exports.handler = async (event) => {
   const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
 
@@ -79,15 +121,13 @@ exports.handler = async (event) => {
     const uploadUrl = event.headers['x-upload-url'];
     
     // バイナリアップロード
-if (uploadUrl) {
-  const isBase64 = event.headers['x-is-base64'] === 'true';
-  const buffer = isBase64
-    ? Buffer.from(event.body, 'base64')
-    : Buffer.from(event.body, 'binary');
-  
-  const result = await uploadBinaryToGithub(uploadUrl, buffer);
-  // 
-
+    if (uploadUrl) {
+      const isBase64 = event.headers['x-is-base64'] === 'true';
+      const buffer = isBase64
+        ? Buffer.from(event.body, 'base64')
+        : Buffer.from(event.body, 'binary');
+      
+      const result = await uploadBinaryToGithub(uploadUrl, buffer);
 
       return {
         statusCode: 200,
@@ -126,6 +166,16 @@ if (uploadUrl) {
             upload_url: result.upload_url 
           }
         })
+      };
+    }
+
+    // ★ 追加: add-file アクション
+    if (body.action === 'add-file') {
+      await addFileToGithubJson(body.fileData);
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ success: true })
       };
     }
 
