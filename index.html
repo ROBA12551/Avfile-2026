@@ -860,12 +860,6 @@
         <p>&copy; 2026 Avfile • Fast & Simple File Sharing</p>
     </footer>
 
- <script src="/js/chunked-binary-uploader.js"></script>
-
-<!-- ★ ビデオ圧縮スクリプト（公式FFmpeg.wasm対応） -->
-<script src="/js/video-compressor-official.js"></script>
-
-<script src="/js/universal-file-uploader-enhanced.js"></script>
 <script>
 
 const MAX_FILES = 10;
@@ -1341,8 +1335,12 @@ if (viewId) {
 }
 </script>
 
-<!-- body最後 -->
+<!-- body最後に集約（おすすめ） -->
 <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.9/dist/ffmpeg.min.js"></script>
+
+<script src="/js/chunked-binary-uploader.js"></script>
 <script src="/js/video-compressor-official.js"></script>
+<script src="/js/universal-file-uploader-enhanced.js"></script>
+
 </body>
 </html>
