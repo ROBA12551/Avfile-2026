@@ -982,15 +982,18 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject) {
     base64 += String.fromCharCode.apply(null, uint8Array.subarray(i, i + chunkSize));
   }
   base64 = btoa(base64);
-
-  const response = await fetch(this.functionUrl, {
-    method: 'POST',
-    headers: {
-      'X-Upload-Url': uploadUrl,
-      'X-Is-Base64': 'true'
-    },
-    body: base64
-  });
+// ✅ 正しいコード
+const response = await fetch(this.functionUrl, {
+  method: 'POST',
+  headers: {
+    'X-Upload-Url': uploadUrl,
+    'X-Is-Base64': 'true',
+    'Content-Type': 'application/json'  // これを追加！
+  },
+  body: JSON.stringify({
+    data: base64  // または必要なデータ構造
+  })
+});
 
   console.log('[UPLOAD_BINARY] Status:', response.status);
   
