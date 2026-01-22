@@ -1013,69 +1013,71 @@ class GitHubUploader {
     
     return data.data;
   }
+// ★ バイナリを Netlify Functions 経由で GitHub へアップロード（元の方式）
+async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
+  const sanitizedFileName = this.sanitizeFileName(fileName);
 
-  // ★ バイナリを GitHub にアップロード（プロキシ経由）
-  async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
-    const sanitizedFileName = this.sanitizeFileName(fileName);
+  console.log('[UPLOAD_BINARY] File:', sanitizedFileName);
+  console.log('[UPLOAD_BINARY] Size:', (fileSize / 1024 / 1024).toFixed(2), 'MB');
 
-    console.log('[UPLOAD_BINARY] File:', sanitizedFileName);
-    console.log('[UPLOAD_BINARY] Size:', (fileSize / 1024 / 1024).toFixed(2), 'MB');
+  let processedFile = fileObject;
 
-    let processedFile = fileObject;
+  // 圧縮スキップ
+  console.log('[UPLOAD_BINARY] Skipping compression for now');
 
-    // 圧縮スキップ
-    console.log('[UPLOAD_BINARY] Skipping compression for now');
-
-    // ★ GitHub トークンを取得
-    const token = await this.getGitHubToken();
-
-    // ★ upload_url をクリーンアップ
-    let cleanUrl = uploadUrl.trim().replace(/\{[?&].*?\}/g, '');
-    const encodedFileName = encodeURIComponent(sanitizedFileName);
-    const assetUrl = `${cleanUrl}?name=${encodedFileName}`;
-
-    console.log('[UPLOAD_BINARY] Uploading via proxy...');
-    console.log('[UPLOAD_BINARY] URL:', assetUrl.substring(0, 100) + '...');
-
-    // ★ ArrayBuffer に変換
-    const arrayBuffer = await processedFile.arrayBuffer();
-    console.log('[UPLOAD_BINARY] Buffer size:', (arrayBuffer.byteLength / 1024 / 1024).toFixed(2), 'MB');
-
-    // ★ プロキシに送信（バイナリデータとして）
-    const response = await fetch('/.netlify/functions/github-proxy', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/octet-stream',
-        'X-GitHub-Url': assetUrl,
-        'X-GitHub-Token': token,
-        'X-GitHub-Method': 'POST',
-      },
-      body: arrayBuffer  // ★ バイナリをそのまま送信
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '');
-      console.error('[UPLOAD_BINARY] Error:', response.status, errorText);
-      throw new Error(`Upload failed: ${response.status}`);
-    }
-
-    const data = await response.json();
-    
-    if (!data.success) {
-      throw new Error(data.error || 'Upload failed');
-    }
-    
-    console.log('[UPLOAD_BINARY] Complete');
-    
-    return {
-      success: true,
-      asset_id: data.data.id,
-      browser_download_url: data.data.browser_download_url,
-      name: data.data.name,
-      size: data.data.size
-    };
+  // ★ 4MB制限チェック
+  if (processedFile.size > 4 * 1024 * 1024) {
+    console.error('[UPLOAD_BINARY] File too large for Netlify Functions (>4MB)');
+    throw new Error(`File too large: ${(processedFile.size / 1024 / 1024).toFixed(2)}MB. Maximum 4MB supported.`);
   }
 
+  // ArrayBuffer に変換
+  console.log('[UPLOAD_BINARY] Converting to ArrayBuffer...');
+  const arrayBuffer = await processedFile.arrayBuffer();
+  console.log('[UPLOAD_BINARY] Buffer size:', (arrayBuffer.byteLength / 1024 / 1024).toFixed(2), 'MB');
+
+  // ★ 元の方式: github-upload に直接送信
+  const params = new URLSearchParams({
+    action: 'upload-asset-binary',
+    url: uploadUrl,
+    name: sanitizedFileName
+  });
+
+  const finalUrl = `${this.functionUrl}?${params.toString()}`;
+
+  console.log('[UPLOAD_BINARY] Uploading via Netlify Functions (github-upload)...');
+
+  const response = await fetch(finalUrl, {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/octet-stream',
+      'Content-Length': arrayBuffer.byteLength.toString()
+    },
+    body: arrayBuffer
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    console.error('[UPLOAD_BINARY] Error:', response.status, errorText);
+    throw new Error(`Upload failed: ${response.status}`);
+  }
+
+  const data = await response.json();
+  
+  if (!data.success) {
+    throw new Error(data.error || 'Upload failed');
+  }
+  
+  console.log('[UPLOAD_BINARY] Complete');
+  
+  return {
+    success: true,
+    asset_id: data.data.asset_id,
+    browser_download_url: data.data.download_url,
+    name: data.data.name,
+    size: data.data.size
+  };
+}
   // ★ ファイル情報を github.json に即座に追加
   async addFileToGithubJson(fileData) {
     console.log('[ADD_FILE] Adding to github.json:', fileData.fileId);
