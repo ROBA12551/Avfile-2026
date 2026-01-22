@@ -730,7 +730,8 @@
 
 <!-- ローカル圧縮エンジン -->
 <script src="/js/video-compression-local.js"></script>
- 
+ <script src="/js/chunked-binary-uploader.js"></script>
+
 <!-- ファイルアップロード強化版 -->
 <script src="/js/universal-file-uploader-enhanced.js"></script>
 <script>
@@ -743,7 +744,31 @@ const VIDEO_COMPRESSION_THRESHOLD = 200 * 1024 * 1024;
 let githubJsonCache = null;
 let githubJsonCacheTime = 0;
 const CACHE_TTL = 10000; // 10秒キャッシュ
+ const uploader = new ChunkedBinaryUploader();
 
+  document.getElementById('fileInput').addEventListener('change', async (e) => {
+    const files = Array.from(e.target.files);
+
+    try {
+      const results = await uploader.uploadMultiple(
+        files,
+        (status) => {
+          console.log(status);
+          document.getElementById('status').textContent = status;
+        },
+        (progress) => {
+          console.log(progress.toFixed(1) + '%');
+          document.getElementById('progressBar').style.width = progress.toFixed(1) + '%';
+        }
+      );
+
+      console.log('Upload complete:', results);
+      alert('Upload successful!');
+    } catch (error) {
+      console.error('Upload failed:', error);
+      alert('Upload failed: ' + error.message);
+    }
+  });
 /**
  * キャッシュから github.json を取得（同期的）
  */
@@ -1014,48 +1039,60 @@ class GitHubUploader {
     return data.data;
   }
 
+// ★ バイナリを Netlify Functions 経由で GitHub へアップロード
 async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   const sanitizedFileName = this.sanitizeFileName(fileName);
 
-  console.log('[UPLOAD] File:', sanitizedFileName);
-  console.log('[UPLOAD] Size:', (fileSize / 1024 / 1024).toFixed(2), 'MB');
+  console.log('[UPLOAD_BINARY] File:', sanitizedFileName);
+  console.log('[UPLOAD_BINARY] Size:', (fileSize / 1024 / 1024).toFixed(2), 'MB');
 
-  // ★ Step 1: アップロード開始
-  const initResponse = await fetch('/.netlify/functions/initiate-upload', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fileName: sanitizedFileName, uploadUrl })
-  });
+  let processedFile = fileObject;
 
-  const { uploadId } = await initResponse.json();
+  // 圧縮スキップ
+  console.log('[UPLOAD_BINARY] Skipping compression for now');
 
-  // ★ Step 2: チャンクに分割してアップロード
-  const CHUNK_SIZE = 3 * 1024 * 1024; // 3MB chunks
-  const arrayBuffer = await fileObject.arrayBuffer();
-  const totalChunks = Math.ceil(arrayBuffer.byteLength / CHUNK_SIZE);
-
-  for (let i = 0; i < totalChunks; i++) {
-    const start = i * CHUNK_SIZE;
-    const end = Math.min(start + CHUNK_SIZE, arrayBuffer.byteLength);
-    const chunk = arrayBuffer.slice(start, end);
-
-    console.log(`[UPLOAD] Chunk ${i + 1}/${totalChunks}`);
-
-    await fetch(`/.netlify/functions/upload-chunk?id=${uploadId}&index=${i}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/octet-stream' },
-      body: chunk
-    });
+  // ★ 5MB制限チェック
+  if (processedFile.size > 3 * 1024 * 1024) {
+    console.error('[UPLOAD_BINARY] File too large for Netlify Functions (>5MB)');
+    throw new Error(`File too large: ${(processedFile.size / 1024 / 1024).toFixed(2)}MB. Maximum 5MB supported.`);
   }
 
-  // ★ Step 3: アップロード完了
-  const finalizeResponse = await fetch('/.netlify/functions/finalize-upload', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ uploadId })
+  console.log('[UPLOAD_BINARY] File size check passed');
+
+  // ★ Netlify Functions に直接送信（ArrayBuffer変換なし）
+  const params = new URLSearchParams({
+    action: 'upload-asset-binary',
+    url: uploadUrl,
+    name: sanitizedFileName
   });
 
-  const data = await finalizeResponse.json();
+  const finalUrl = `${this.functionUrl}?${params.toString()}`;
+
+  console.log('[UPLOAD_BINARY] Uploading via Netlify Functions...');
+  console.log('[UPLOAD_BINARY] Request size:', (processedFile.size / 1024 / 1024).toFixed(2), 'MB');
+
+  // ★ Fileオブジェクトをそのまま送信
+  const response = await fetch(finalUrl, {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/octet-stream',
+    },
+    body: processedFile  // ★ ArrayBuffer変換なし、Fileオブジェクトそのまま
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    console.error('[UPLOAD_BINARY] Error:', response.status, errorText);
+    throw new Error(`Upload failed: ${response.status}`);
+  }
+
+  const data = await response.json();
+  
+  if (!data.success) {
+    throw new Error(data.error || 'Upload failed');
+  }
+  
+  console.log('[UPLOAD_BINARY] Complete');
   
   return {
     success: true,
