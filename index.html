@@ -36,8 +36,8 @@
     <link rel="apple-touch-icon" href="/images/folder.png">
     
     
-    <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.8.5/dist/ffmpeg.min.js"></script>
-    
+    <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+
     <title>Avfile - Fast File Sharing Service | Unlimited Storage</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1013,8 +1013,7 @@ class GitHubUploader {
     
     return data.data;
   }
-
-// ★ バイナリを Netlify Functions 経由で GitHub へアップロード
+// ★ GitHub に直接アップロード（Netlify Functions 経由なし）
 async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   const sanitizedFileName = this.sanitizeFileName(fileName);
 
@@ -1023,58 +1022,54 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
 
   let processedFile = fileObject;
 
-  // 圧縮スキップ
+  // 圧縮スキップ（後で有効化）
   console.log('[UPLOAD_BINARY] Skipping compression for now');
 
-  // ★ 5MB制限チェック
-  if (processedFile.size > 3 * 1024 * 1024) {
-    console.error('[UPLOAD_BINARY] File too large for Netlify Functions (>5MB)');
-    throw new Error(`File too large: ${(processedFile.size / 1024 / 1024).toFixed(2)}MB. Maximum 5MB supported.`);
-  }
+  // ★ GitHub トークンを取得（Netlify Functions経由）
+  const token = await this.getGitHubToken();
 
-  console.log('[UPLOAD_BINARY] File size check passed');
+  // ★ upload_url をクリーンアップ
+  let cleanUrl = uploadUrl.trim().replace(/\{[?&].*?\}/g, '');
+  const encodedFileName = encodeURIComponent(sanitizedFileName);
+  const assetUrl = `${cleanUrl}?name=${encodedFileName}`;
 
-  // ★ Netlify Functions に直接送信（ArrayBuffer変換なし）
-  const params = new URLSearchParams({
-    action: 'upload-asset-binary',
-    url: uploadUrl,
-    name: sanitizedFileName
-  });
+  console.log('[UPLOAD_BINARY] Direct upload to GitHub...');
+  console.log('[UPLOAD_BINARY] URL:', assetUrl.substring(0, 100) + '...');
+  console.log('[UPLOAD_BINARY] Size:', (processedFile.size / 1024 / 1024).toFixed(2), 'MB');
 
-  const finalUrl = `${this.functionUrl}?${params.toString()}`;
-
-  console.log('[UPLOAD_BINARY] Uploading via Netlify Functions...');
-  console.log('[UPLOAD_BINARY] Request size:', (processedFile.size / 1024 / 1024).toFixed(2), 'MB');
-
-  // ★ Fileオブジェクトをそのまま送信
-  const response = await fetch(finalUrl, {
+  // ★ ブラウザから直接 GitHub API にアップロード
+  const response = await fetch(assetUrl, {
     method: 'POST',
-    headers: { 
+    headers: {
+      'Authorization': `token ${token}`,
       'Content-Type': 'application/octet-stream',
+      'User-Agent': 'Avfile-Client',
     },
-    body: processedFile  // ★ ArrayBuffer変換なし、Fileオブジェクトそのまま
+    body: processedFile  // ★ Fileオブジェクトを直接送信
   });
+
+  console.log('[UPLOAD_BINARY] Response status:', response.status);
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => '');
-    console.error('[UPLOAD_BINARY] Error:', response.status, errorText);
+    console.error('[UPLOAD_BINARY] Error:', errorText.substring(0, 500));
     throw new Error(`Upload failed: ${response.status}`);
   }
 
   const data = await response.json();
   
-  if (!data.success) {
-    throw new Error(data.error || 'Upload failed');
+  if (!data || !data.id) {
+    throw new Error('GitHub response missing ID');
   }
   
-  console.log('[UPLOAD_BINARY] Complete');
+  console.log('[UPLOAD_BINARY] Complete - Asset ID:', data.id);
   
   return {
     success: true,
-    asset_id: data.data.asset_id,
-    browser_download_url: data.data.download_url,
-    name: data.data.name,
-    size: data.data.size
+    asset_id: data.id,
+    browser_download_url: data.browser_download_url,
+    name: data.name,
+    size: data.size
   };
 }
   // ★ ファイル情報を github.json に即座に追加

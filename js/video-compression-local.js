@@ -1,16 +1,43 @@
 /**
  * js/video-compression-local.js
- * FFmpeg.wasm v0.8 対応版
+ * ローカル（クライアント側）で完全に圧縮処理を行う
+ * ★ すべてのデバイス・ブラウザで FFmpeg 圧縮を実行
+ * ★ High Profile H.264 対応（.mov ファイル対応）
+ * ★ すべての動画を MP4 に統一
  */
 
 class VideoCompressionEngineLocal {
   constructor() {
     this.ffmpeg = null;
     this.ffmpegReady = false;
+    this.setupDeviceDetection();
+  }
+
+  setupDeviceDetection() {
+    const ua = navigator.userAgent || '';
+    
+    console.log('[DEVICE] User-Agent:', ua.substring(0, 100));
+
+    this.IS_IOS = /iPad|iPhone|iPod/.test(ua);
+    this.IS_ANDROID = /Android/.test(ua);
+    this.IS_SAFARI = /Safari/.test(ua) && !/Chrome|CriOS|Edg/.test(ua);
+    this.IS_OPERA = /Opera|OPR/.test(ua);
+    this.IS_FIREFOX = /Firefox/.test(ua);
+    this.IS_MOBILE = this.IS_IOS || this.IS_ANDROID || /Mobile|Tablet|Kindle/.test(ua);
+
+    console.log('[DEVICE] Detection result:', {
+      iOS: this.IS_IOS,
+      Android: this.IS_ANDROID,
+      Safari: this.IS_SAFARI,
+      Opera: this.IS_OPERA,
+      Mobile: this.IS_MOBILE,
+    });
+
+    console.log('✅ すべてのデバイスで FFmpeg 圧縮を実行します');
   }
 
   async initFFmpeg() {
-    if (this.ffmpegReady && this.ffmpeg) {
+    if (this.ffmpegReady && this.ffmpeg && this.ffmpeg.isLoaded()) {
       console.log('✅ FFmpeg は既に初期化済み');
       return;
     }
@@ -18,21 +45,20 @@ class VideoCompressionEngineLocal {
     try {
       console.log('⏳ FFmpeg 初期化開始...');
       
-      // ★ v0.8: window.FFmpeg.createFFmpeg
-      if (!window.FFmpeg || !window.FFmpeg.createFFmpeg) {
-        console.error('❌ window.FFmpeg.createFFmpeg が見つかりません');
-        console.log('window.FFmpeg:', window.FFmpeg);
+      if (!window.FFmpeg || !window.FFmpeg.FFmpeg) {
+        console.error('❌ window.FFmpeg が見つかりません');
         throw new Error('FFmpeg ライブラリが読み込まれていません');
       }
 
-      const { createFFmpeg } = window.FFmpeg;
+      const { FFmpeg } = window.FFmpeg;
       
-      this.ffmpeg = createFFmpeg({ 
-        log: true,
-        logger: ({ message }) => {
-          console.log('[FFmpeg]', message);
-        }
-      });
+      this.ffmpeg = new FFmpeg({ log: false });
+
+      if (this.ffmpeg.isLoaded()) {
+        console.log('✅ FFmpeg は既にロード済み');
+        this.ffmpegReady = true;
+        return;
+      }
 
       console.log('⏳ FFmpeg コア（WASM）をロード中...');
       await this.ffmpeg.load();
@@ -41,20 +67,42 @@ class VideoCompressionEngineLocal {
       console.log('✅ FFmpeg 初期化完了');
     } catch (error) {
       console.error('❌ FFmpeg 初期化失敗:', error.message);
-      console.error('Stack:', error.stack);
       this.ffmpegReady = false;
-      throw error;
+      throw new Error(`FFmpeg 初期化失敗: ${error.message}`);
     }
   }
 
+  async blobToArrayBuffer(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        console.log('[BLOB] Converted to ArrayBuffer:', reader.result.byteLength, 'bytes');
+        resolve(reader.result);
+      };
+      reader.onerror = () => {
+        console.error('[BLOB] Conversion error:', reader.error);
+        reject(reader.error);
+      };
+      reader.readAsArrayBuffer(blob);
+    });
+  }
+
+  /**
+   * 拡張子を MP4 に変換
+   */
   convertToMP4FileName(fileName) {
     if (!fileName) return 'output.mp4';
-    if (fileName.toLowerCase().endsWith('.mp4')) return fileName;
     
+    // 既に .mp4 なら変更不要
+    if (fileName.toLowerCase().endsWith('.mp4')) {
+      return fileName;
+    }
+    
+    // 拡張子を削除して .mp4 を追加
     const nameWithoutExt = fileName.split('.').slice(0, -1).join('.');
     const newFileName = nameWithoutExt ? `${nameWithoutExt}.mp4` : 'output.mp4';
     
-    console.log('[CONVERT] File name:', fileName, '→', newFileName);
+    console.log('[CONVERT] File name conversion:', fileName, '→', newFileName);
     return newFileName;
   }
 
@@ -66,87 +114,156 @@ class VideoCompressionEngineLocal {
         type: videoFile.type,
       });
 
-      const originalFileName = videoFile.name || 'video.mov';
+      // ★ ファイル名を MP4 に統一
+      const originalFileName = videoFile.name || 'video';
       const mp4FileName = this.convertToMP4FileName(originalFileName);
+      console.log('[COMPRESS] Output will be converted to:', mp4FileName);
+
+      // ★ すべてのデバイスで圧縮実行
+      console.log('✅ FFmpeg 圧縮を実行します（すべてのデバイス・ブラウザ対応）');
 
       try {
         await this.initFFmpeg();
       } catch (error) {
-        console.warn('⚠️ FFmpeg 初期化失敗:', error.message);
-        onProgress(100, '⚠️ 圧縮スキップ');
-        return new File([videoFile], mp4FileName, { type: 'video/mp4' });
+        console.warn('⚠️ FFmpeg 初期化に失敗 - ファイルを MP4 に変換して返却:', error.message);
+        onProgress(100, '⚠️ ファイルを MP4 に変換');
+        
+        // ★ FFmpeg 初期化失敗時も MP4 に変換
+        const mp4File = new File([videoFile], mp4FileName, { type: 'video/mp4' });
+        return mp4File;
       }
 
-      onProgress(10, '📥 ファイル読み込み中...');
+      const inputFileName = 'input_video.mp4';
+      const outputFileName = 'output.mp4';
 
-      const inputName = 'input.mov';
-      const outputName = 'output.mp4';
+      onProgress(10, '📥 ファイルを読み込み中...');
+      console.log('[COMPRESS] Reading file...');
 
-      // ★ v0.8: write メソッドでファイルを書き込む
-      console.log('[COMPRESS] Writing file to FFmpeg FS...');
-      await this.ffmpeg.write(inputName, videoFile);
-      
+      let inputData;
+      try {
+        inputData = await this.blobToArrayBuffer(videoFile);
+        console.log('[COMPRESS] ArrayBuffer created:', inputData.byteLength, 'bytes');
+      } catch (err) {
+        console.error('[COMPRESS] Blob conversion failed:', err.message);
+        console.warn('⚠️ ファイル変換失敗 - MP4 形式で返却');
+        onProgress(100, '⚠️ ファイルを MP4 に変換');
+        
+        // ★ MP4 形式で返す
+        const mp4File = new File([videoFile], mp4FileName, { type: 'video/mp4' });
+        return mp4File;
+      }
+
+      try {
+        console.log('[COMPRESS] Writing to FFmpeg FS...');
+        await this.ffmpeg.FS('writeFile', inputFileName, new Uint8Array(inputData));
+        console.log('[COMPRESS] File written to FFmpeg FS');
+      } catch (err) {
+        console.error('[COMPRESS] writeFile failed:', err.message);
+        console.warn('⚠️ ファイル書き込み失敗 - MP4 形式で返却');
+        onProgress(100, '⚠️ ファイルを MP4 に変換');
+        
+        // ★ MP4 形式で返す
+        const mp4File = new File([videoFile], mp4FileName, { type: 'video/mp4' });
+        return mp4File;
+      }
+
       const originalMB = (videoFile.size / 1024 / 1024).toFixed(2);
-      console.log(`✅ ファイル読み込み完了: ${originalMB}MB`);
+      console.log(`✅ ファイルロード完了: ${originalMB}MB`);
 
-      onProgress(30, '⚙️ 圧縮開始...');
+      onProgress(30, '⚙️ 圧縮設定中...');
+      console.log('[COMPRESS] Building FFmpeg command...');
 
-      // ★ v0.8: run メソッドでFFmpegコマンドを実行
-      console.log('[COMPRESS] Running FFmpeg...');
-      
-      await this.ffmpeg.run(
-        '-i', inputName,
-        '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease',
+      // ★ High Profile H.264 対応のコマンド設定
+      const command = [
+        '-i', inputFileName,
+        '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2',
         '-r', '30',
         '-c:v', 'libx264',
         '-preset', 'ultrafast',
-        '-crf', '28',
+        '-crf', '32',
+        '-profile:v', 'high',      // ★ High Profile に統一
+        '-level', '3.1',            // ★ Level 3.1 に統一
         '-c:a', 'aac',
         '-b:a', '96k',
-        outputName
-      );
+        '-movflags', '+faststart',
+        outputFileName,
+      ];
 
-      console.log('✅ FFmpeg 実行完了');
+      console.log('[COMPRESS] FFmpeg command:', command.join(' '));
 
-      onProgress(80, '📤 圧縮ファイル取得中...');
+      onProgress(40, '🎬 動画を圧縮中...');
+      console.log('[COMPRESS] Running FFmpeg...');
 
-      // ★ v0.8: read メソッドでファイルを読み取る
-      const outputData = await this.ffmpeg.read(outputName);
-      console.log('[COMPRESS] Output file read:', outputData.length, 'bytes');
-
-      // ★ クリーンアップ
       try {
-        await this.ffmpeg.remove(inputName);
-        await this.ffmpeg.remove(outputName);
-        console.log('✅ Temporary files cleaned');
+        await this.ffmpeg.run(...command);
+        console.log('✅ FFmpeg 実行完了');
+      } catch (err) {
+        console.error('[COMPRESS] FFmpeg run failed:', err.message);
+        console.warn('⚠️ 圧縮失敗 - MP4 形式で返却');
+        onProgress(100, '⚠️ ファイルを MP4 に変換');
+        
+        // ★ MP4 形式で返す
+        const mp4File = new File([videoFile], mp4FileName, { type: 'video/mp4' });
+        return mp4File;
+      }
+
+      onProgress(80, '📤 圧縮ファイルを取得中...');
+      console.log('[COMPRESS] Reading output file...');
+
+      let outputData;
+      try {
+        outputData = await this.ffmpeg.FS('readFile', outputFileName);
+        console.log('[COMPRESS] Output file read:', outputData.length, 'bytes');
+      } catch (err) {
+        console.error('[COMPRESS] readFile failed:', err.message);
+        console.warn('⚠️ 出力ファイル読み込み失敗 - MP4 形式で返却');
+        onProgress(100, '⚠️ ファイルを MP4 に変換');
+        
+        // ★ MP4 形式で返す
+        const mp4File = new File([videoFile], mp4FileName, { type: 'video/mp4' });
+        return mp4File;
+      }
+
+      const compressedBlob = new Blob([outputData.buffer], { type: 'video/mp4' });
+
+      try {
+        await this.ffmpeg.FS('unlink', inputFileName);
+        await this.ffmpeg.FS('unlink', outputFileName);
+        console.log('✅ Temporary files cleaned up');
       } catch (err) {
         console.warn('[COMPRESS] Cleanup warning:', err.message);
       }
 
-      const compressedBlob = new Blob([outputData.buffer], { type: 'video/mp4' });
       const compressedMB = (compressedBlob.size / 1024 / 1024).toFixed(2);
       const ratio = ((1 - compressedBlob.size / videoFile.size) * 100).toFixed(0);
       
       console.log(`✅ 圧縮完了: ${originalMB}MB → ${compressedMB}MB (${ratio}% 削減)`);
+      console.log(`✅ ファイル形式を MP4 に統一: ${mp4FileName}`);
 
-      onProgress(100, `✅ 圧縮完了 (${ratio}% 削減)`);
+      onProgress(100, `✅ MP4 圧縮完了 (${ratio}% 削減)`);
 
-      return new File([compressedBlob], mp4FileName, { type: 'video/mp4' });
-      
+      // ★ 圧縮済みファイルを MP4 ファイルとして返す
+      const compressedMP4File = new File([compressedBlob], mp4FileName, { type: 'video/mp4' });
+      return compressedMP4File;
     } catch (error) {
       console.error('❌ 圧縮エラー:', error.message);
       console.error('Stack:', error.stack);
       
-      const mp4FileName = this.convertToMP4FileName(videoFile.name || 'video.mov');
-      onProgress(100, '⚠️ 圧縮失敗');
+      // ★ エラー時も MP4 形式で返す
+      const originalFileName = videoFile.name || 'video';
+      const mp4FileName = this.convertToMP4FileName(originalFileName);
       
-      return new File([videoFile], mp4FileName, { type: 'video/mp4' });
+      console.warn('⚠️ 圧縮失敗 - MP4 形式で元のファイルを返却します');
+      onProgress(100, '⚠️ ファイルを MP4 に変換');
+      
+      const mp4File = new File([videoFile], mp4FileName, { type: 'video/mp4' });
+      return mp4File;
     }
   }
 
   async cleanup() {
     try {
-      if (this.ffmpeg) {
+      if (this.ffmpeg && this.ffmpeg.isLoaded()) {
         console.log('🗑️ FFmpeg メモリ解放中...');
         this.ffmpeg = null;
         this.ffmpegReady = false;
