@@ -923,41 +923,66 @@ class GitHubUploader {
     this.githubToken = null;
   }
 
-async uploadAssetBinary(uploadUrl, fileName, fileObject) {
-  console.log('[UPLOAD_BINARY] Uploading...');
-  console.log('[UPLOAD_BINARY] uploadUrl:', uploadUrl);
-  
-  const arrayBuffer = await fileObject.arrayBuffer();
-  console.log('[UPLOAD_BINARY] arrayBuffer size:', arrayBuffer.byteLength);
-  
-  const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-  console.log('[UPLOAD_BINARY] base64 length:', base64.length);
+  async createRelease(releaseTag, fileName) {
+    console.log('[RELEASE] Creating:', releaseTag);
+    
+    const response = await fetch(this.functionUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'create-release',
+        releaseTag: releaseTag,
+        metadata: { title: fileName }
+      })
+    });
 
-  const response = await fetch(this.functionUrl, {
-    method: 'POST',
-    headers: {
-      'X-Upload-Url': uploadUrl,
-      'X-Is-Base64': 'true'
-    },
-    body: base64
-  });
+    console.log('[RELEASE] Status:', response.status);
+    
+    if (!response.ok) {
+      const text = await response.text();
+      console.error('[RELEASE] Error:', text);
+      throw new Error(`Create release failed: ${response.status}`);
+    }
 
-  console.log('[UPLOAD_BINARY] Status:', response.status);
-  
-  if (!response.ok) {
-    const text = await response.text();
-    console.error('[UPLOAD_BINARY] Error:', text);
-    throw new Error(`Upload failed: ${response.status}`);
+    const data = await response.json();
+    console.log('[RELEASE] Success');
+    
+    return data.data;
   }
 
-  const data = await response.json();
-  console.log('[UPLOAD_BINARY] Success');
-  
-  return {
-    size: data.data.size,
-    browser_download_url: data.data.download_url
-  };
-}
+  async uploadAssetBinary(uploadUrl, fileName, fileObject) {
+    console.log('[UPLOAD_BINARY] Uploading...');
+    
+    const arrayBuffer = await fileObject.arrayBuffer();
+    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+
+    const response = await fetch(this.functionUrl, {
+      method: 'POST',
+      headers: {
+        'X-Upload-Url': uploadUrl,
+        'X-Is-Base64': 'true'
+      },
+      body: base64
+    });
+
+    console.log('[UPLOAD_BINARY] Status:', response.status);
+    
+    if (!response.ok) {
+      throw new Error(`Upload failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('[UPLOAD_BINARY] Success');
+    
+    return {
+      size: data.data.size,
+      browser_download_url: data.data.download_url
+    };
+  }
+
+  sanitizeFileName(fileName) {
+    return fileName || 'file';
+  }
 }
 /**
  * カルーセル管理
