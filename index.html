@@ -837,7 +837,7 @@
                 <!-- ★ パスワード保護セクション -->
                 <div class="password-section">
                     <div class="password-section-title">
-                        Password Protection (Optional)
+                        🔒 Password Protection (Optional)
                     </div>
                     
                     <div class="password-toggle">
@@ -951,7 +951,7 @@
             
             <!-- ★ パスワード保護状態を表示 -->
             <div id="passwordStatusBox" class="password-status-box" style="display: none;">
-                This link is password protected
+                🔒 This link is password protected
             </div>
 
             <div class="share-url-box">
@@ -1362,14 +1362,31 @@
         }
 
         /**
-         * ★ アップロード処理
+         * ★ アップロード処理（100MB制限チェック付き）
          */
         async function uploadMultiple(files, password) {
             showStatus();
             const uploader = new GitHubUploader();
+            const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 
             try {
                 console.log('[UPLOAD] START - Files:', files.length);
+
+                // ★ ファイルサイズの検証
+                console.log('[UPLOAD] Validating file sizes...');
+                for (let idx = 0; idx < files.length; idx++) {
+                    const file = files[idx];
+                    const fileSizeMB = (file.size / 1024 / 1024).toFixed(2);
+                    
+                    if (file.size > MAX_FILE_SIZE) {
+                        const maxMB = (MAX_FILE_SIZE / 1024 / 1024).toFixed(0);
+                        const errorMsg = `File "${file.name}" is too large: ${fileSizeMB}MB (max ${maxMB}MB per file)`;
+                        console.error('[UPLOAD] ' + errorMsg);
+                        throw new Error(errorMsg);
+                    }
+                    
+                    console.log(`[UPLOAD] File ${idx + 1}: "${file.name}" - ${fileSizeMB}MB ✓`);
+                }
 
                 let passwordHash = null;
                 if (password) {
@@ -1384,14 +1401,17 @@
                 document.getElementById('progressFill').style.width = '0%';
                 document.getElementById('progressPercent').textContent = '0%';
 
+                // ★ シーケンシャル: 1つずつアップロード
                 for (let idx = 0; idx < files.length; idx++) {
                     const file = files[idx];
                     const fileInfo = await getUnifiedFileInfo(file);
                     const fileId = 'f_' + Math.random().toString(36).substr(2, 9);
                     const fileName = fileInfo.name;
                     const releaseTag = `file_${fileId}`;
+                    const fileSizeMB = (file.size / 1024 / 1024).toFixed(2);
 
-                    console.log(`[FILE_${idx}] Creating release with fileName: ${fileName}`);
+                    console.log(`[FILE_${idx}] Starting: "${fileName}" (${fileSizeMB}MB)`);
+                    console.log(`[FILE_${idx}] Creating release...`);
                     const release = await uploader.createRelease(releaseTag, fileName);
 
                     console.log(`[FILE_${idx}] Uploading binary...`);
@@ -1414,7 +1434,7 @@
                     document.getElementById('progressFill').style.width = progress + '%';
                     document.getElementById('progressPercent').textContent = progress + '%';
 
-                    console.log(`[FILE_${idx}] Complete - ${fileName}`);
+                    console.log(`[FILE_${idx}] Complete - "${fileName}"`);
                 }
 
                 // ★ 複数ファイルIDをコンマ区切りで含める
@@ -1428,7 +1448,7 @@
                     passwordStatusBox.style.display = 'none';
                 }
 
-                console.log('[UPLOAD] SUCCESS - Multiple files:', fileIds);
+                console.log('[UPLOAD] SUCCESS - All files uploaded:', fileIds);
                 showSuccess();
             } catch (e) {
                 console.error('[UPLOAD] FAILED:', e.message);
@@ -1705,7 +1725,7 @@
          * ★ パスワード入力プロンプト
          */
         function showPasswordPrompt(viewId) {
-            const password = prompt('This file is password protected.\n\nPlease enter the password:');
+            const password = prompt('🔒 This file is password protected.\n\nPlease enter the password:');
             
             if (password === null) {
                 console.log('[PASSWORD] User cancelled');
@@ -1835,7 +1855,7 @@
                         fileTypeDetected = 'audio';
                         preview = `
                             <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
-                                <div style="font-size: 4rem;">♪</div>
+                                <div style="font-size: 4rem;">🎵</div>
                                 <audio controls style="width: 100%; max-width: 500px;" crossorigin="anonymous">
                                     <source src="${proxyUrlEscaped}" type="audio/mpeg">
                                     Your browser does not support the audio element.
