@@ -949,19 +949,27 @@ class GitHubUploader {
     
     return data.data;
   }
-
 async uploadAssetBinary(uploadUrl, fileName, fileObject) {
   console.log('[UPLOAD_BINARY] Uploading...');
   
   const arrayBuffer = await fileObject.arrayBuffer();
-  const blob = new Blob([arrayBuffer]);
+  const uint8Array = new Uint8Array(arrayBuffer);
+  
+  // Base64 に変換（小分けにして stack overflow を避ける）
+  let base64 = '';
+  const chunkSize = 10000;
+  for (let i = 0; i < uint8Array.length; i += chunkSize) {
+    base64 += String.fromCharCode.apply(null, uint8Array.subarray(i, i + chunkSize));
+  }
+  base64 = btoa(base64);
 
   const response = await fetch(this.functionUrl, {
     method: 'POST',
     headers: {
-      'X-Upload-Url': uploadUrl
+      'X-Upload-Url': uploadUrl,
+      'X-Is-Base64': 'true'
     },
-    body: blob
+    body: base64
   });
 
   console.log('[UPLOAD_BINARY] Status:', response.status);
@@ -978,9 +986,6 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject) {
     browser_download_url: data.data.download_url
   };
 }
-  sanitizeFileName(fileName) {
-    return fileName || 'file';
-  }
 }
 /**
  * カルーセル管理

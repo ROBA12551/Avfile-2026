@@ -80,14 +80,14 @@ exports.handler = async (event) => {
     
     // バイナリアップロード
 if (uploadUrl) {
-  console.log('[HANDLER] uploadUrl present, processing binary');
-  console.log('[HANDLER] body type:', typeof event.body);
-  console.log('[HANDLER] body length:', event.body ? event.body.length : 0);
-  
-  const buffer = Buffer.from(event.body, 'binary');
-  console.log('[HANDLER] buffer created, size:', buffer.length);
+  const isBase64 = event.headers['x-is-base64'] === 'true';
+  const buffer = isBase64
+    ? Buffer.from(event.body, 'base64')
+    : Buffer.from(event.body, 'binary');
   
   const result = await uploadBinaryToGithub(uploadUrl, buffer);
+  // 
+
 
       return {
         statusCode: 200,
