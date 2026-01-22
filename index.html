@@ -1309,8 +1309,6 @@ async function uploadMultiple(files) {
   try {
     console.log('[UPLOAD] START - Files:', files.length);
 
-    const fileIds = [];
-
     for (let idx = 0; idx < files.length; idx++) {
       const file = files[idx];
       
@@ -1325,16 +1323,15 @@ async function uploadMultiple(files) {
       console.log(`[FILE_${idx}] Uploading...`);
       const assetData = await uploader.uploadAssetBinary(release.upload_url, fileName, file);
 
-      // ★ 削除: await uploader.addFileToGithubJson({...});
-
-      fileIds.push(fileId);
       console.log(`[FILE_${idx}] Complete`);
     }
 
-    console.log('[UPLOAD] Creating view...');
-    const view = await uploader.createView(fileIds);
+    // ★ 削除: const view = await uploader.createView(fileIds);
+    // ★ 削除: document.getElementById('shareUrl').value = view.shareUrl;
 
-    document.getElementById('shareUrl').value = view.shareUrl;
+    // ★ 代わりに固定値を設定
+    document.getElementById('shareUrl').value = 'https://avfile.io';
+    
     console.log('[UPLOAD] SUCCESS');
     showSuccess();
 
@@ -1343,6 +1340,7 @@ async function uploadMultiple(files) {
     showError(e.message);
   }
 }
+
 async function uploadFileChunked(file, fileName, onProgress = () => {}) {
   try {
     const fileSize = file.size;
@@ -1460,6 +1458,7 @@ async function uploadFileChunked(file, fileName, onProgress = () => {}) {
     throw error;
   }
 }
+
 /**
  * ビュー読み込み
  */
