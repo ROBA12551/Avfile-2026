@@ -5,8 +5,8 @@
 
 class ChunkedBinaryUploader {
   constructor() {
-    this.CHUNK_THRESHOLD = 3 * 1024 * 1024;  // 3MB以上でチャンク分割
-    this.CHUNK_SIZE = 500 * 1024;        // 500KBごとに分割
+    this.CHUNK_THRESHOLD = 3 * 1024 * 1024;   // ★ 3MB以上でチャンク分割（Base64化で ~4MB）
+    this.CHUNK_SIZE = 1 * 1024 * 1024;        // ★ 1MBごとに分割
     this.functionUrl = '/.netlify/functions/github-upload';
   }
 
@@ -99,11 +99,13 @@ class ChunkedBinaryUploader {
         const end = Math.min(start + this.CHUNK_SIZE, fileObject.size);
         const chunk = fileObject.slice(start, end);
 
-        console.log(`[UPLOAD_CHUNKED] Uploading chunk ${i + 1}/${totalChunks}`);
+        console.log(`[UPLOAD_CHUNKED] Uploading chunk ${i + 1}/${totalChunks}:`, {
+          start,
+          end,
+          chunkSize: chunk.size
+        });
 
-        const arrayBuffer = await chunk.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-
+        // ★ Blob をそのまま body に使用（Buffer は不要）
         const params = new URLSearchParams({
           action: 'upload-chunk',
           uploadId,
@@ -117,7 +119,7 @@ class ChunkedBinaryUploader {
           headers: {
             'Content-Type': 'application/octet-stream'
           },
-          body: buffer
+          body: chunk  // ★ Blob を直接送信
         });
 
         console.log(`[UPLOAD_CHUNKED] Chunk ${i + 1} response status:`, response.status);
@@ -129,7 +131,11 @@ class ChunkedBinaryUploader {
         }
 
         const data = await response.json();
-        console.log(`[UPLOAD_CHUNKED] Chunk ${i + 1} success`);
+        console.log(`[UPLOAD_CHUNKED] Chunk ${i + 1} success:`, {
+          uploadId: data.uploadId,
+          receivedChunks: data.receivedChunks,
+          totalChunks: data.totalChunks
+        });
       }
 
       // チャンクを結合
