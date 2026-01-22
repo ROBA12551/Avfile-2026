@@ -1015,17 +1015,10 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
     }
   }
 
-  // ★ サイズチェック - Netlify Functions は 6MB 制限
-  const NETLIFY_MAX_SIZE = 4.5 * 1024 * 1024; // 安全のため4.5MBに設定
-  if (processedFile.size > NETLIFY_MAX_SIZE) {
-    console.log('[UPLOAD_BINARY] File too large for Netlify Functions, uploading directly to GitHub...');
-    return await this.uploadDirectlyToGitHub(uploadUrl, sanitizedFileName, processedFile);
-  }
-
   // ArrayBuffer に変換
   const arrayBuffer = await processedFile.arrayBuffer();
 
-  // ★ Netlify Functions 経由でアップロード
+  // ★ Netlify Functions 経由でアップロード（CORS回避）
   const params = new URLSearchParams({
     action: 'upload-asset-binary',
     url: uploadUrl,
@@ -1049,13 +1042,6 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   if (!response.ok) {
     const errorText = await response.text().catch(() => '');
     console.error('[UPLOAD_BINARY] Error:', response.status, errorText);
-    
-    // ★ 500エラーの場合、直接GitHubにアップロードを試みる
-    if (response.status === 500 || response.status === 413) {
-      console.log('[UPLOAD_BINARY] Retrying with direct GitHub upload...');
-      return await this.uploadDirectlyToGitHub(uploadUrl, sanitizedFileName, processedFile);
-    }
-    
     throw new Error(`Upload failed: ${response.status}`);
   }
 
@@ -1075,7 +1061,6 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
     size: data.data.size
   };
 }
-
 // ★ GitHub に直接アップロードする代替メソッド（Netlify Functions をバイパス）
 async uploadDirectlyToGitHub(uploadUrl, fileName, fileBlob) {
   console.log('[DIRECT_UPLOAD] Uploading directly to GitHub...');
