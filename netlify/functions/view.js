@@ -1,12 +1,7 @@
 /**
  * netlify/functions/view.js
- * ★ 複数ファイルID対応版
- * 
- * 用途: ファイル情報をID（複数対応）から取得
- * 
- * 使用例:
- * GET /.netlify/functions/view?id=f_abc123
- * GET /.netlify/functions/view?id=f_abc123,f_def456,f_ghi789
+ * ★ グループID対応版
+ * 単一ファイルID（f_）およびグループID（g_）に対応
  */
 
 const https = require('https');
@@ -16,6 +11,7 @@ const GITHUB_OWNER = process.env.GITHUB_OWNER;
 const GITHUB_REPO = process.env.GITHUB_REPO;
 
 const INDEX_PATH = 'github.index.json';
+const GROUPS_PATH = 'groups.json';  // ★ グループ管理ファイル
 const SHARD_PREFIX = 'github.';
 const SHARD_SUFFIX = '.json';
 
@@ -80,6 +76,35 @@ async function getContent(pathInRepo) {
     text,
     json: text ? safeJsonParse(text, null) : null,
   };
+}
+
+/**
+ * ★ グループからファイルIDを取得
+ */
+async function getGroupFileIds(groupId) {
+  try {
+    console.log('[VIEW] Fetching group:', groupId);
+
+    const { json: groups } = await getContent(GROUPS_PATH);
+    
+    if (!Array.isArray(groups)) {
+      console.warn('[VIEW] Groups file is not an array');
+      return null;
+    }
+
+    const group = groups.find(g => g && g.groupId === groupId);
+    
+    if (!group) {
+      console.warn('[VIEW] Group not found:', groupId);
+      return null;
+    }
+
+    console.log('[VIEW] Found group with', group.fileIds.length, 'files');
+    return group;
+  } catch (e) {
+    console.warn('[VIEW] Error fetching group:', e.message);
+    return null;
+  }
 }
 
 /**
@@ -187,13 +212,65 @@ exports.handler = async (event) => {
       };
     }
 
-    // ★ コンマ区切りIDをサポート
-    const fileIds = idParam
-      .split(',')
-      .map(id => id.trim().toLowerCase())
-      .filter(id => id.length > 0);
+    // ★ グループID（g_xxxxx）か単一ファイルID（f_xxxxx）か判定
+    let fileIds = [];
 
-    console.log('[VIEW] Parsed file IDs:', fileIds);
+    if (idParam.startsWith('g_')) {
+      // ★ グループID
+      console.log('[VIEW] Processing group ID:', idParam);
+      const group = await getGroupFileIds(idParam);
+
+      if (!group) {
+        return {
+          statusCode: 404,
+          headers,
+          body: JSON.stringify({ success: false, error: 'Group not found' })
+        };
+      }
+
+      fileIds = group.fileIds;
+      console.log('[VIEW] Group contains', fileIds.length, 'files');
+
+      // ★ グループ全体のパスワル保護をチェック
+      if (group.passwordHash) {
+        const validation = validatePassword(group.passwordHash, pwdParam);
+        
+        if (!validation.valid && validation.message === 'Password required') {
+          return {
+            statusCode: 403,
+            headers,
+            body: JSON.stringify({
+              success: false,
+              error: 'Password required',
+              requiresPassword: true,
+              message: 'This file group is password protected'
+            })
+          };
+        }
+
+        if (!validation.valid && validation.message === 'Invalid password') {
+          return {
+            statusCode: 403,
+            headers,
+            body: JSON.stringify({
+              success: false,
+              error: 'Invalid password',
+              requiresPassword: true,
+              message: 'Invalid password'
+            })
+          };
+        }
+      }
+    } else {
+      // ★ 単一ファイルID または コンマ区切りID（従来互換）
+      if (idParam.includes(',')) {
+        fileIds = idParam.split(',').map(id => id.trim().toLowerCase()).filter(id => id.length > 0);
+      } else {
+        fileIds = [idParam.toLowerCase()];
+      }
+
+      console.log('[VIEW] Processing', fileIds.length, 'file ID(s)');
+    }
 
     // ★ ファイルを検索
     const files = await findFilesById(fileIds);
@@ -207,18 +284,15 @@ exports.handler = async (event) => {
       };
     }
 
-    // ★ パスワル保護をチェック（複数ファイル対応）
+    // ★ パスワル保護をチェック（ファイル個別）
     const filesWithPasswordCheck = files.map(file => {
-      if (file.passwordHash) {
-        // ★ パスワル保護あり
+      if (file.passwordHash && !idParam.startsWith('g_')) {
+        // グループレベルではなくファイルレベルのパスワル保護
         const validation = validatePassword(file.passwordHash, pwdParam);
         
         if (!validation.valid) {
-          console.log('[VIEW] Password check failed for', file.fileId, ':', validation.message);
           return { ...file, passwordError: validation.message };
         }
-        
-        console.log('[VIEW] Password validated for', file.fileId);
       }
       
       return file;
@@ -253,7 +327,7 @@ exports.handler = async (event) => {
           success: false,
           error: 'Invalid password',
           requiresPassword: true,
-          message: 'Invalid password for file: ' + invalidPassword.fileName
+          message: 'Invalid password'
         })
       };
     }
