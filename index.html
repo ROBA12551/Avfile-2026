@@ -925,9 +925,13 @@ class GitHubUploader {
 
 async uploadAssetBinary(uploadUrl, fileName, fileObject) {
   console.log('[UPLOAD_BINARY] Uploading...');
+  console.log('[UPLOAD_BINARY] uploadUrl:', uploadUrl);
   
   const arrayBuffer = await fileObject.arrayBuffer();
+  console.log('[UPLOAD_BINARY] arrayBuffer size:', arrayBuffer.byteLength);
+  
   const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+  console.log('[UPLOAD_BINARY] base64 length:', base64.length);
 
   const response = await fetch(this.functionUrl, {
     method: 'POST',
@@ -953,102 +957,6 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject) {
     size: data.data.size,
     browser_download_url: data.data.download_url
   };
-}
-  // 既存の getGitHubToken() は変わらない
-  async getGitHubToken() {
-    if (this.githubToken) {
-      console.log('[TOKEN] Using cached token');
-      return this.githubToken;
-    }
-
-    console.log('[TOKEN] Requesting GitHub token...');
-    
-    try {
-      const response = await fetch(this.functionUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'get-token' })
-      });
-
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to get GitHub token');
-      }
-
-      this.githubToken = data.data.token;
-      console.log('[TOKEN] Token acquired');
-      
-      return this.githubToken;
-    } catch (error) {
-      console.error('[TOKEN] Error:', error.message);
-      throw new Error(`Failed to get GitHub token: ${error.message}`);
-    }
-  }
-
-  // その他のメソッドは変わらない
-  sanitizeFileName(fileName) {
-    try {
-      if (!fileName || typeof fileName !== 'string') {
-        return 'file';
-      }
-
-      let sanitized = String(fileName)
-        .trim()
-        .replace(/^\.+/, '')
-        .replace(/[\x00-\x1f<>:"\\/|?*]/g, '_')
-        .replace(/\s+/g, '_')
-        .replace(/_+/g, '_')
-        .replace(/^_+|_+$/g, '');
-
-      const parts = sanitized.split('.');
-      if (parts.length > 1) {
-        const ext = parts[parts.length - 1].toLowerCase();
-        if (ext.length > 10 || ext.length === 0) {
-          sanitized = parts.slice(0, -1).join('.');
-        }
-      }
-
-      if (sanitized.length > 200) {
-        sanitized = sanitized.substring(0, 200);
-      }
-
-      if (!sanitized || sanitized === '.' || sanitized === '_') {
-        sanitized = 'file';
-      }
-
-      console.log('[SANITIZE] Original:', fileName, '→ Sanitized:', sanitized);
-      return sanitized;
-    } catch (e) {
-      console.error('[SANITIZE] Error:', e.message);
-      return 'file';
-    }
-  }
-async createRelease(releaseTag, fileName) {
-  console.log('[RELEASE] Creating:', releaseTag);
-  
-  const response = await fetch(this.functionUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: 'create-release',
-      releaseTag: releaseTag,
-      metadata: { title: fileName }
-    })
-  });
-
-  console.log('[RELEASE] Status:', response.status);
-  
-  if (!response.ok) {
-    const text = await response.text();
-    console.error('[RELEASE] Error:', text);
-    throw new Error(`Create release failed: ${response.status}`);
-  }
-
-  const data = await response.json();
-  console.log('[RELEASE] Success');
-  
-  return data.data;
 }
 }
 /**
