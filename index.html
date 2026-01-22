@@ -1080,52 +1080,41 @@ class GitHubUploader {
   }
 }
 
-async function waitForFFmpegReady(maxWaitTime = 30000) {
+async function waitForFFmpegReady(maxWaitTime = 120000) {
+  console.log('[UPLOAD] Checking VideoCompressor status...');
 
-  // ★ FFmpeg グローバルが出るまで少し待つ（最大5秒）
-const waitFFmpegGlobal = async (timeout = 5000) => {
-  const start = Date.now();
-  while (Date.now() - start < timeout) {
-    if (window.FFmpeg || window.FFmpegWASM || window.createFFmpeg) return true;
-    await new Promise(r => setTimeout(r, 50));
+  const vc = window.videoCompressor;
+  if (!vc) {
+    console.warn('[UPLOAD] videoCompressor not found');
+    return false;
   }
-  return false;
-};
 
-const ok = await waitFFmpegGlobal(5000);
-if (!ok) {
-  console.warn('[UPLOAD] FFmpeg global still missing after wait');
-  return false;
-}
+  console.log('[UPLOAD] vc.isLoaded:', vc.isLoaded);
+  console.log('[UPLOAD] vc.isLoading:', vc.isLoading);
 
-  console.log('[UPLOAD] Checking FFmpeg status...');
-  if (!window.videoCompressor) return false;
-
-  console.log('[UPLOAD] isLoaded:', window.videoCompressor.isLoaded);
-  console.log('[UPLOAD] isLoading:', window.videoCompressor.isLoading);
-
-  // ★ここが重要：まだなら init を開始
-  if (!window.videoCompressor.isLoaded && !window.videoCompressor.isLoading) {
-    console.log('[UPLOAD] Kicking FFmpeg init...');
-    window.videoCompressor.initFFmpeg().catch(err => {
-      console.warn('[UPLOAD] FFmpeg init failed:', err?.message || err);
+  // ★ 初期化をキック
+  if (!vc.isLoaded && !vc.isLoading) {
+    console.log('[UPLOAD] Kicking vc.initFFmpeg()...');
+    vc.initFFmpeg().catch(err => {
+      console.warn('[UPLOAD] vc.initFFmpeg failed:', err?.message || err);
     });
   }
 
-  const startTime = Date.now();
+  const start = Date.now();
 
-  while (window.videoCompressor.isLoading) {
-    if (Date.now() - startTime > maxWaitTime) {
-      console.warn('[UPLOAD] FFmpeg initialization timeout (was loading)');
+  // ★ ロード完了を待つ
+  while (vc.isLoading) {
+    if (Date.now() - start > maxWaitTime) {
+      console.warn('[UPLOAD] FFmpeg init timeout');
       return false;
     }
     await new Promise(r => setTimeout(r, 200));
   }
 
-  const isReady = window.videoCompressor.isLoaded;
-  console.log('[UPLOAD] FFmpeg ready:', isReady);
-  return isReady;
+  console.log('[UPLOAD] FFmpeg ready:', vc.isLoaded);
+  return vc.isLoaded;
 }
+
 
 
 // ★ 複数ファイルの同時アップロード（最大10個の並列処理）
