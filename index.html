@@ -823,20 +823,62 @@ async function getUnifiedFileInfo(file, fileUploader) {
     let ext = 'bin';
     
     if (file.type && file.type.startsWith('video/')) {
-      ext = 'mp4';
+      // ✅ 動画の MIME タイプから正しい拡張子を判定
+      if (file.type === 'video/mp4') ext = 'mp4';
+      else if (file.type === 'video/quicktime') ext = 'mov';
+      else if (file.type === 'video/webm') ext = 'webm';
+      else if (file.type === 'video/ogg') ext = 'ogg';
+      else if (file.type === 'video/x-msvideo') ext = 'avi';
+      else if (file.type === 'video/x-matroska') ext = 'mkv';
+      else if (file.type === 'video/x-flv') ext = 'flv';
+      else if (file.type === 'video/x-ms-wmv') ext = 'wmv';
+      else if (file.type === 'video/3gpp') ext = '3gp';
+      else if (file.type === 'video/3gpp2') ext = '3g2';
+      else ext = 'mp4';  // デフォルトは mp4
+      
     } else if (file.type && file.type.startsWith('image/')) {
       if (file.type === 'image/jpeg') ext = 'jpg';
       else if (file.type === 'image/png') ext = 'png';
       else if (file.type === 'image/gif') ext = 'gif';
       else if (file.type === 'image/webp') ext = 'webp';
       else if (file.type === 'image/heic') ext = 'heic';
-      else ext = 'jpg';
+      else if (file.type === 'image/heif') ext = 'heif';
+      else if (file.type === 'image/avif') ext = 'avif';
+      else if (file.type === 'image/svg+xml') ext = 'svg';
+      else if (file.type === 'image/bmp') ext = 'bmp';
+      else if (file.type === 'image/tiff') ext = 'tiff';
+      else ext = 'jpg';  // デフォルトは jpg
+      
     } else if (file.type && file.type.startsWith('audio/')) {
       if (file.type === 'audio/mpeg') ext = 'mp3';
       else if (file.type === 'audio/wav') ext = 'wav';
-      else ext = 'mp3';
+      else if (file.type === 'audio/ogg') ext = 'ogg';
+      else if (file.type === 'audio/flac') ext = 'flac';
+      else if (file.type === 'audio/mp4') ext = 'm4a';
+      else if (file.type === 'audio/aac') ext = 'aac';
+      else if (file.type === 'audio/x-ms-wma') ext = 'wma';
+      else if (file.type === 'audio/opus') ext = 'opus';
+      else ext = 'mp3';  // デフォルトは mp3
+      
     } else if (file.type === 'application/pdf') {
       ext = 'pdf';
+      
+    } else if (file.type && file.type.startsWith('application/')) {
+      // その他のアプリケーション形式
+      if (file.type === 'application/zip') ext = 'zip';
+      else if (file.type === 'application/x-rar-compressed') ext = 'rar';
+      else if (file.type === 'application/x-7z-compressed') ext = '7z';
+      else if (file.type === 'application/json') ext = 'json';
+      else if (file.type === 'application/xml') ext = 'xml';
+      else ext = 'bin';
+      
+    } else if (file.type && file.type.startsWith('text/')) {
+      // テキスト形式
+      if (file.type === 'text/plain') ext = 'txt';
+      else if (file.type === 'text/html') ext = 'html';
+      else if (file.type === 'text/css') ext = 'css';
+      else if (file.type === 'text/javascript') ext = 'js';
+      else ext = 'txt';
     }
 
     // ファイル名をランダムな7桁文字に自動生成
@@ -844,6 +886,7 @@ async function getUnifiedFileInfo(file, fileUploader) {
     const fileName = `${randomName}.${ext}`;
     
     console.log('[FILE_INFO] ファイル名を自動生成: ' + file.name + ' → ' + fileName);
+    console.log('[FILE_INFO] MIME タイプ: ' + file.type + ' → 拡張子: .' + ext);
 
     const fileType = fileUploader.getFileType(fileName);
     return {
