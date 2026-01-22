@@ -1009,135 +1009,33 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
       return 'file';
     }
   }
+async createRelease(releaseTag, fileName) {
+  console.log('[RELEASE] Creating:', releaseTag);
+  
+  const response = await fetch(this.functionUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'create-release',
+      releaseTag: releaseTag,
+      metadata: { title: fileName }
+    })
+  });
 
-  // 以下は既存の実装
-  async createRelease(releaseTag, fileName) {
-    const sanitizedFileName = this.sanitizeFileName(fileName);
-
-    const response = await fetch(this.functionUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'create-release',
-        releaseTag: releaseTag,
-        metadata: { title: sanitizedFileName, description: `File: ${sanitizedFileName}` },
-      }),
-    });
-    
-    const data = await response.json();
-    if (!data.success) throw new Error(data.error);
-    
-    return data.data;
+  console.log('[RELEASE] Status:', response.status);
+  
+  if (!response.ok) {
+    const text = await response.text();
+    console.error('[RELEASE] Error:', text);
+    throw new Error(`Create release failed: ${response.status}`);
   }
 
-  async addFileToGithubJson(fileData) {
-    console.log('[ADD_FILE] Adding to github.json:', fileData.fileId);
-    
-    const response = await fetch(this.functionUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'add-file',
-        fileData: fileData
-      })
-    });
-
-    const data = await response.json();
-    if (!data.success) throw new Error(data.error);
-    
-    console.log('[ADD_FILE] ✓ Added to github.json');
-    return data.data;
-  }
-
-  async getGithubJson() {
-    const response = await fetch(this.functionUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'get-github-json' })
-    });
-    const data = await response.json();
-    if (!data.success) throw new Error(data.error);
-    return data.data;
-  }
-
-  async createView(fileIds) {
-    const response = await fetch(this.functionUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'create-view',
-        fileIds: fileIds,
-        origin: window.location.origin
-      })
-    });
-    const data = await response.json();
-    if (!data.success) throw new Error(data.error);
-    return data.data;
-  }
-
-
-  async uploadDirectlyToGitHub(uploadUrl, fileName, fileBlob) {
-    console.log('[DIRECT_UPLOAD] Uploading directly to GitHub...');
-    console.log('[DIRECT_UPLOAD] File:', fileName);
-    console.log('[DIRECT_UPLOAD] Size:', (fileBlob.size / 1024 / 1024).toFixed(2), 'MB');
-
-    try {
-      const tokenResponse = await fetch('/.netlify/functions/github-upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'get-upload-token' })
-      });
-      
-      const tokenData = await tokenResponse.json();
-      if (!tokenData.success) {
-        throw new Error('Failed to get upload token');
-      }
-      
-      const token = tokenData.data.token;
-      
-      let cleanUrl = uploadUrl.trim().replace(/\{[?&].*?\}/g, '');
-      const encodedFileName = encodeURIComponent(fileName);
-      const assetUrl = `${cleanUrl}?name=${encodedFileName}`;
-
-      console.log('[DIRECT_UPLOAD] Upload URL:', assetUrl.substring(0, 100) + '...');
-
-      const arrayBuffer = await fileBlob.arrayBuffer();
-
-      const response = await fetch(assetUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `token ${token}`,
-          'Content-Type': 'application/octet-stream',
-          'Content-Length': arrayBuffer.byteLength.toString()
-        },
-        body: arrayBuffer
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[DIRECT_UPLOAD] Error:', response.status, errorText);
-        throw new Error(`GitHub upload failed: ${response.status}`);
-      }
-
-      const data = await response.json();
-      
-      console.log('[DIRECT_UPLOAD] Success:', data.id);
-
-      return {
-        success: true,
-        asset_id: data.id,
-        browser_download_url: data.browser_download_url,
-        name: data.name,
-        size: data.size
-      };
-
-    } catch (error) {
-      console.error('[DIRECT_UPLOAD] Failed:', error.message);
-      throw error;
-    }
-  }
+  const data = await response.json();
+  console.log('[RELEASE] Success');
+  
+  return data.data;
 }
-
+}
 /**
  * カルーセル管理
  */
