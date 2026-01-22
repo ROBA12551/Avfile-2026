@@ -1693,7 +1693,6 @@ async function uploadAssetBinaryChunks(file, fileName, fileSize, onProgress = ()
 // ========================================
 // 修正された uploadMultiple()
 // ========================================
-
 async function uploadMultiple(files) {
   showStatus();
   const uploader = new GitHubUploader();
@@ -1735,13 +1734,14 @@ async function uploadMultiple(files) {
 
         console.log(`[FILE_${idx}] Uploading to GitHub...`);
         
-        // ★ チャンク化対応のアップロード
-        const assetData = await uploadAssetBinaryChunked(
-          release.upload_url,
-          fileName,
+        // ★★★ ここから修正 ★★★
+        
+        let assetData;
+        
+        // チャンク化アップロード（5MB以上）
+        const chunkedResult = await uploadFileChunked(
           processedFile,
-          fileId,
-          processedFile.size,
+          fileName,
           (progress, message) => {
             const percent = Math.round(progress);
             document.getElementById('statusMessage').textContent = `${idx + 1}/${files.length}: ${message}`;
@@ -1749,6 +1749,24 @@ async function uploadMultiple(files) {
             document.getElementById('progressFill').style.width = percent + '%';
           }
         );
+
+        if (chunkedResult !== null) {
+          // チャンク化で処理された
+          assetData = chunkedResult;
+          console.log(`[FILE_${idx}] ✓ Uploaded via chunked method`);
+        } else {
+          // 5MB未満なので既存の方法で処理
+          console.log(`[FILE_${idx}] Using original upload method`);
+          assetData = await uploader.uploadAssetBinary(
+            release.upload_url,
+            fileName,
+            processedFile,
+            fileId,
+            processedFile.size
+          );
+        }
+
+        // ★★★ ここまで修正 ★★★
 
         console.log(`[FILE_${idx}] Adding to github.json...`);
         await uploader.addFileToGithubJson({

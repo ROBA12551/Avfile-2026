@@ -1,395 +1,153 @@
 /**
- * js/index-fast.js
+ * =====================================================
+ * js/index.js に追加するチャンク化コード
  * 
- * Optimized for FASTEST upload performance
- * - Minimal processing
- * - Parallel uploads
- * - Quick feedback
- * - No unnecessary operations
+ * 既存の appState.github.uploadFile() をラップして
+ * チャンク化機能を追加
+ * =====================================================
  */
 
-// Global state
-const appState = {
-  storage: null,
-  compression: null,
-  github: null,
-  currentFile: null,
-  isProcessing: false,
-  uploadQueue: [],
-  activeUploads: 0,
-};
+// ★ グローバル定数
+const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
 
 /**
- * Initialize on page load
+ * ファイルをチャンク化してアップロード（既存コードに統合）
+ * 
+ * @param {Blob} file - アップロードするファイル
+ * @param {string} fileName - ファイル名
+ * @param {Function} onProgress - プログレスコールバック
+ * @returns {Promise} アップロード結果
  */
-document.addEventListener('DOMContentLoaded', async () => {
-  appState.storage = new StorageManager();
-  appState.compression = new VideoCompressionEngine();
-  appState.github = new SimpleUploadManager();
-
-  setupEventListeners();
-  console.log('✅ Fast Upload Initialized');
-});
-
-/**
- * Setup event listeners
- */
-function setupEventListeners() {
-  const fileInput = document.getElementById('fileInput');
-  const uploadBtn = document.getElementById('uploadBtn');
-  const uploadArea = document.getElementById('uploadArea');
-
-  // Click to select
-  uploadBtn.addEventListener('click', () => fileInput.click());
-
-  // File input change
-  fileInput.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) {
-      handleFileSelect(e.target.files[0]);
-    }
-  });
-
-  // Drag and drop
-  uploadArea.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    uploadArea.classList.add('drag-over');
-  });
-
-  uploadArea.addEventListener('dragleave', () => {
-    uploadArea.classList.remove('drag-over');
-  });
-
-  uploadArea.addEventListener('drop', (e) => {
-    e.preventDefault();
-    uploadArea.classList.remove('drag-over');
-    if (e.dataTransfer.files.length > 0) {
-      handleFileSelect(e.dataTransfer.files[0]);
-    }
-  });
-
-  // Success buttons
-  document.getElementById('copyUrlBtn')?.addEventListener('click', copyShareUrl);
-  document.getElementById('uploadMoreBtn')?.addEventListener('click', resetForm);
-  document.getElementById('retryBtn')?.addEventListener('click', resetForm);
-
-  // Social share
-  setupSocialShare();
-}
-
-/**
- * モバイルデバイス判定（iOS対応）
- */
-function isMobileDevice() {
-  const userAgent = navigator.userAgent || navigator.vendor || window.opera;
-  
-  if (/iPad|iPhone|iPod/.test(userAgent)) {
-    console.log('[MOBILE] iOS detected');
-    return true;
-  }
-  
-  if (/android/i.test(userAgent)) {
-    console.log('[MOBILE] Android detected');
-    return true;
-  }
-  
-  if (/mobile/i.test(userAgent)) {
-    console.log('[MOBILE] Mobile device detected');
-    return true;
-  }
-  
-  return false;
-}
-
-/**
- * Handle file selection - OPTIMIZED FOR SPEED
- */
-async function handleFileSelect(file) {
-  if (!file) return;
-
-  // ファイルサイズ検証（100MB制限）
-  const maxSize = 100 * 1024 * 1024; // 100MB
-  if (file.size > maxSize) {
-    showError(`File is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum size is 100MB.`);
-    return;
-  }
-
-  // ファイル種別に応じたメッセージ
-  const isVideo = file.type.startsWith('video/');
-  const isImage = file.type.startsWith('image/');
-  const isDocument = file.type.startsWith('application/') || file.type.includes('document');
-
-  let fileType = 'file';
-  if (isVideo) fileType = 'video';
-  else if (isImage) fileType = 'image';
-  else if (isDocument) fileType = 'document';
-
-  console.log(`📁 ${fileType}: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB)`);
-
-  appState.currentFile = file;
-  showProcessing();
-
+async function uploadFileChunkedNew(file, fileName, onProgress = () => {}) {
   try {
-    // ★ 修正: モバイルデバイス判定
-    const isMobile = isMobileDevice();
-    console.log('[UPLOAD] isMobile:', isMobile);
+    const fileSize = file.size;
+    const mimeType = file.type || 'application/octet-stream';
 
-    // 1. PREPARE FILE
-    console.log('📦 Preparing file...');
-    
-    let compressedBlob = file;
-    let wasCompressed = false;
+    console.log(`[CHUNKED] Starting: ${fileName} (${(fileSize / 1024 / 1024).toFixed(2)}MB)`);
 
-    // ★ 修正: モバイル以外の場合のみ圧縮
-    if (isVideo && !isMobile) {
-      const fileTypeMessage = 'Optimizing video';
-      updateProgress(5, fileTypeMessage + '...');
+    // ========================================
+    // チャンク化判定: 5MB以上なら分割
+    // ========================================
 
-      try {
-        compressedBlob = await appState.compression.compress(
-          file,
-          (percent, message) => {
-            updateProgress(percent * 0.4, message); // 40% of total
-          }
-        );
-        wasCompressed = true;
-        console.log('✅ Video optimized');
-      } catch (error) {
-        console.warn('⚠️ Video optimization failed:', error.message);
-        console.warn('📱 Continuing with original file...');
-        compressedBlob = file;
-        wasCompressed = false;
-      }
-    } else if (isVideo && isMobile) {
-      console.log('📱 Mobile device detected - Skipping compression');
-      updateProgress(5, 'Preparing file...');
-      compressedBlob = file;
-      wasCompressed = false;
-    } else {
-      updateProgress(5, 'Preparing file...');
-      compressedBlob = file;
-      wasCompressed = false;
+    if (fileSize < CHUNK_SIZE) {
+      console.log(`[CHUNKED] File < 5MB, returning null (use existing method)`);
+      return null; // 既存の方法を使用
     }
 
-    console.log('✅ File ready');
-    updateProgress(40, 'Uploading to cloud...');
+    console.log(`[CHUNKED] File >= 5MB, using chunked upload`);
 
-    // 2. UPLOAD to GitHub via Netlify
-    // ★ 修正: 正しいメソッド名を使用
-    const uploadResult = await appState.github.uploadFile(
-      compressedBlob,
-      file.name,
-      (percent, message) => {
-        updateProgress(40 + percent * 0.6, message); // 60% of total
-      }
-    );
+    const uploadId = `upload_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
 
-    console.log('✅ Upload complete');
+    console.log(`[CHUNKED] Upload ID: ${uploadId}, Total chunks: ${totalChunks}`);
 
-    // ★ 修正: uploadResult から正しいプロパティを取得
-    if (appState.storage) {
-      appState.storage.addUpload({
-        file_id: uploadResult.fileId,
-        title: file.name.replace(/\.[^/.]+$/, ''),
-        original_filename: file.name,
-        original_size: uploadResult.originalSize || file.size,
-        download_url: uploadResult.downloadUrl,
-        uploaded_at: uploadResult.uploadedAt,
-        was_compressed: wasCompressed,
+    // ========================================
+    // チャンク送信
+    // ========================================
+
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, fileSize);
+      const chunk = file.slice(start, end);
+
+      console.log(`[CHUNKED] Chunk ${i + 1}/${totalChunks} (${(chunk.size / 1024 / 1024).toFixed(2)}MB)`);
+
+      onProgress(Math.round((i / totalChunks) * 50), `チャンク ${i + 1}/${totalChunks} を送信中...`);
+
+      const params = new URLSearchParams({
+        action: 'upload-chunk',
+        uploadId: uploadId,
+        chunkIndex: i,
+        totalChunks: totalChunks,
+        fileName: fileName,
+        mimeType: mimeType
+      });
+
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            const chunkProgress = (e.loaded / e.total) * 100;
+            const overallProgress = Math.round((i + chunkProgress / 100) / totalChunks * 50);
+            onProgress(overallProgress, `チャンク ${i + 1}/${totalChunks}: ${chunkProgress.toFixed(0)}%`);
+          }
+        });
+
+        xhr.addEventListener('load', () => {
+          if (xhr.status === 200) {
+            try {
+              const response = JSON.parse(xhr.responseText);
+              console.log(`[CHUNKED] Chunk ${i} OK`);
+              resolve(response);
+            } catch (e) {
+              console.error(`[CHUNKED] Parse error: ${xhr.responseText}`);
+              reject(new Error(`Parse error: ${xhr.responseText}`));
+            }
+          } else {
+            console.error(`[CHUNKED] Chunk ${i} failed: ${xhr.status}`);
+            reject(new Error(`Chunk ${i} failed: ${xhr.status}`));
+          }
+        });
+
+        xhr.addEventListener('error', () => {
+          console.error(`[CHUNKED] Chunk ${i} network error`);
+          reject(new Error(`Chunk ${i} network error`));
+        });
+
+        xhr.addEventListener('abort', () => {
+          console.error(`[CHUNKED] Chunk ${i} aborted`);
+          reject(new Error(`Chunk ${i} aborted`));
+        });
+
+        xhr.open('POST', `/.netlify/functions/github-upload?${params}`);
+        xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+        xhr.send(chunk);
       });
     }
 
-    // 成功画面を表示
-    updateProgress(100, 'Complete!');
-    showSuccess(uploadResult);
+    console.log(`[CHUNKED] All chunks sent, finalizing...`);
+    onProgress(75, 'チャンクを統合中...');
+
+    // ========================================
+    // チャンク統合リクエスト
+    // ========================================
+
+    const finalResponse = await fetch(`/.netlify/functions/github-upload?action=finalize-chunks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        uploadId: uploadId,
+        fileName: fileName,
+        mimeType: mimeType
+      })
+    });
+
+    if (!finalResponse.ok) {
+      throw new Error(`Finalize failed: ${finalResponse.status}`);
+    }
+
+    const finalData = await finalResponse.json();
+
+    if (!finalData.success) {
+      throw new Error(finalData.error || 'Finalize failed');
+    }
+
+    console.log(`[CHUNKED] ✓ Complete`);
+    onProgress(100, 'アップロード完了！');
+
+    // 既存のコード形式に合わせて返す
+    return {
+      fileId: finalData.data.fileId,
+      downloadUrl: finalData.data.downloadUrl,
+      fileName: finalData.data.fileName,
+      originalSize: fileSize,
+      uploadedAt: new Date().toISOString()
+    };
 
   } catch (error) {
-    console.error('❌ Error:', error);
-    const userMessage = error.message || 'Upload failed. Please try again.';
-    showError(userMessage);
+    console.error(`[CHUNKED] Error:`, error.message);
+    throw error;
   }
 }
 
-/**
- * Show processing state
- */
-function showProcessing() {
-  document.getElementById('uploadArea').style.display = 'none';
-  document.getElementById('processingArea').style.display = 'block';
-  document.getElementById('successArea').style.display = 'none';
-  document.getElementById('errorArea').style.display = 'none';
-  appState.isProcessing = true;
-}
-
-/**
- * Update progress
- */
-function updateProgress(percent, message) {
-  const progressFill = document.getElementById('progressFill');
-  const progressText = document.getElementById('progressText');
-
-  if (progressFill) {
-    progressFill.style.width = Math.min(percent, 100) + '%';
-  }
-  
-  if (progressText) {
-    progressText.textContent = Math.round(percent) + '%';
-  }
-
-  const processingMessage = document.getElementById('processingMessage');
-  const processingTitle = document.getElementById('processingTitle');
-  
-  if (processingMessage) {
-    processingMessage.textContent = message;
-  }
-  
-  if (processingTitle) {
-    processingTitle.textContent = message;
-  }
-
-  console.log(`⏳ ${percent.toFixed(0)}% - ${message}`);
-}
-
-/**
- * Show success
- */
-function showSuccess(uploadResult) {
-  document.getElementById('uploadArea').style.display = 'none';
-  document.getElementById('processingArea').style.display = 'none';
-  document.getElementById('successArea').style.display = 'block';
-  document.getElementById('errorArea').style.display = 'none';
-
-  // ★ 修正: uploadResult から正しいプロパティを取得
-  const shareUrl = uploadResult.downloadUrl || uploadResult.viewUrl || window.location.origin;
-  const shareUrlInput = document.getElementById('shareUrl');
-  
-  if (shareUrlInput) {
-    shareUrlInput.value = shareUrl;
-  }
-
-  // Update stats
-  if (appState.storage) {
-    const stats = appState.storage.getStatistics();
-    const totalUploads = document.getElementById('totalUploads');
-    const totalStorage = document.getElementById('totalStorage');
-    
-    if (totalUploads) {
-      totalUploads.textContent = stats.active_uploads;
-    }
-    
-    if (totalStorage) {
-      totalStorage.textContent = (stats.total_storage_used / 1024 / 1024).toFixed(1);
-    }
-  }
-
-  console.log('✅ Upload success!');
-  console.log('📥 Download URL:', shareUrl);
-}
-
-/**
- * Show error
- */
-function showError(message) {
-  document.getElementById('uploadArea').style.display = 'none';
-  document.getElementById('processingArea').style.display = 'none';
-  document.getElementById('successArea').style.display = 'none';
-  document.getElementById('errorArea').style.display = 'block';
-
-  const errorMessage = document.getElementById('errorMessage');
-  if (errorMessage) {
-    errorMessage.textContent = message;
-  }
-
-  appState.isProcessing = false;
-}
-
-/**
- * Reset form
- */
-function resetForm() {
-  document.getElementById('uploadArea').style.display = 'block';
-  document.getElementById('processingArea').style.display = 'none';
-  document.getElementById('successArea').style.display = 'none';
-  document.getElementById('errorArea').style.display = 'none';
-
-  const fileInput = document.getElementById('fileInput');
-  if (fileInput) {
-    fileInput.value = '';
-  }
-
-  const progressFill = document.getElementById('progressFill');
-  if (progressFill) {
-    progressFill.style.width = '0%';
-  }
-
-  appState.currentFile = null;
-  appState.isProcessing = false;
-}
-
-/**
- * Copy share URL
- */
-function copyShareUrl() {
-  const shareUrl = document.getElementById('shareUrl');
-  if (!shareUrl) return;
-
-  shareUrl.select();
-
-  navigator.clipboard.writeText(shareUrl.value).then(() => {
-    const btn = document.getElementById('copyUrlBtn');
-    if (btn) {
-      const originalText = btn.textContent;
-      btn.textContent = '✓ Copied!';
-      
-      setTimeout(() => {
-        btn.textContent = originalText;
-      }, 2000);
-    }
-  }).catch(error => {
-    console.error('Copy failed:', error);
-  });
-}
-
-/**
- * Social share
- */
-function setupSocialShare() {
-  document.getElementById('shareTwitter')?.addEventListener('click', () => {
-    const url = document.getElementById('shareUrl').value;
-    const text = encodeURIComponent('Check out this file: ' + url);
-    window.open(
-      `https://twitter.com/intent/tweet?text=${text}`,
-      '_blank',
-      'width=500,height=400'
-    );
-  });
-
-  document.getElementById('shareLINE')?.addEventListener('click', () => {
-    const url = document.getElementById('shareUrl').value;
-    window.open(
-      `https://line.me/R/msg/text/${encodeURIComponent(url)}`,
-      '_blank'
-    );
-  });
-}
-
-/**
- * Generate UUID
- */
-function generateUUID() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
-
-/**
- * Warn on page leave during upload
- */
-window.addEventListener('beforeunload', (e) => {
-  if (appState.isProcessing) {
-    e.preventDefault();
-    e.returnValue = 'Upload in progress. Are you sure?';
-    return 'Upload in progress. Are you sure?';
-  }
-});
