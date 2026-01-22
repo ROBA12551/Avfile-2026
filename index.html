@@ -3,11 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
-    <!-- ★ COEP/COOP セキュリティヘッダー（FFmpeg.wasm対応） -->
-    <meta http-equiv="Cross-Origin-Embedder-Policy" content="credentialless">
-    <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin">
-    
     <meta name="description" content="Avfile - Fast and secure file sharing service. Share files instantly with anyone, anywhere. Upload multiple files at once, get shareable links, no registration required, unlimited storage.">
     <meta name="keywords" content="file sharing,video sharing,image sharing,file transfer,cloud storage,online file sharing,document sharing">
     <meta name="author" content="Avfile">
@@ -40,6 +35,9 @@
     <link rel="shortcut icon" href="/images/folder.png">
     <link rel="apple-touch-icon" href="/images/folder.png">
     
+    <!-- ★ FFmpeg.wasm CDN (COEP対応版) -->
+    <script async src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.6/dist/ffmpeg.min.js"></script>
+
     <title>Avfile - Fast File Sharing Service | Unlimited Storage</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -859,16 +857,14 @@
     <footer class="footer">
         <p>&copy; 2026 Avfile • Fast & Simple File Sharing</p>
     </footer>
-<!-- これを body 終端に置く（他のJSより前でもOKだが、moduleは依存整理しやすい） -->
-<script type="module" src="/js/video-compressor-official.js"></script>
 
-<script src="/js/chunked-binary-uploader.js"></script>
+ <script src="/js/chunked-binary-uploader.js"></script>
 <script src="/js/universal-file-uploader-enhanced.js"></script>
 <script>
 
 const MAX_FILES = 10;
 const MAX_FILE_SIZE = 500 * 1024 * 1024;
-const VIDEO_COMPRESSION_THRESHOLD = 3 * 1024 * 1024;
+const VIDEO_COMPRESSION_THRESHOLD = 200 * 1024 * 1024;
 const CHUNK_SIZE = 5 * 1024 * 1024;
 
 // ★ グローバル関数: 並列処理制御
@@ -1080,56 +1076,6 @@ class GitHubUploader {
   }
 }
 
-async function waitForFFmpegReady(maxWaitTime = 120000) {
-  console.log('[UPLOAD] Checking VideoCompressor status...');
-// videoCompressor が作られるまで待つ（最大2秒）
-const waitForVC = async (timeout = 2000) => {
-  const start = Date.now();
-  while (!window.videoCompressor && Date.now() - start < timeout) {
-    await new Promise(r => setTimeout(r, 50));
-  }
-  return !!window.videoCompressor;
-};
-
-if (!(await waitForVC(2000))) {
-  console.warn('[UPLOAD] videoCompressor not found (module not ready)');
-  return false;
-}
-
-  const vc = window.videoCompressor;
-  if (!vc) {
-    console.warn('[UPLOAD] videoCompressor not found');
-    return false;
-  }
-
-  console.log('[UPLOAD] vc.isLoaded:', vc.isLoaded);
-  console.log('[UPLOAD] vc.isLoading:', vc.isLoading);
-
-  // ★ 初期化をキック
-  if (!vc.isLoaded && !vc.isLoading) {
-    console.log('[UPLOAD] Kicking vc.initFFmpeg()...');
-    vc.initFFmpeg().catch(err => {
-      console.warn('[UPLOAD] vc.initFFmpeg failed:', err?.message || err);
-    });
-  }
-
-  const start = Date.now();
-
-  // ★ ロード完了を待つ
-  while (vc.isLoading) {
-    if (Date.now() - start > maxWaitTime) {
-      console.warn('[UPLOAD] FFmpeg init timeout');
-      return false;
-    }
-    await new Promise(r => setTimeout(r, 200));
-  }
-
-  console.log('[UPLOAD] FFmpeg ready:', vc.isLoaded);
-  return vc.isLoaded;
-}
-
-
-
 // ★ 複数ファイルの同時アップロード（最大10個の並列処理）
 async function uploadMultiple(files) {
   showStatus();
@@ -1137,11 +1083,6 @@ async function uploadMultiple(files) {
 
   try {
     console.log('[UPLOAD] START - Files:', files.length);
-    
-    // ★ FFmpeg初期化状態を確認（最大30秒待機）
-    console.log('[UPLOAD] Waiting for FFmpeg readiness check...');
-    const ffmpegReady = await waitForFFmpegReady(180000);
-    console.log('[UPLOAD] FFmpeg preparation complete. Ready:', ffmpegReady);
 
     if (files.length > MAX_FILES) {
       throw new Error(`Maximum ${MAX_FILES} files allowed`);
@@ -1157,58 +1098,6 @@ async function uploadMultiple(files) {
         
         // ファイル情報を取得
         const fileInfo = await getUnifiedFileInfo(file, uploader);
-        
-        // ★ ビデオファイルの圧縮処理（圧縮→チャンクの順にする）
-let uploadFile = file;
-
-if (file.type && file.type.startsWith('video/')) {
-  console.log(`[FILE_${idx}] Video file detected`);
-
-  // 1) サイズ条件：ここで判定（VIDEO_COMPRESSION_THRESHOLD を使う）
-  const isLarge = file.size >= VIDEO_COMPRESSION_THRESHOLD;
-
-  // 2) 圧縮対象なら FFmpeg を確実に起動して待つ
-  if (isLarge && window.videoCompressor) {
-    updateUploadProgress(idx, files.length, 'Preparing compressor...');
-    const ready = await waitForFFmpegReady(120000); // ★大きい動画は2分くらい待て
-
-    if (ready) {
-      console.log(`[FILE_${idx}] Starting video compression...`);
-      updateUploadProgress(idx, files.length, 'Compressing video...');
-
-      try {
-        const compressionResult = await window.videoCompressor.compressVideo(
-          file,
-          (percent, status) => {
-            // UI反映したいならここで
-            // updateUploadProgress(idx, files.length, `Compressing... ${percent}%`);
-          }
-        );
-
-        uploadFile = new File(
-          [compressionResult.blob],
-          compressionResult.fileName,
-          { type: compressionResult.blob.type }
-        );
-
-        console.log(`[FILE_${idx}] ✓ Compression complete: ${compressionResult.compressionRatio}% reduction`);
-        updateUploadProgress(idx, files.length, `Video compressed (${compressionResult.compressionRatio}%)`);
-      } catch (err) {
-        console.warn(`[FILE_${idx}] Compression failed, using original:`, err?.message || err);
-        updateUploadProgress(idx, files.length, 'Compression failed, using original');
-        uploadFile = file;
-      }
-    } else {
-      console.warn(`[FILE_${idx}] FFmpeg not ready, using original`);
-      updateUploadProgress(idx, files.length, 'FFmpeg not ready, using original');
-      uploadFile = file;
-    }
-  } else {
-    console.log(`[FILE_${idx}] Skip compression (below threshold)`);
-  }
-}
-
-        
         const fileId = 'f_' + Math.random().toString(36).substr(2, 9);
         const fileName = fileInfo.name;
         const releaseTag = `file_${fileId}`;
@@ -1221,8 +1110,7 @@ if (file.type && file.type.startsWith('video/')) {
         console.log(`[FILE_${idx}] Uploading binary: ${fileName}`);
         updateUploadProgress(idx, files.length, 'Uploading file...');
         
-        // ★ 圧縮後のファイルをアップロード
-        const assetData = await uploader.uploadAssetBinary(release.upload_url, fileName, uploadFile);
+        const assetData = await uploader.uploadAssetBinary(release.upload_url, fileName, file);
 
         console.log(`[FILE_${idx}] Saving to github.json: ${fileName}`);
         updateUploadProgress(idx, files.length, 'Saving metadata...');
@@ -1380,7 +1268,5 @@ if (viewId) {
   showUpload();
 }
 </script>
-
-
 </body>
 </html>
