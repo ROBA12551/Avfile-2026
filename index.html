@@ -1100,6 +1100,7 @@
             try {
                 let ext = 'bin';
                 
+                // ★ ビデオファイル
                 if (file.type && file.type.startsWith('video/')) {
                     if (file.type === 'video/mp4') ext = 'mp4';
                     else if (file.type === 'video/quicktime') ext = 'mov';
@@ -1111,35 +1112,82 @@
                     else if (file.type === 'video/x-ms-wmv') ext = 'wmv';
                     else if (file.type === 'video/3gpp') ext = '3gp';
                     else if (file.type === 'video/3gpp2') ext = '3g2';
+                    else if (file.type === 'video/mp2t') ext = 'ts';
                     else ext = 'mp4';
-                } else if (file.type && file.type.startsWith('image/')) {
+                }
+                // ★ 画像ファイル
+                else if (file.type && file.type.startsWith('image/')) {
                     if (file.type === 'image/jpeg') ext = 'jpg';
                     else if (file.type === 'image/png') ext = 'png';
                     else if (file.type === 'image/gif') ext = 'gif';
                     else if (file.type === 'image/webp') ext = 'webp';
+                    else if (file.type === 'image/bmp') ext = 'bmp';
+                    else if (file.type === 'image/svg+xml') ext = 'svg';
+                    else if (file.type === 'image/x-icon') ext = 'ico';
+                    else if (file.type === 'image/tiff') ext = 'tiff';
                     else ext = 'jpg';
-                } else if (file.type && file.type.startsWith('audio/')) {
+                }
+                // ★ 音声ファイル
+                else if (file.type && file.type.startsWith('audio/')) {
                     if (file.type === 'audio/mpeg') ext = 'mp3';
                     else if (file.type === 'audio/wav') ext = 'wav';
                     else if (file.type === 'audio/ogg') ext = 'ogg';
                     else if (file.type === 'audio/flac') ext = 'flac';
+                    else if (file.type === 'audio/aac') ext = 'aac';
+                    else if (file.type === 'audio/mp4') ext = 'm4a';
+                    else if (file.type === 'audio/webm') ext = 'webm';
+                    else if (file.type === 'audio/x-ms-wma') ext = 'wma';
+                    else if (file.type === 'audio/opus') ext = 'opus';
                     else ext = 'mp3';
-                } else if (file.type === 'application/pdf') {
-                    ext = 'pdf';
-                } else if (file.type && file.type.startsWith('application/')) {
+                }
+                // ★ Applicationタイプ（重要）
+                else if (file.type && file.type.startsWith('application/')) {
                     if (file.type === 'application/zip') ext = 'zip';
+                    else if (file.type === 'application/x-zip-compressed') ext = 'zip';
                     else if (file.type === 'application/x-rar-compressed') ext = 'rar';
+                    else if (file.type === 'application/x-7z-compressed') ext = '7z';
+                    else if (file.type === 'application/gzip') ext = 'gz';
+                    else if (file.type === 'application/x-tar') ext = 'tar';
+                    else if (file.type === 'application/x-bzip2') ext = 'bz2';
+                    else if (file.type === 'application/pdf') ext = 'pdf';
+                    else if (file.type === 'application/msword') ext = 'doc';
+                    else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') ext = 'docx';
+                    else if (file.type === 'application/vnd.ms-excel') ext = 'xls';
+                    else if (file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') ext = 'xlsx';
+                    else if (file.type === 'application/vnd.ms-powerpoint') ext = 'ppt';
+                    else if (file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') ext = 'pptx';
+                    else if (file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') ext = 'xlsx';
+                    else if (file.type === 'application/json') ext = 'json';
+                    else if (file.type === 'application/xml') ext = 'xml';
+                    else if (file.type === 'application/x-www-form-urlencoded') ext = 'bin';
+                    else if (file.type === 'application/octet-stream') ext = 'bin';
                     else ext = 'bin';
-                } else if (file.type && file.type.startsWith('text/')) {
+                }
+                // ★ テキストファイル
+                else if (file.type && file.type.startsWith('text/')) {
                     if (file.type === 'text/plain') ext = 'txt';
                     else if (file.type === 'text/html') ext = 'html';
+                    else if (file.type === 'text/css') ext = 'css';
+                    else if (file.type === 'text/javascript') ext = 'js';
+                    else if (file.type === 'text/csv') ext = 'csv';
+                    else if (file.type === 'text/xml') ext = 'xml';
+                    else if (file.type === 'text/markdown') ext = 'md';
                     else ext = 'txt';
+                }
+                // ★ フォールバック - ファイル名から拡張子を抽出
+                else if (file.name && file.name.includes('.')) {
+                    const parts = file.name.split('.');
+                    const nameExt = parts[parts.length - 1].toLowerCase();
+                    // ファイル名の拡張子が有効そうか確認（1-10文字）
+                    if (nameExt && nameExt.length > 0 && nameExt.length <= 10 && /^[a-z0-9]+$/.test(nameExt)) {
+                        ext = nameExt;
+                    }
                 }
 
                 const randomName = generateRandomFileName();
                 const fileName = `${randomName}.${ext}`;
 
-                console.log('[FILE_INFO] Generated filename:', fileName);
+                console.log('[FILE_INFO] Original:', file.name, '→ Generated:', fileName, '(type:', file.type, ')');
 
                 return {
                     name: fileName,
@@ -1451,15 +1499,19 @@
                     console.log(`[FILE_${idx}] Complete - "${fileName}"`);
                 }
 
-                // ★ 複数ファイル時はグループを作成（修正版）
+                // ★ 複数ファイル時はグループを作成（修正版 - デバッグ強化）
                 let shareUrl = '';
                 
                 if (fileIds.length > 1) {
                     console.log('[UPLOAD] Creating group for', fileIds.length, 'files');
                     const groupId = 'g_' + Math.random().toString(36).substr(2, 9);
+                    console.log('[UPLOAD] Generated groupId:', groupId);
+                    console.log('[UPLOAD] fileIds:', fileIds);
                     
                     try {
                         const functionUrl = '/.netlify/functions/github-upload';
+                        console.log('[UPLOAD] Sending group creation request to:', functionUrl);
+                        
                         const groupRes = await fetch(functionUrl, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -1471,12 +1523,15 @@
                             })
                         });
 
+                        console.log('[UPLOAD] Group creation response status:', groupRes.status);
+                        
                         if (groupRes.ok) {
                             const groupData = await groupRes.json();
                             console.log('[UPLOAD] Group created successfully:', groupId);
                             shareUrl = `https://avfile.io/d/${groupId}`;
                         } else {
-                            console.warn('[UPLOAD] Group creation failed, using fallback');
+                            const errText = await groupRes.text();
+                            console.warn('[UPLOAD] Group creation failed:', groupRes.status, errText);
                             shareUrl = `https://avfile.io/d/${fileIds.join(',')}`;
                         }
                     } catch (e) {
@@ -1485,6 +1540,7 @@
                     }
                 } else {
                     // 単一ファイル
+                    console.log('[UPLOAD] Single file - no group needed');
                     shareUrl = `https://avfile.io/d/${fileIds[0]}`;
                 }
                 
