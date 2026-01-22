@@ -1426,22 +1426,36 @@ async function loadView(viewId) {
   try {
     console.log('[MAIN] Loading view:', viewId);
 
-    // ★ github.json から全ファイル情報を取得
-    const filesRes = await fetch(this.functionUrl || '/.netlify/functions/github-upload', {
+    // ★ 修正: this を使わずに直接 URL を指定
+    const filesRes = await fetch('/.netlify/functions/github-upload', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'get-files' })
     });
 
+    console.log('[MAIN] Files response status:', filesRes.status);
+    
+    if (!filesRes.ok) {
+      const errorText = await filesRes.text();
+      console.error('[MAIN] Files error:', errorText);
+      throw new Error(`Failed to load files: ${filesRes.status}`);
+    }
+
     const filesData = await filesRes.json();
+    console.log('[MAIN] Files loaded:', filesData);
+    
     const allFiles = filesData.data?.files || [];
+    console.log('[MAIN] All files:', allFiles);
 
     // viewId に合致するファイルを探す
     const file = allFiles.find(f => f.fileId === viewId);
     
     if (!file) {
+      console.error('[MAIN] File not found. ViewId:', viewId, 'Available:', allFiles.map(f => f.fileId));
       throw new Error('File not found');
     }
+
+    console.log('[MAIN] Found file:', file);
 
     const carousel = new Carousel(
       document.getElementById('carouselTrack'),
@@ -1494,7 +1508,7 @@ async function loadView(viewId) {
 
   } catch (e) {
     console.error('[MAIN] Error:', e.message);
-    showError('File not found');
+    showError('File not found: ' + e.message);
   }
 }
 

@@ -2,7 +2,7 @@ const https = require('https');
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_OWNER = process.env.GITHUB_OWNER;
-const GITHUB_REPO  = process.env.GITHUB_REPO;
+const GITHUB_REPO = process.env.GITHUB_REPO;
 
 function logInfo(msg) {
   console.log(`[INFO] ${new Date().toISOString()} ${msg}`);
@@ -69,8 +69,8 @@ exports.handler = async (event) => {
       logError('Missing id parameter');
       return {
         statusCode: 400,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'Missing id parameter' })
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify({ success: false, error: 'Missing id parameter' })
       };
     }
 
@@ -80,8 +80,8 @@ exports.handler = async (event) => {
       logError('Missing env vars');
       return {
         statusCode: 500,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'Server not configured' })
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify({ success: false, error: 'Server not configured' })
       };
     }
 
@@ -97,8 +97,8 @@ exports.handler = async (event) => {
       logError(`Failed to fetch github.json: ${e.message}`);
       return {
         statusCode: 404,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'github.json not found', message: e.message })
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify({ success: false, error: 'github.json not found', message: e.message })
       };
     }
 
@@ -106,8 +106,8 @@ exports.handler = async (event) => {
       logError('Invalid github.json response');
       return {
         statusCode: 404,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'github.json not found or invalid' })
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify({ success: false, error: 'github.json not found or invalid' })
       };
     }
 
@@ -119,8 +119,8 @@ exports.handler = async (event) => {
       logError(`Decode error: ${e.message}`);
       return {
         statusCode: 500,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'Failed to decode github.json' })
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify({ success: false, error: 'Failed to decode github.json' })
       };
     }
 
@@ -128,76 +128,35 @@ exports.handler = async (event) => {
     try {
       data = JSON.parse(decoded);
       logInfo(`Parsed successfully`);
-      logInfo(`Views count: ${(data.views || []).length}`);
-      logInfo(`Files count: ${(data.files || []).length}`);
+      logInfo(`Files count: ${(data || []).length}`);
     } catch (e) {
       logError(`Parse error: ${e.message}`);
       return {
         statusCode: 500,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'Invalid JSON in github.json', message: e.message })
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify({ success: false, error: 'Invalid JSON in github.json', message: e.message })
       };
     }
 
-    // Find view
-    const view = (data.views || []).find(v => v && v.viewId === viewId);
+    // ★ 修正: github.json は直接ファイル配列
+    // [{fileId, fileName, fileSize, downloadUrl}, ...]
+    const allFiles = Array.isArray(data) ? data : [];
+    logInfo(`All files: ${allFiles.length}`);
+
+    // viewId に合致するファイルを探す
+    const file = allFiles.find(f => f && f.fileId === viewId);
     
-    if (!view) {
-      logError(`View not found: ${viewId}`);
+    if (!file) {
+      logError(`File not found for viewId: ${viewId}`);
+      logInfo(`Available fileIds: ${allFiles.map(f => f.fileId).join(', ')}`);
       return {
         statusCode: 404,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'View not found', viewId })
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify({ success: false, error: 'File not found', viewId })
       };
     }
 
-    logInfo(`View found: ${view.viewId}`);
-    logInfo(`View structure: ${JSON.stringify(view)}`);
-    
-    // ★ ファイル取得のデバッグ
-    const fileIdArray = view.fileIds || view.files || [];
-    logInfo(`FileIds/Files array: ${JSON.stringify(fileIdArray)}`);
-    logInfo(`Array length: ${fileIdArray.length}`);
-
-    // ★ GitHub Release URL をそのまま使用
-    const files = [];
-    
-    // fileIds の場合（各ファイルIDから検索）
-    if (Array.isArray(fileIdArray) && fileIdArray.length > 0 && typeof fileIdArray[0] === 'string') {
-      for (const fileId of fileIdArray) {
-        logInfo(`Looking for fileId: ${fileId}`);
-        const file = (data.files || []).find(f => f && f.fileId === fileId);
-        if (!file) {
-          logError(`File not found: ${fileId}`);
-          continue;
-        }
-        logInfo(`Found file: ${file.fileName}`);
-        files.push({
-          fileId: file.fileId,
-          fileName: file.fileName,
-          fileSize: file.fileSize,
-          downloadUrl: file.downloadUrl
-        });
-      }
-    } 
-    // files オブジェクトの場合（直接ファイル配列）
-    else if (Array.isArray(fileIdArray) && fileIdArray.length > 0 && typeof fileIdArray[0] === 'object') {
-      logInfo(`Direct files array detected`);
-      for (const file of fileIdArray) {
-        if (file && file.fileName && file.downloadUrl) {
-          logInfo(`Adding file: ${file.fileName}`);
-          files.push({
-            fileId: file.fileId || file.fileName,
-            fileName: file.fileName,
-            fileSize: file.fileSize,
-            downloadUrl: file.downloadUrl
-          });
-        }
-      }
-    }
-
-    logInfo(`Processed files: ${files.length}`);
-    logInfo(`Files to return: ${JSON.stringify(files)}`);
+    logInfo(`File found: ${file.fileName}`);
 
     return {
       statusCode: 200,
@@ -209,9 +168,14 @@ exports.handler = async (event) => {
       },
       body: JSON.stringify({
         success: true,
-        password: view.password || null,
-        shareUrl: view.shareUrl || null,
-        files: files
+        files: [
+          {
+            fileId: file.fileId,
+            fileName: file.fileName,
+            fileSize: file.fileSize,
+            downloadUrl: file.downloadUrl
+          }
+        ]
       })
     };
 
@@ -220,8 +184,9 @@ exports.handler = async (event) => {
     
     return {
       statusCode: 500,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       body: JSON.stringify({ 
+        success: false,
         error: 'Internal server error',
         message: e.message
       })
