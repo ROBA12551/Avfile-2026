@@ -888,7 +888,60 @@ async function getUnifiedFileInfo(file, fileUploader) {
     console.log('[FILE_INFO] ファイル名を自動生成: ' + file.name + ' → ' + fileName);
     console.log('[FILE_INFO] MIME タイプ: ' + file.type + ' → 拡張子: .' + ext);
 
-    const fileType = fileUploader.getFileType(fileName);
+    // ★ fileType を拡張子から直接判定（fileUploader.getFileType は削除）
+    let fileType = 'file';
+    
+    // 動画ファイル
+    if (ext.match(/^(mp4|webm|ogg|mkv|avi|mov|flv|wmv|m4v|ts|m2ts|mts|3gp|3g2|asf|f4v|m3u8|mxf|mpeg|mpg|vob|ogv)$/i)) {
+      fileType = 'video';
+    }
+    // 画像ファイル
+    else if (ext.match(/^(jpg|jpeg|png|gif|webp|bmp|svg|ico|tiff|tif|heic|heif|avif|apng|jfif|pjpeg|pjp|raw|cr2|nef|arw|dng)$/i)) {
+      fileType = 'image';
+    }
+    // PDF
+    else if (ext.match(/^pdf$/i)) {
+      fileType = 'pdf';
+    }
+    // 音声ファイル
+    else if (ext.match(/^(mp3|wav|ogg|flac|m4a|aac|wma|opus|aiff|aif|ape|alac|ac3|dts|eac3|aape|wv|tta|dsf|dff|dsd|mka|m4b|m4r)$/i)) {
+      fileType = 'audio';
+    }
+    // ドキュメント
+    else if (ext.match(/^(doc|docx|txt|rtf|odt|xls|xlsx|csv|ods|ppt|pptx|odp|pages|numbers|keynote|tex|latex|docm|xlsm|pptm|dotx|xltx|potx|wpd|wps)$/i)) {
+      fileType = 'document';
+    }
+    // アーカイブ・圧縮
+    else if (ext.match(/^(zip|rar|7z|tar|gz|bz2|xz|iso|dmg|pkg|exe|msi|apk|deb|rpm|tgz|tbz|tbz2|txz|war|jar|ace|arc|lha|lzh|cab|arj|z|lz|shar|sit|sitx|hqx|sea|cpt|zoo)$/i)) {
+      fileType = 'archive';
+    }
+    // コード・スクリプト
+    else if (ext.match(/^(js|ts|jsx|tsx|py|java|cpp|c|go|rs|rb|php|html|css|scss|sass|less|json|xml|yaml|yml|sh|bash|zsh|fish|bat|cmd|ps1|lua|swift|kotlin|scala|groovy|perl|r|matlab|julia|haskell|clojure|elixir|erlang|ocaml|ml|lisp|scheme|prolog|sql|plsql|pl|vb|vbs|asp|jsp|erb|ejs|jade|pug|handlebars|hbs|mustache|velocity|freemarker|jinja|mako|django|twig|liquid|nunjucks|tera|asm|f|f90|f95|f03|f08|f15|f18|pas|pp|ada|adb|ads|cobol|cbl|cob|fortran|ftn|asm|s)$/i)) {
+      fileType = 'code';
+    }
+    // 画像・デザイン
+    else if (ext.match(/^(psd|ai|eps|sketch|fig|xd|indd|cdr|dwg|dxf|pptm)$/i)) {
+      fileType = 'design';
+    }
+    // 3D・モデル
+    else if (ext.match(/^(obj|mtl|fbx|gltf|glb|blend|max|maya|c4d|lwo|lws|3ds|dae|ply|stl|usdz|usd|xsi|mb|ma)$/i)) {
+      fileType = '3d';
+    }
+    // フォント
+    else if (ext.match(/^(ttf|otf|woff|woff2|eot|sfnt|afm|pfm|pfb|fon)$/i)) {
+      fileType = 'font';
+    }
+    // e-book
+    else if (ext.match(/^(epub|mobi|azw|azw3|ibooks|opf|ncx|kf8|apnx)$/i)) {
+      fileType = 'ebook';
+    }
+    // 字幕
+    else if (ext.match(/^(srt|vtt|ass|ssa|sub|sbv|subrip|microdvd|mpl2)$/i)) {
+      fileType = 'subtitle';
+    }
+
+    console.log('[FILE_INFO] File type: ' + fileType);
+
     return {
       name: fileName,
       type: fileType,
@@ -909,10 +962,6 @@ async function getUnifiedFileInfo(file, fileUploader) {
     };
   }
 }
-
-/**
- * キャッシュ管理
- */
 class Cache {
   static async downloadDirect(url, fileId) {
     try {
@@ -965,94 +1014,190 @@ class GitHubUploader {
     this.functionUrl = '/.netlify/functions/github-upload';
     this.githubToken = null;
   }
+
+  /**
+   * ★ 修正版: addFileToGithubJson メソッド
+   * エラーハンドリングを強化
+   */
   async addFileToGithubJson(fileData) {
-    console.log('[ADD_FILE] Saving:', fileData.fileId);
-    
-    const response = await fetch(this.functionUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'add-file',
-        fileData: fileData
-      })
+    console.log('[ADD_FILE] Saving file info:', {
+      fileId: fileData.fileId,
+      fileName: fileData.fileName,
+      fileSize: fileData.fileSize,
+      downloadUrlPrefix: fileData.downloadUrl?.substring(0, 60) + '...'
     });
+    
+    try {
+      const response = await fetch(this.functionUrl, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          action: 'add-file',
+          fileData: {
+            fileId: String(fileData.fileId),
+            fileName: String(fileData.fileName),
+            fileSize: Number(fileData.fileSize),
+            downloadUrl: String(fileData.downloadUrl)
+          }
+        })
+      });
 
-    if (!response.ok) {
-      throw new Error('Add file failed');
+      console.log('[ADD_FILE] Response status:', response.status);
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('[ADD_FILE] Error response:', {
+          status: response.status,
+          statusText: response.statusText,
+          response: text.substring(0, 500)
+        });
+        throw new Error(`Add file failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('[ADD_FILE] Success:', data);
+      return data.data;
+    } catch (e) {
+      console.error('[ADD_FILE] Error:', {
+        message: e.message,
+        stack: e.stack
+      });
+      throw e;
     }
-
-    const data = await response.json();
-    console.log('[ADD_FILE] Success');
-    return data.data;
   }
 
+  /**
+   * ★ 修正版: createRelease メソッド
+   * 詳細なログを追加
+   */
   async createRelease(releaseTag, fileName) {
-    console.log('[RELEASE] Creating:', releaseTag);
-    
-    const response = await fetch(this.functionUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'create-release',
-        releaseTag: releaseTag,
-        metadata: { title: fileName }
-      })
+    console.log('[RELEASE] Creating:', {
+      releaseTag: releaseTag,
+      fileName: fileName
     });
-
-    console.log('[RELEASE] Status:', response.status);
     
-    if (!response.ok) {
-      const text = await response.text();
-      console.error('[RELEASE] Error:', text);
-      throw new Error(`Create release failed: ${response.status}`);
+    try {
+      const response = await fetch(this.functionUrl, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          action: 'create-release',
+          releaseTag: releaseTag,
+          metadata: { title: fileName }
+        })
+      });
+
+      console.log('[RELEASE] Response status:', response.status);
+      
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('[RELEASE] Error response:', {
+          status: response.status,
+          statusText: response.statusText,
+          response: text.substring(0, 500)
+        });
+        throw new Error(`Create release failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('[RELEASE] Success:', {
+        releaseId: data.data.release_id,
+        tagName: data.data.tag_name,
+        hasUploadUrl: !!data.data.upload_url
+      });
+      
+      return data.data;
+    } catch (e) {
+      console.error('[RELEASE] Error:', {
+        message: e.message,
+        stack: e.stack
+      });
+      throw e;
     }
+  }
 
-    const data = await response.json();
-    console.log('[RELEASE] Success');
+  /**
+   * ★ 修正版: uploadAssetBinary メソッド
+   * テキスト形式で base64 を直接送信（JSON.stringify しない）
+   */
+  async uploadAssetBinary(uploadUrl, fileName, fileObject) {
+    console.log('[UPLOAD_BINARY] Starting upload:', {
+      fileName: fileName,
+      fileSize: fileObject.size,
+      fileSizeMB: (fileObject.size / 1024 / 1024).toFixed(2) + ' MB',
+      mimeType: fileObject.type
+    });
     
-    return data.data;
-  }
-  
-async uploadAssetBinary(uploadUrl, fileName, fileObject) {
-  console.log('[UPLOAD_BINARY] Uploading...');
-  
-  const arrayBuffer = await fileObject.arrayBuffer();
-  const uint8Array = new Uint8Array(arrayBuffer);
-  
-  // Base64 に変換（小分けにして stack overflow を避ける）
-  let base64 = '';
-  const chunkSize = 10000;
-  for (let i = 0; i < uint8Array.length; i += chunkSize) {
-    base64 += String.fromCharCode.apply(null, uint8Array.subarray(i, i + chunkSize));
-  }
-  base64 = btoa(base64);
-// ✅ 正しいコード
-const response = await fetch(this.functionUrl, {
-  method: 'POST',
-  headers: {
-    'X-Upload-Url': uploadUrl,
-    'X-Is-Base64': 'true',
-    'Content-Type': 'application/json'  // これを追加！
-  },
-  body: JSON.stringify({
-    data: base64  // または必要なデータ構造
-  })
-});
+    try {
+      const arrayBuffer = await fileObject.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      
+      // Base64 に変換（チャンクで処理して stack overflow を避ける）
+      console.log('[UPLOAD_BINARY] Converting to Base64...');
+      let base64 = '';
+      const chunkSize = 10000;
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        base64 += String.fromCharCode.apply(null, uint8Array.subarray(i, i + chunkSize));
+      }
+      base64 = btoa(base64);
 
-  console.log('[UPLOAD_BINARY] Status:', response.status);
-  
-  if (!response.ok) {
-    throw new Error(`Upload failed: ${response.status}`);
-  }
+      console.log('[UPLOAD_BINARY] Base64 conversion complete:', {
+        originalSize: fileObject.size,
+        base64Size: base64.length,
+        originalSizeMB: (fileObject.size / 1024 / 1024).toFixed(2) + ' MB',
+        base64SizeMB: (base64.length / 1024 / 1024).toFixed(2) + ' MB'
+      });
 
-  const data = await response.json();
-  console.log('[UPLOAD_BINARY] Success');
-  
-  return {
-    size: data.data.size,
-    browser_download_url: data.data.download_url
-  };
-}
+      // ✅ 修正: base64 文字列を直接テキストとして送信（JSON.stringify しない）
+      console.log('[UPLOAD_BINARY] Sending request to Netlify function...');
+      const response = await fetch(this.functionUrl, {
+        method: 'POST',
+        headers: {
+          'X-Upload-Url': uploadUrl,
+          'X-Is-Base64': 'true',
+          'Content-Type': 'text/plain'  // ★ テキスト形式
+        },
+        body: base64  // ★ JSON.stringify() しない
+      });
+
+      console.log('[UPLOAD_BINARY] Response status:', response.status);
+      
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('[UPLOAD_BINARY] Error response:', {
+          status: response.status,
+          statusText: response.statusText,
+          response: text.substring(0, 500)
+        });
+        throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log('[UPLOAD_BINARY] Success response:', {
+        success: data.success,
+        assetId: data.data.asset_id,
+        size: data.data.size,
+        name: data.data.name
+      });
+      
+      return {
+        size: data.data.size,
+        browser_download_url: data.data.download_url
+      };
+    } catch (e) {
+      console.error('[UPLOAD_BINARY] Error:', {
+        message: e.message,
+        stack: e.stack
+      });
+      throw e;
+    }
+  }
 }
 /**
  * カルーセル管理
@@ -1323,10 +1468,12 @@ async function uploadMultiple(files) {
       const fileInfo = await getUnifiedFileInfo(file, uploader);
       
       const fileId = 'f_' + Math.random().toString(36).substr(2, 9);
-      const fileName = fileInfo.name;  // ✅ getUnifiedFileInfo() から取得
+      const fileName = fileInfo.name;  // ✅ 正しい拡張子が含まれている
       const releaseTag = `file_${fileId}`;
 
       console.log(`[FILE_${idx}] Creating release with fileName: ${fileName}`);
+      console.log(`[FILE_${idx}] File type: ${fileInfo.type}, Size: ${fileInfo.size} bytes`);
+      
       const release = await uploader.createRelease(releaseTag, fileName);
 
       console.log(`[FILE_${idx}] Uploading binary...`);
@@ -1336,7 +1483,7 @@ async function uploadMultiple(files) {
       console.log(`[FILE_${idx}] Saving to github.json...`);
       await uploader.addFileToGithubJson({
         fileId: fileId,
-        fileName: fileName,  // ✅ 正しい拡張子を含む
+        fileName: fileName,  // ✅ ここも正しいファイル名
         fileSize: assetData.size,
         downloadUrl: assetData.browser_download_url
       });
@@ -1356,6 +1503,7 @@ async function uploadMultiple(files) {
     showError(e.message);
   }
 }
+
 async function uploadFileChunked(file, fileName, onProgress = () => {}) {
   try {
     const fileSize = file.size;
