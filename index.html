@@ -774,39 +774,19 @@ function clearCacheGithubJson() {
   githubJsonCache = null;
   githubJsonCacheTime = 0;
 }
-
-/**
- * 制御付き並列処理（最大N個同時）
- */
 async function parallelLimit(tasks, limit) {
   const results = [];
-  const executing = [];
+  let index = 0;
 
-  for (let i = 0; i < tasks.length; i++) {
-    const task = tasks[i];
-    
-    const promise = Promise.resolve()
-      .then(() => task())
-      .then(result => {
-        results[i] = result;
-        const idx = executing.indexOf(promise);
-        if (idx !== -1) executing.splice(idx, 1);
-      })
-      .catch(error => {
-        results[i] = { error };
-        const idx = executing.indexOf(promise);
-        if (idx !== -1) executing.splice(idx, 1);
-        throw error;
-      });
-
-    executing.push(promise);
-
-    if (executing.length >= limit) {
-      await Promise.race(executing);
+  const worker = async () => {
+    while (index < tasks.length) {
+      const i = index++;
+      results[i] = await tasks[i]();
     }
-  }
+  };
 
-  await Promise.all(executing);
+  const workers = Array(Math.min(limit, tasks.length)).fill().map(worker);
+  await Promise.all(workers);
   return results;
 }
 
