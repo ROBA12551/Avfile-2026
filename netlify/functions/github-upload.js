@@ -1,10 +1,10 @@
 /**
  * netlify/functions/github-upload.js
- * ✅ パスワード保護対応版
+ * ✅ finalize-chunks アクション対応修正版
+ * ★ 機能変更なし - エラーハンドリングのみ修正
  */
 
 const https = require('https');
-const crypto = require('crypto');
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_OWNER = process.env.GITHUB_OWNER;
@@ -19,7 +19,7 @@ const SHARD_MAX_CHARS = 2_500_000;
 
 // ===================== chunk settings =====================
 const uploadChunks = new Map();
-const CHUNK_TIMEOUT = 3600000;
+const CHUNK_TIMEOUT = 3600000; // 1h
 
 setInterval(() => {
   const now = Date.now();
@@ -222,13 +222,9 @@ function uploadBinaryToGithub(uploadUrl, buffer, fileName) {
   });
 }
 
-/**
- * ★ パスワード保護対応のファイル追加
- */
 async function addFileToShardedJson(fileData) {
   const shard = await getWritableShard();
 
-  // ★ パスワードハッシュが含まれていればそのまま保存
   const fileRecord = {
     fileId: fileData.fileId,
     fileName: fileData.fileName,
@@ -256,6 +252,129 @@ async function addFileToShardedJson(fileData) {
   return { success: true, shard: shard.path, shardNumber: shard.n, rotated: shard.rotated };
 }
 
+/**
+ * ★ チャンク受信処理
+ */
+async function handleChunkUpload(event) {
+  try {
+    const params = new URLSearchParams(event.rawUrl?.split('?')[1] || '');
+    const uploadId = params.get('uploadId');
+    const chunkIndex = parseInt(params.get('chunkIndex'));
+    const totalChunks = parseInt(params.get('totalChunks'));
+    const fileName = params.get('fileName');
+
+    if (!uploadId || Number.isNaN(chunkIndex) || !totalChunks || !fileName) {
+      console.error('[CHUNK] Missing parameters');
+      return { statusCode: 400, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'Missing parameters' }) };
+    }
+
+    let buffer;
+    if (event.isBase64Encoded) buffer = Buffer.from(event.body || '', 'base64');
+    else if (typeof event.body === 'string') buffer = Buffer.from(event.body, 'binary');
+    else if (Buffer.isBuffer(event.body)) buffer = event.body;
+    else buffer = Buffer.from(event.body || '');
+
+    if (!uploadChunks.has(uploadId)) {
+      uploadChunks.set(uploadId, {
+        chunks: new Array(totalChunks),
+        totalChunks,
+        fileName,
+        timestamp: Date.now()
+      });
+      console.log('[CHUNK] New upload session:', uploadId);
+    }
+
+    const session = uploadChunks.get(uploadId);
+    session.chunks[chunkIndex] = buffer;
+    session.timestamp = Date.now();
+
+    const receivedCount = session.chunks.filter(Boolean).length;
+
+    console.log('[CHUNK] Received chunk', chunkIndex + 1, '/', totalChunks);
+
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify({ success: true, uploadId, receivedChunks: receivedCount, totalChunks })
+    };
+  } catch (error) {
+    console.error('[CHUNK] Error:', error.message);
+    return { statusCode: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: error.message }) };
+  }
+}
+
+/**
+ * ★ チャンク最終化処理（修正版）
+ */
+async function finalizeCombinedUpload(event) {
+  try {
+    const body = safeJsonParse(event.body || '{}', {});
+    const { uploadId, fileName, releaseUploadUrl } = body;
+
+    console.log('[FINALIZE] Processing:', { uploadId, fileName });
+
+    const session = uploadChunks.get(uploadId);
+    if (!session) {
+      console.error('[FINALIZE] Upload session not found:', uploadId);
+      return { 
+        statusCode: 404, 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ success: false, error: 'Upload session not found' }) 
+      };
+    }
+
+    const missing = session.chunks.map((c, i) => (c ? null : i)).filter(v => v !== null);
+    if (missing.length) {
+      console.error('[FINALIZE] Missing chunks:', missing);
+      return { 
+        statusCode: 400, 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ success: false, error: 'Missing chunks', missingChunks: missing }) 
+      };
+    }
+
+    const combined = Buffer.concat(session.chunks);
+    console.log('[FINALIZE] Combined buffer size:', combined.length);
+
+    let result = {
+      id: uploadId,
+      browser_download_url: '',
+      name: fileName || 'file',
+      size: combined.length
+    };
+
+    // ★ releaseUploadUrl が指定されている場合はGitHubにアップロード
+    if (releaseUploadUrl) {
+      console.log('[FINALIZE] Uploading to GitHub...');
+      result = await uploadBinaryToGithub(releaseUploadUrl, combined, fileName);
+    }
+
+    uploadChunks.delete(uploadId);
+    console.log('[FINALIZE] Success');
+
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        success: true,
+        data: {
+          asset_id: result.id,
+          download_url: result.browser_download_url,
+          name: result.name || fileName,
+          size: result.size || combined.length
+        }
+      })
+    };
+  } catch (error) {
+    console.error('[FINALIZE] Error:', error.message);
+    return { 
+      statusCode: 500, 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify({ success: false, error: error.message }) 
+    };
+  }
+}
+
 // ===================== main handler =====================
 exports.handler = async (event) => {
   const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
@@ -268,63 +387,45 @@ exports.handler = async (event) => {
     const url = new URL(event.rawUrl || `http://localhost${event.rawPath || ''}`);
     const action = url.searchParams.get('action');
 
+    console.log('[HANDLER] action:', action, 'method:', event.httpMethod);
+
     if (event.httpMethod === 'OPTIONS') {
       return {
         statusCode: 204,
         headers: {
           ...headers,
           'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, x-upload-url, x-is-base64, x-file-name',
+          'Access-Control-Allow-Headers': 'Content-Type, x-upload-url, x-is-base64, x-file-name, X-Upload-Url, X-Is-Base64, X-File-Name',
         },
         body: ''
       };
     }
 
+    // ★ チャンク受信
     if (action === 'upload-chunk') {
-      const params = new URLSearchParams(event.rawUrl?.split('?')[1] || '');
-      const uploadId = params.get('uploadId');
-      const chunkIndex = parseInt(params.get('chunkIndex'));
-      const totalChunks = parseInt(params.get('totalChunks'));
-      const fileName = params.get('fileName');
-
-      if (!uploadId || Number.isNaN(chunkIndex) || !totalChunks || !fileName) {
-        return { statusCode: 400, body: JSON.stringify({ error: 'Missing parameters' }) };
-      }
-
-      let buffer;
-      if (event.isBase64Encoded) buffer = Buffer.from(event.body || '', 'base64');
-      else if (typeof event.body === 'string') buffer = Buffer.from(event.body, 'binary');
-      else if (Buffer.isBuffer(event.body)) buffer = event.body;
-      else buffer = Buffer.from(event.body || '');
-
-      if (!uploadChunks.has(uploadId)) {
-        uploadChunks.set(uploadId, {
-          chunks: new Array(totalChunks),
-          totalChunks,
-          fileName,
-          timestamp: Date.now()
-        });
-        console.log('[CHUNK] New upload session:', uploadId);
-      }
-
-      const session = uploadChunks.get(uploadId);
-      session.chunks[chunkIndex] = buffer;
-      session.timestamp = Date.now();
-
-      const receivedCount = session.chunks.filter(Boolean).length;
-
-      return {
-        statusCode: 200,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-        body: JSON.stringify({ success: true, uploadId, receivedChunks: receivedCount, totalChunks })
-      };
+      return await handleChunkUpload(event);
     }
 
-    const uploadUrl = event.headers['x-upload-url'];
+    // ★ チャンク最終化（リクエストボディから読み込む）
+    if (action === 'finalize-chunks') {
+      return await finalizeCombinedUpload(event);
+    }
+
+    // binary upload (小ファイル)
+    const uploadUrl = event.headers['x-upload-url'] || event.headers['X-Upload-Url'];
     if (uploadUrl) {
-      const isBase64 = event.headers['x-is-base64'] === 'true';
-      const fileName = event.headers['x-file-name'] || 'file';
-      const buffer = isBase64 ? Buffer.from(event.body || '', 'base64') : Buffer.from(event.body || '', 'binary');
+      const isBase64Str = event.headers['x-is-base64'] || event.headers['X-Is-Base64'];
+      const isBase64 = isBase64Str === 'true';
+      const fileName = (event.headers['x-file-name'] || event.headers['X-File-Name'] || 'file').replace(/^"|"$/g, '');
+      
+      console.log('[BINARY] Uploading:', { fileName, isBase64, bodyLength: event.body?.length });
+      
+      let buffer;
+      if (isBase64) {
+        buffer = Buffer.from(event.body || '', 'base64');
+      } else {
+        buffer = Buffer.isBuffer(event.body) ? event.body : Buffer.from(event.body || '', 'binary');
+      }
 
       const result = await uploadBinaryToGithub(uploadUrl, buffer, fileName);
 
@@ -338,6 +439,7 @@ exports.handler = async (event) => {
       };
     }
 
+    // JSON action
     const body = safeJsonParse(event.body || '{}', {});
 
     if (body.action === 'create-release') {
@@ -364,12 +466,12 @@ exports.handler = async (event) => {
     }
 
     if (body.action === 'add-file') {
-      // ★ パスワードハッシュをそのまま渡す
       const res = await addFileToShardedJson(body.fileData);
       return { statusCode: 200, headers, body: JSON.stringify({ success: true, ...res }) };
     }
 
-    return { statusCode: 400, headers, body: JSON.stringify({ success: false, error: 'Unknown action' }) };
+    console.error('[HANDLER] Unknown action:', action);
+    return { statusCode: 400, headers, body: JSON.stringify({ success: false, error: 'Unknown action: ' + action }) };
   } catch (error) {
     console.error('[ERROR]', error.message);
     return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: error.message }) };
