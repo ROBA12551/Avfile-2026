@@ -580,10 +580,37 @@ exports.handler = async (event) => {
       return await handleFinalizeChunks(body);
     }
 
-    // ★ バイナリアセット（5MB未満）を追加
-    if (action === 'upload-asset-binary') {
-      return await handleUploadAssetBinary(event);
-    }
+if (action === 'upload-asset-binary') {
+  const body = JSON.parse(event.body || '{}');
+  const uploadUrl = body.uploadUrl;
+  const fileName = body.fileName;
+  const fileData = body.fileData;  // Base64
+  
+  try {
+    const buffer = Buffer.from(fileData, 'base64');
+    const result = await uploadToGitHub(uploadUrl, fileName, buffer);
+    
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify({
+        success: true,
+        data: {
+          asset_id: result.id,
+          download_url: result.browser_download_url,
+          name: result.name,
+          size: result.size
+        }
+      })
+    };
+  } catch (error) {
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify({ success: false, error: error.message })
+    };
+  }
+}
 
     // 既存のコード（JSON ボディを期待）
     const body = JSON.parse(event.body || '{}');

@@ -735,17 +735,6 @@
 <!-- ファイルアップロード強化版 -->
 <script src="/js/universal-file-uploader-enhanced.js"></script>
 <script>
-/**
- * =====================================================
- * 完全な修正済み index.js
- * 
- * 修正内容:
- * 1. uploadFileChunked() 関数を追加
- * 2. ChunkedBinaryUploader の参照を削除
- * 3. 重複定義を削除
- * 4. uploadMultiple() はそのまま
- * =====================================================
- */
 
 // ★ グローバル変数定義（最初）
 const MAX_FILES = 10;
@@ -940,74 +929,36 @@ class GitHubUploader {
     this.githubToken = null;
   }
 
-  // ★ 修正: バイナリを送信しない uploadAssetBinary()
-  async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
-    const sanitizedFileName = this.sanitizeFileName(fileName);
-
-    console.log('[UPLOAD_BINARY] File:', sanitizedFileName);
-    console.log('[UPLOAD_BINARY] Size:', (fileSize / 1024 / 1024).toFixed(2), 'MB');
-
-    let processedFile = fileObject;
-
-    console.log('[UPLOAD_BINARY] Skipping compression for now');
-
-    if (processedFile.size > 5 * 1024 * 1024) {
-      console.error('[UPLOAD_BINARY] File too large for direct upload (>5MB)');
-      throw new Error(`File too large: ${(processedFile.size / 1024 / 1024).toFixed(2)}MB. Use chunked upload instead.`);
-    }
-
-    console.log('[UPLOAD_BINARY] File size check passed (< 5MB)');
-
-    // ★ 修正: Netlify Functions 経由ではなく、ブラウザから直接 GitHub に送信
-    console.log('[UPLOAD_BINARY] Uploading directly to GitHub (not via Functions)...');
-    console.log('[UPLOAD_BINARY] Request size:', (processedFile.size / 1024 / 1024).toFixed(2), 'MB');
-
-    // GitHub token を取得
-    const token = await this.getGitHubToken();
-
-    // upload URL をクリーンアップ
-    let cleanUrl = uploadUrl.trim().replace(/\{[?&].*?\}/g, '');
-    const encodedFileName = encodeURIComponent(sanitizedFileName);
-    const assetUrl = `${cleanUrl}?name=${encodedFileName}`;
-
-    console.log('[UPLOAD_BINARY] Upload URL:', assetUrl.substring(0, 100) + '...');
-
-    // ファイルを ArrayBuffer に変換
-    const arrayBuffer = await processedFile.arrayBuffer();
-
-    // ブラウザから直接 GitHub に POST
-    const response = await fetch(assetUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `token ${token}`,
-        'Content-Type': 'application/octet-stream',
-        'Content-Length': arrayBuffer.byteLength.toString()
-      },
-      body: arrayBuffer
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '');
-      console.error('[UPLOAD_BINARY] GitHub Error:', response.status, errorText);
-      throw new Error(`GitHub upload failed: ${response.status}`);
-    }
-
-    const data = await response.json();
-    
-    if (!data.id) {
-      throw new Error('GitHub did not return asset ID');
-    }
-    
-    console.log('[UPLOAD_BINARY] ✓ Complete');
-    
-    return {
-      success: true,
-      asset_id: data.id,
-      browser_download_url: data.browser_download_url,
-      name: data.name,
-      size: data.size
-    };
+async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
+  console.log('[UPLOAD_BINARY] Uploading via Netlify Functions...');
+  
+  const arrayBuffer = await fileObject.arrayBuffer();
+  const bytes = new Uint8Array(arrayBuffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
   }
+  const base64Data = btoa(binary);
+
+  const response = await fetch(this.functionUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'upload-asset-binary',
+      uploadUrl: uploadUrl,
+      fileName: this.sanitizeFileName(fileName),
+      fileData: base64Data
+    })
+  });
+
+  const data = await response.json();
+  if (!data.success) throw new Error(data.error);
+  
+  return {
+    size: data.data.size,
+    browser_download_url: data.data.download_url
+  };
+}
 
   // 既存の getGitHubToken() は変わらない
   async getGitHubToken() {
