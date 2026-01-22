@@ -1,22 +1,19 @@
 /**
  * netlify/functions/github-upload.js
- * チャンク分割アップロード対応版
- * 大ファイルを分割して GitHub に保存
+ * ★ 修正版: バイナリチャンク受け取り対応
  */
 
 const https = require('https');
-const fs = require('fs');
-const path = require('path');
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_OWNER = process.env.GITHUB_OWNER;
 const GITHUB_REPO = process.env.GITHUB_REPO;
 
 // チャンク管理（メモリに保存）
-const uploadChunks = new Map(); // uploadId -> { chunks: [], totalChunks, metadata }
+const uploadChunks = new Map();
 const CHUNK_TIMEOUT = 3600000; // 1時間
 
-// ★ 定期的に古いチャンクを削除
+// 定期的に古いチャンクを削除
 setInterval(() => {
   const now = Date.now();
   for (const [uploadId, data] of uploadChunks.entries()) {
@@ -25,7 +22,7 @@ setInterval(() => {
       uploadChunks.delete(uploadId);
     }
   }
-}, 600000); // 10分ごと
+}, 600000);
 
 function uploadBinaryToGithub(uploadUrl, buffer, fileName) {
   return new Promise((resolve, reject) => {
@@ -110,7 +107,7 @@ function callGithubApi(method, path, body) {
 }
 
 /**
- * ★ 新機能: チャンクを受け取って保存
+ * ★ 修正版: チャンクを受け取って保存
  */
 async function handleChunkUpload(event) {
   try {
@@ -120,6 +117,14 @@ async function handleChunkUpload(event) {
     const totalChunks = parseInt(params.get('totalChunks'));
     const fileName = params.get('fileName');
 
+    console.log('[CHUNK] Received:', {
+      uploadId,
+      chunkIndex,
+      totalChunks,
+      fileName,
+      bodyLength: event.body?.length || 0
+    });
+
     if (!uploadId || chunkIndex === undefined || !totalChunks || !fileName) {
       return {
         statusCode: 400,
@@ -127,21 +132,29 @@ async function handleChunkUpload(event) {
       };
     }
 
-    console.log('[CHUNK] Received:', {
-      uploadId,
-      chunkIndex,
-      totalChunks,
-      fileName,
-      size: event.body?.length
-    });
+    // ★ バイナリデータをバッファに変換
+    let buffer;
+    if (event.isBase64Encoded) {
+      buffer = Buffer.from(event.body, 'base64');
+      console.log('[CHUNK] Decoded from Base64:', buffer.length, 'bytes');
+    } else if (typeof event.body === 'string') {
+      buffer = Buffer.from(event.body, 'binary');
+      console.log('[CHUNK] Converted from binary string:', buffer.length, 'bytes');
+    } else if (Buffer.isBuffer(event.body)) {
+      buffer = event.body;
+      console.log('[CHUNK] Already buffer:', buffer.length, 'bytes');
+    } else {
+      buffer = Buffer.from(event.body);
+      console.log('[CHUNK] Converted to buffer:', buffer.length, 'bytes');
+    }
 
-    // ★ チャンク情報を初期化
+    // チャンク情報を初期化
     if (!uploadChunks.has(uploadId)) {
       uploadChunks.set(uploadId, {
         chunks: new Array(totalChunks),
         totalChunks,
         fileName,
-        metadata: { timestamp: Date.now() }
+        timestamp: Date.now()
       });
       console.log('[CHUNK] New upload session created:', uploadId);
     }
@@ -149,24 +162,25 @@ async function handleChunkUpload(event) {
     const uploadData = uploadChunks.get(uploadId);
 
     // チャンクを保存
-    const buffer = Buffer.isBuffer(event.body)
-      ? event.body
-      : Buffer.from(event.body, 'binary');
-
     uploadData.chunks[chunkIndex] = buffer;
+    const receivedCount = uploadData.chunks.filter(c => c).length;
+    
     console.log('[CHUNK] Stored chunk:', {
       index: chunkIndex,
       size: buffer.length,
-      progress: `${uploadData.chunks.filter(c => c).length}/${totalChunks}`
+      progress: `${receivedCount}/${totalChunks}`
     });
 
     return {
       statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
       body: JSON.stringify({
         success: true,
         uploadId,
-        receivedChunks: uploadData.chunks.filter(c => c).length,
+        receivedChunks: receivedCount,
         totalChunks
       })
     };
@@ -174,31 +188,21 @@ async function handleChunkUpload(event) {
     console.error('[CHUNK] Error:', error.message);
     return {
       statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ error: error.message })
     };
   }
 }
 
 /**
- * ★ 新機能: すべてのチャンクを結合して GitHub に保存
+ * チャンク統合
  */
 async function finalizeCombinedUpload(event) {
   try {
     const body = JSON.parse(event.body || '{}');
-    const { uploadId, fileName, releaseUploadUrl, releaseId } = body;
+    const { uploadId, fileName, releaseUploadUrl } = body;
 
-    if (!uploadId || !fileName) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: 'Missing uploadId or fileName' })
-      };
-    }
-
-    console.log('[FINALIZE] Starting:', {
-      uploadId,
-      fileName,
-      hasReleaseUrl: !!releaseUploadUrl
-    });
+    console.log('[FINALIZE] Starting:', { uploadId, fileName });
 
     const uploadData = uploadChunks.get(uploadId);
     if (!uploadData) {
@@ -208,7 +212,7 @@ async function finalizeCombinedUpload(event) {
       };
     }
 
-    // ★ チャンクが揃っているか確認
+    // チャンクが揃っているか確認
     const missingChunks = uploadData.chunks
       .map((chunk, i) => chunk ? null : i)
       .filter(i => i !== null);
@@ -223,22 +227,20 @@ async function finalizeCombinedUpload(event) {
       };
     }
 
-    // ★ チャンクを結合
+    // チャンクを結合
     console.log('[FINALIZE] Combining chunks...');
     const combinedBuffer = Buffer.concat(uploadData.chunks);
     console.log('[FINALIZE] Combined size:', combinedBuffer.length, 'bytes');
 
-    // ★ GitHub にアップロード
+    // GitHub にアップロード
     let result;
     if (releaseUploadUrl) {
-      // リリースアセットとしてアップロード
       result = await uploadBinaryToGithub(releaseUploadUrl, combinedBuffer, fileName);
     } else {
-      // github.json に情報を保存するだけ
       result = { id: 'direct-upload', browser_download_url: '' };
     }
 
-    // ★ チャンクデータをクリア
+    // チャンクデータをクリア
     uploadChunks.delete(uploadId);
 
     console.log('[FINALIZE] Success');
@@ -336,7 +338,7 @@ exports.handler = async (event) => {
   try {
     const uploadUrl = event.headers['x-upload-url'];
     
-    // ★ バイナリアップロード（小ファイル）
+    // バイナリアップロード（小ファイル）
     if (uploadUrl) {
       const isBase64 = event.headers['x-is-base64'] === 'true';
       const fileName = event.headers['x-file-name'] || 'file';
@@ -346,8 +348,7 @@ exports.handler = async (event) => {
       
       console.log('[MAIN] Binary upload:', {
         fileName,
-        size: buffer.length,
-        sizeMB: (buffer.length / 1024 / 1024).toFixed(2)
+        size: buffer.length
       });
 
       const result = await uploadBinaryToGithub(uploadUrl, buffer, fileName);
@@ -370,12 +371,12 @@ exports.handler = async (event) => {
     // JSON アクション処理
     const body = JSON.parse(event.body || '{}');
 
-    // ★ チャンクアップロード
+    // チャンクアップロード
     if (body.action === 'upload-chunk') {
       return await handleChunkUpload(event);
     }
 
-    // ★ チャンク統合
+    // チャンク統合
     if (body.action === 'finalize-chunks') {
       return await finalizeCombinedUpload(event);
     }
@@ -412,14 +413,6 @@ exports.handler = async (event) => {
         statusCode: 200,
         headers,
         body: JSON.stringify({ success: true })
-      };
-    }
-
-    if (body.action === 'get-token') {
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({ success: true, data: { token: GITHUB_TOKEN } })
       };
     }
 
