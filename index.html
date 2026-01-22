@@ -928,6 +928,7 @@ class GitHubUploader {
     this.functionUrl = '/.netlify/functions/github-upload';
     this.githubToken = null;
   }
+
 async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   console.log('[UPLOAD_BINARY] Uploading via Netlify Functions...');
   
@@ -936,7 +937,6 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
     headers: {
       'X-Upload-Url': uploadUrl,
       'X-Upload-Name': this.sanitizeFileName(fileName),
-      'Content-Type': 'application/octet-stream'
     },
     body: fileObject  // Base64 ではなく Blob をそのまま送信
   });
