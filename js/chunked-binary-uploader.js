@@ -1,6 +1,6 @@
 /**
  * js/chunked-binary-uploader.js
- * ★ 修正版: GitHubUploader を参照しない独立版
+ * ★ 修正版: finalize-chunksリクエスト時にactionをクエリパラメータに移動
  */
 
 class ChunkedBinaryUploader {
@@ -141,13 +141,18 @@ class ChunkedBinaryUploader {
       // チャンクを結合
       console.log('[UPLOAD_CHUNKED] All chunks uploaded, finalizing...');
 
-      const finalizeResponse = await fetch(this.functionUrl, {
+      // ★ 修正: actionをクエリパラメータに追加
+      const finalizeUrl = new URL(this.functionUrl, window.location.origin);
+      finalizeUrl.searchParams.set('action', 'finalize-chunks');
+
+      console.log('[UPLOAD_CHUNKED] Finalize URL:', finalizeUrl.toString());
+
+      const finalizeResponse = await fetch(finalizeUrl.toString(), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          action: 'finalize-chunks',
           uploadId,
           fileName,
           releaseUploadUrl: uploadUrl
@@ -163,7 +168,7 @@ class ChunkedBinaryUploader {
       }
 
       const data = await finalizeResponse.json();
-      console.log('[UPLOAD_CHUNKED] Success');
+      console.log('[UPLOAD_CHUNKED] Finalize success:', data);
 
       return {
         size: data.data.size,
