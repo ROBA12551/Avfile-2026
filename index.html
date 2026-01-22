@@ -1378,6 +1378,11 @@
                 }
 
                 const fileIds = [];
+                
+                // ★ プログレス初期化
+                document.getElementById('statusMessage').textContent = `0 / ${files.length} files`;
+                document.getElementById('progressFill').style.width = '0%';
+                document.getElementById('progressPercent').textContent = '0%';
 
                 for (let idx = 0; idx < files.length; idx++) {
                     const file = files[idx];
@@ -1402,10 +1407,18 @@
                     });
 
                     fileIds.push(fileId);
+                    
+                    // ★ プログレスバーを更新
+                    const progress = Math.round(((idx + 1) / files.length) * 100);
+                    document.getElementById('statusMessage').textContent = `${idx + 1} / ${files.length} files`;
+                    document.getElementById('progressFill').style.width = progress + '%';
+                    document.getElementById('progressPercent').textContent = progress + '%';
+
                     console.log(`[FILE_${idx}] Complete - ${fileName}`);
                 }
 
-                const shareUrl = `https://avfile.io/d/${fileIds[0]}`;
+                // ★ 複数ファイルIDをコンマ区切りで含める
+                const shareUrl = `https://avfile.io/d/${fileIds.join(',')}`;
                 document.getElementById('shareUrl').value = shareUrl;
 
                 const passwordStatusBox = document.getElementById('passwordStatusBox');
@@ -1415,7 +1428,7 @@
                     passwordStatusBox.style.display = 'none';
                 }
 
-                console.log('[UPLOAD] SUCCESS');
+                console.log('[UPLOAD] SUCCESS - Multiple files:', fileIds);
                 showSuccess();
             } catch (e) {
                 console.error('[UPLOAD] FAILED:', e.message);
@@ -1483,11 +1496,12 @@
         }
 
         /**
-         * ★ URLからviewIdを取得
+         * ★ URLからviewIdを取得（複数ID対応）
          */
         function getViewIdFromPath() {
             const pathname = location.pathname || '';
-            let match = pathname.match(/\/d\/([a-zA-Z0-9_-]+)/i);
+            // ★ コンマ区切りの複数IDにも対応
+            let match = pathname.match(/\/d\/([a-zA-Z0-9_,-]+)/i);
             if (match) return match[1];
             
             const params = new URLSearchParams(location.search);
@@ -1501,38 +1515,56 @@
         }
 
         const viewId = getViewIdFromPath();
+        // ★ 複数IDをコンマで分割
+        const viewIds = viewId ? viewId.split(',').map(id => id.trim()) : [];
+        console.log('[INIT] viewIds:', viewIds);
 
         /**
-         * ★ ファイルビューアー（パスワード保護対応）
+         * ★ ファイルビューアー（パスワード保護対応・複数ファイル対応）
          */
-        async function loadView(viewId) {
+        async function loadView(viewIds) {
             try {
-                console.log('[MAIN] Loading view:', viewId);
+                console.log('[MAIN] Loading views:', viewIds);
 
-                const filesRes = await fetch(`/.netlify/functions/view?id=${viewId}`);
-                console.log('[MAIN] Files response status:', filesRes.status);
+                // ★ 複数IDのファイルを全て取得
+                let allFiles = [];
                 
-                // ★ パスワード保護されている場合
-                if (filesRes.status === 403) {
-                    const errorData = await filesRes.json();
-                    console.log('[MAIN] Password required:', errorData);
-                    
-                    if (errorData.requiresPassword) {
-                        // パスワード入力ダイアログを表示
-                        showPasswordPrompt(viewId);
-                        return;
+                for (const singleId of viewIds) {
+                    try {
+                        console.log(`[MAIN] Loading file ${singleId}...`);
+                        const filesRes = await fetch(`/.netlify/functions/view?id=${singleId}`);
+                        console.log(`[MAIN] File ${singleId} response status:`, filesRes.status);
+                        
+                        // ★ パスワード保護されている場合
+                        if (filesRes.status === 403) {
+                            const errorData = await filesRes.json();
+                            console.log('[MAIN] Password required:', errorData);
+                            
+                            if (errorData.requiresPassword) {
+                                // パスワード入力ダイアログを表示
+                                showPasswordPrompt(singleId);
+                                return;
+                            }
+                        }
+                        
+                        if (!filesRes.ok) {
+                            const errorText = await filesRes.text();
+                            console.error(`[MAIN] File ${singleId} error:`, errorText);
+                            continue; // 次のファイルへ
+                        }
+
+                        const filesData = await filesRes.json();
+                        const fileList = filesData.files || [];
+                        console.log(`[MAIN] File ${singleId} loaded:`, fileList.length, 'files');
+                        
+                        allFiles = allFiles.concat(fileList);
+                    } catch (e) {
+                        console.error(`[MAIN] Error loading file ${singleId}:`, e.message);
+                        continue;
                     }
                 }
-                
-                if (!filesRes.ok) {
-                    const errorText = await filesRes.text();
-                    console.error('[MAIN] Files error:', errorText);
-                    throw new Error(`Failed to load files: ${filesRes.status}`);
-                }
 
-                const filesData = await filesRes.json();
-                const allFiles = filesData.files || [];
-                console.log('[MAIN] All files:', allFiles);
+                console.log('[MAIN] Total files loaded:', allFiles.length);
 
                 if (!allFiles || allFiles.length === 0) {
                     throw new Error('No files found');
@@ -1673,7 +1705,7 @@
          * ★ パスワード入力プロンプト
          */
         function showPasswordPrompt(viewId) {
-            const password = prompt(' This file is password protected.\n\nPlease enter the password:');
+            const password = prompt('This file is password protected.\n\nPlease enter the password:');
             
             if (password === null) {
                 console.log('[PASSWORD] User cancelled');
@@ -1803,7 +1835,7 @@
                         fileTypeDetected = 'audio';
                         preview = `
                             <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
-                                <div style="font-size: 4rem;">🎵</div>
+                                <div style="font-size: 4rem;">♪</div>
                                 <audio controls style="width: 100%; max-width: 500px;" crossorigin="anonymous">
                                     <source src="${proxyUrlEscaped}" type="audio/mpeg">
                                     Your browser does not support the audio element.
@@ -1817,7 +1849,7 @@
                         fileTypeDetected = 'unknown';
                         preview = `
                             <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
-                                <div style="font-size: 3rem;"></div>
+                                <div style="font-size: 3rem;">📄</div>
                                 <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 1rem;">File (${ext.toUpperCase()})</p>
                                 <a href="${downloadUrl}" download>Download file</a>
                             </div>
@@ -1857,9 +1889,9 @@
         }
 
         // ★ 初期化
-        if (viewId) {
+        if (viewIds && viewIds.length > 0) {
             showLoading();
-            loadView(viewId);
+            loadView(viewIds);
         } else {
             showUpload();
         }
