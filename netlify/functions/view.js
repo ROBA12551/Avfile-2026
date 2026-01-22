@@ -1,8 +1,3 @@
-/**
- * netlify/functions/view.js
- * ★ 統合版 - グループID・単一ファイルID・パスワル保護対応
- * ★ downloadUrl 検証ログを追加
- */
 
 const https = require('https');
 

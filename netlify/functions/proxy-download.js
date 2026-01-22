@@ -1,70 +1,11 @@
 /**
  * netlify/functions/proxy-download.js
  * ★ GitHub からのファイルダウンロードをプロキシ
- * mp4、画像、PDFなどをサイト内で再生・表示するために必要
+ * ★ 大容量ファイル対応（ストリーミング）
  */
 
 const https = require('https');
 const url = require('url');
-
-function proxyDownload(downloadUrl) {
-  return new Promise((resolve, reject) => {
-    try {
-      const parsedUrl = new URL(downloadUrl);
-      
-      const options = {
-        hostname: parsedUrl.hostname,
-        path: parsedUrl.pathname + parsedUrl.search,
-        method: 'GET',
-        headers: {
-          'User-Agent': 'Avfile-Proxy/1.0',
-          'Accept': '*/*',
-        },
-        timeout: 30000  // 30秒タイムアウト
-      };
-
-      console.log('[PROXY] Downloading from:', parsedUrl.hostname + parsedUrl.pathname);
-
-      const req = https.request(options, (res) => {
-        const buffers = [];
-        
-        console.log('[PROXY] Response status:', res.statusCode);
-        
-        res.on('data', (chunk) => {
-          buffers.push(chunk);
-        });
-        
-        res.on('end', () => {
-          const buffer = Buffer.concat(buffers);
-          console.log('[PROXY] Downloaded:', buffer.length, 'bytes');
-          
-          resolve({
-            statusCode: res.statusCode,
-            contentType: res.headers['content-type'] || 'application/octet-stream',
-            contentLength: buffer.length,
-            buffer: buffer
-          });
-        });
-      });
-
-      req.on('error', (e) => {
-        console.error('[PROXY] Request error:', e.message);
-        reject(e);
-      });
-
-      req.on('timeout', () => {
-        console.error('[PROXY] Request timeout');
-        req.abort();
-        reject(new Error('Download timeout'));
-      });
-
-      req.end();
-    } catch (e) {
-      console.error('[PROXY] Parse error:', e.message);
-      reject(e);
-    }
-  });
-}
 
 exports.handler = async (event) => {
   try {
@@ -94,66 +35,46 @@ exports.handler = async (event) => {
       };
     }
 
-    // ダウンロード実行
-    const result = await proxyDownload(downloadUrl);
+    // ★ HEAD リクエストでファイル情報を取得
+    const headResult = await proxyHead(downloadUrl);
+    console.log('[PROXY] HEAD response:', {
+      statusCode: headResult.statusCode,
+      contentLength: headResult.contentLength,
+      contentType: headResult.contentType
+    });
 
-    if (result.statusCode !== 200) {
-      console.error('[PROXY] Download failed with status:', result.statusCode);
+    if (headResult.statusCode !== 200) {
+      console.error('[PROXY] HEAD request failed:', headResult.statusCode);
       return {
-        statusCode: result.statusCode,
+        statusCode: headResult.statusCode,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'Download failed', status: result.statusCode })
+        body: JSON.stringify({ error: 'File not found' })
       };
     }
 
-    // ファイルタイプ判定
-    let contentType = result.contentType;
-    
-    // MIME Type の修正
-    if (contentType.includes('video/quicktime')) {
-      contentType = 'video/mp4';  // MOVをMP4として扱う
-    } else if (contentType.includes('octet-stream')) {
-      // 拡張子から判定
-      const pathname = new URL(downloadUrl).pathname.toLowerCase();
-      if (pathname.endsWith('.mp4')) {
-        contentType = 'video/mp4';
-      } else if (pathname.endsWith('.mov')) {
-        contentType = 'video/mp4';
-      } else if (pathname.endsWith('.webm')) {
-        contentType = 'video/webm';
-      } else if (pathname.endsWith('.ogg')) {
-        contentType = 'video/ogg';
-      } else if (pathname.endsWith('.png')) {
-        contentType = 'image/png';
-      } else if (pathname.endsWith('.jpg') || pathname.endsWith('.jpeg')) {
-        contentType = 'image/jpeg';
-      } else if (pathname.endsWith('.gif')) {
-        contentType = 'image/gif';
-      } else if (pathname.endsWith('.webp')) {
-        contentType = 'image/webp';
-      } else if (pathname.endsWith('.pdf')) {
-        contentType = 'application/pdf';
-      }
+    // ★ 大容量ファイル（> 10MB）の場合は Rangeリクエスト対応
+    const contentLength = headResult.contentLength;
+    const isLargeFile = contentLength > 10 * 1024 * 1024;  // 10MB以上
+
+    console.log('[PROXY] File size:', contentLength, 'bytes', isLargeFile ? '(LARGE)' : '(small)');
+
+    // Range リクエストが来ている場合
+    const rangeHeader = event.headers['range'] || event.headers['Range'];
+    if (rangeHeader && isLargeFile) {
+      console.log('[PROXY] Range request:', rangeHeader);
+      return proxyRange(downloadUrl, contentLength, rangeHeader);
     }
 
-    console.log('[PROXY] Content-Type:', contentType);
+    // ★ 小容量ファイル（<= 10MB）: 全ファイルをメモリに読み込む
+    if (contentLength <= 10 * 1024 * 1024) {
+      console.log('[PROXY] Small file - loading into memory');
+      return proxySmallFile(downloadUrl, headResult.contentType);
+    }
 
-    // Base64エンコード
-    const base64Body = result.buffer.toString('base64');
+    // ★ 大容量ファイル（> 10MB）: Range リクエストを促す
+    console.log('[PROXY] Large file - returning 206 Partial Content');
+    return proxyRange(downloadUrl, contentLength, 'bytes=0-1048575');  // 最初の1MBのみ
 
-    return {
-      statusCode: 200,
-      headers: {
-        'Content-Type': contentType,
-        'Content-Length': result.contentLength.toString(),
-        'Cache-Control': 'public, max-age=3600',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Range',
-      },
-      isBase64Encoded: true,
-      body: base64Body
-    };
   } catch (e) {
     console.error('[PROXY] Error:', e.message);
     return {
@@ -163,3 +84,245 @@ exports.handler = async (event) => {
     };
   }
 };
+
+/**
+ * ★ HEAD リクエストでファイル情報を取得
+ */
+function proxyHead(downloadUrl) {
+  return new Promise((resolve, reject) => {
+    try {
+      const parsedUrl = new URL(downloadUrl);
+      
+      const options = {
+        hostname: parsedUrl.hostname,
+        path: parsedUrl.pathname + parsedUrl.search,
+        method: 'HEAD',
+        headers: {
+          'User-Agent': 'Avfile-Proxy/1.0',
+        },
+        timeout: 10000
+      };
+
+      console.log('[PROXY HEAD] Request to:', parsedUrl.hostname + parsedUrl.pathname);
+
+      const req = https.request(options, (res) => {
+        console.log('[PROXY HEAD] Status:', res.statusCode);
+        console.log('[PROXY HEAD] Headers:', {
+          'content-type': res.headers['content-type'],
+          'content-length': res.headers['content-length']
+        });
+
+        resolve({
+          statusCode: res.statusCode,
+          contentType: res.headers['content-type'] || 'application/octet-stream',
+          contentLength: parseInt(res.headers['content-length'] || '0', 10)
+        });
+      });
+
+      req.on('error', reject);
+      req.on('timeout', () => {
+        req.abort();
+        reject(new Error('HEAD request timeout'));
+      });
+
+      req.end();
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+/**
+ * ★ 小容量ファイル（<= 10MB）をメモリに読み込んで返す
+ */
+function proxySmallFile(downloadUrl, contentType) {
+  return new Promise((resolve, reject) => {
+    try {
+      const parsedUrl = new URL(downloadUrl);
+      
+      const options = {
+        hostname: parsedUrl.hostname,
+        path: parsedUrl.pathname + parsedUrl.search,
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Avfile-Proxy/1.0',
+        },
+        timeout: 30000
+      };
+
+      console.log('[PROXY GET] Small file download start');
+
+      const buffers = [];
+      let totalSize = 0;
+
+      const req = https.request(options, (res) => {
+        if (res.statusCode !== 200) {
+          console.error('[PROXY GET] Status:', res.statusCode);
+          reject(new Error(`HTTP ${res.statusCode}`));
+          return;
+        }
+
+        res.on('data', (chunk) => {
+          buffers.push(chunk);
+          totalSize += chunk.length;
+          console.log('[PROXY GET] Downloaded:', totalSize, 'bytes');
+        });
+
+        res.on('end', () => {
+          const buffer = Buffer.concat(buffers);
+          const mimeType = getMimeType(contentType, downloadUrl);
+          const base64Body = buffer.toString('base64');
+
+          console.log('[PROXY GET] Complete:', totalSize, 'bytes');
+
+          resolve({
+            statusCode: 200,
+            headers: {
+              'Content-Type': mimeType,
+              'Content-Length': totalSize.toString(),
+              'Cache-Control': 'public, max-age=3600',
+              'Access-Control-Allow-Origin': '*',
+            },
+            isBase64Encoded: true,
+            body: base64Body
+          });
+        });
+      });
+
+      req.on('error', reject);
+      req.on('timeout', () => {
+        req.abort();
+        reject(new Error('Download timeout'));
+      });
+
+      req.end();
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+/**
+ * ★ 大容量ファイル（> 10MB）: Range リクエスト対応
+ */
+function proxyRange(downloadUrl, contentLength, rangeHeader) {
+  return new Promise((resolve, reject) => {
+    try {
+      const parsedUrl = new URL(downloadUrl);
+      const range = parseRange(rangeHeader, contentLength);
+
+      if (!range) {
+        reject(new Error('Invalid range'));
+        return;
+      }
+
+      const [start, end] = range;
+      const rangeSize = end - start + 1;
+
+      console.log('[PROXY RANGE] Requested:', start, '-', end, '/', contentLength);
+
+      const options = {
+        hostname: parsedUrl.hostname,
+        path: parsedUrl.pathname + parsedUrl.search,
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Avfile-Proxy/1.0',
+          'Range': `bytes=${start}-${end}`,
+        },
+        timeout: 30000
+      };
+
+      const buffers = [];
+      let totalSize = 0;
+
+      const req = https.request(options, (res) => {
+        if (res.statusCode !== 206 && res.statusCode !== 200) {
+          console.error('[PROXY RANGE] Status:', res.statusCode);
+          reject(new Error(`HTTP ${res.statusCode}`));
+          return;
+        }
+
+        console.log('[PROXY RANGE] Response status:', res.statusCode);
+        console.log('[PROXY RANGE] Content-Length:', res.headers['content-length']);
+
+        res.on('data', (chunk) => {
+          buffers.push(chunk);
+          totalSize += chunk.length;
+        });
+
+        res.on('end', () => {
+          const buffer = Buffer.concat(buffers);
+          const mimeType = getMimeType(res.headers['content-type'] || 'application/octet-stream', downloadUrl);
+          const base64Body = buffer.toString('base64');
+
+          console.log('[PROXY RANGE] Downloaded:', totalSize, 'bytes');
+
+          resolve({
+            statusCode: res.statusCode === 206 ? 206 : 200,
+            headers: {
+              'Content-Type': mimeType,
+              'Content-Length': totalSize.toString(),
+              'Content-Range': res.statusCode === 206 ? `bytes ${start}-${end}/${contentLength}` : undefined,
+              'Accept-Ranges': 'bytes',
+              'Cache-Control': 'public, max-age=3600',
+              'Access-Control-Allow-Origin': '*',
+            },
+            isBase64Encoded: true,
+            body: base64Body
+          });
+        });
+      });
+
+      req.on('error', reject);
+      req.on('timeout', () => {
+        req.abort();
+        reject(new Error('Range request timeout'));
+      });
+
+      req.end();
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+/**
+ * ★ Range ヘッダーをパース
+ */
+function parseRange(rangeHeader, contentLength) {
+  if (!rangeHeader || !rangeHeader.startsWith('bytes=')) {
+    return null;
+  }
+
+  const range = rangeHeader.slice(6).split('-');
+  let start = parseInt(range[0], 10);
+  let end = parseInt(range[1], 10);
+
+  if (isNaN(start)) start = 0;
+  if (isNaN(end)) end = Math.min(start + 1048576 - 1, contentLength - 1);  // 1MB
+
+  return [start, Math.min(end, contentLength - 1)];
+}
+
+/**
+ * ★ MIME Type を判定
+ */
+function getMimeType(contentType, downloadUrl) {
+  if (contentType && contentType !== 'application/octet-stream') {
+    return contentType;
+  }
+
+  const pathname = new URL(downloadUrl).pathname.toLowerCase();
+  
+  if (pathname.endsWith('.mp4')) return 'video/mp4';
+  if (pathname.endsWith('.mov')) return 'video/mp4';
+  if (pathname.endsWith('.webm')) return 'video/webm';
+  if (pathname.endsWith('.ogg')) return 'video/ogg';
+  if (pathname.endsWith('.png')) return 'image/png';
+  if (pathname.endsWith('.jpg') || pathname.endsWith('.jpeg')) return 'image/jpeg';
+  if (pathname.endsWith('.gif')) return 'image/gif';
+  if (pathname.endsWith('.webp')) return 'image/webp';
+  if (pathname.endsWith('.pdf')) return 'application/pdf';
+  
+  return 'application/octet-stream';
+}
