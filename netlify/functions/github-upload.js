@@ -272,6 +272,14 @@ async function addFileToShardedJson(fileData) {
     shard: shard.path,
   };
 
+  // ★ downloadUrl検証ログ
+  console.log('[ADD_FILE] Saving file record:', {
+    fileId: fileRecord.fileId,
+    fileName: fileRecord.fileName,
+    downloadUrl: fileRecord.downloadUrl?.substring(0, 80) + '...',
+    shardPath: shard.path
+  });
+
   // Add password hash if provided
   if (fileData.passwordHash) {
     fileRecord.passwordHash = fileData.passwordHash;
@@ -279,6 +287,8 @@ async function addFileToShardedJson(fileData) {
   }
 
   shard.files.push(fileRecord);
+
+  console.log('[ADD_FILE] Shard now has', shard.files.length, 'files');
 
   await putContent(
     shard.path,

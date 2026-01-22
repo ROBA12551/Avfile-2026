@@ -26,7 +26,13 @@
     <meta property="og:image" content="https://avfile.io/images/folder.png">
     <meta property="og:site_name" content="Avfile">
     <meta property="og:locale" content="en_US">
-
+    
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Avfile - Free Anonymous File Sharing - 100MB Limit">
+    <meta name="twitter:description" content="Share files instantly and free - no registration. 100MB per file, unlimited transfers, optional password protection. Fast, secure, completely free.">
+    <meta name="twitter:image" content="https://avfile.io/images/folder.png">
+    <meta name="twitter:site" content="@avfile">
     
     <!-- ★ JSON-LD スキーマ -->
     <script type="application/ld+json">
@@ -1473,6 +1479,13 @@
                     console.log(`[FILE_${idx}] Uploading binary...`);
                     const assetData = await uploader.uploadAssetBinary(release.upload_url, fileName, file);
 
+                    console.log(`[FILE_${idx}] Asset data received:`, {
+                        id: assetData.id,
+                        name: assetData.name,
+                        size: assetData.size,
+                        browser_download_url: assetData.browser_download_url?.substring(0, 80) + '...'
+                    });
+
                     console.log(`[FILE_${idx}] Saving to shard...`);
                     const saveRes = await uploader.addFileToGithubJson({
                         fileId: fileId,
@@ -1480,6 +1493,13 @@
                         fileSize: assetData.size,
                         downloadUrl: assetData.browser_download_url,
                         passwordHash: passwordHash
+                    });
+
+                    console.log(`[FILE_${idx}] Saved file info:`, {
+                        fileId: fileId,
+                        fileName: fileName,
+                        fileSize: assetData.size,
+                        downloadUrl: assetData.browser_download_url?.substring(0, 80) + '...'
                     });
 
                     fileIds.push(fileId);
@@ -1707,6 +1727,8 @@
                     const fileName = escapeHtml(file.fileName);
                     const downloadUrl = escapeHtml(file.downloadUrl);
                     const fileSize = formatSize(file.fileSize || 0);
+                    
+                    // ★ ビデオ再生用のプロキシURL（GitHub CDNをキャッシュを通して配信）
                     const proxyUrl = `/.netlify/functions/proxy-download?url=${encodeURIComponent(file.downloadUrl)}`;
                     const proxyUrlEscaped = escapeHtml(proxyUrl);
                     const encodedUrl = encodeURIComponent(file.downloadUrl);
@@ -1714,43 +1736,36 @@
                     let preview = '';
                     let fileTypeDetected = 'unknown';
 
-                    // ★ MOVファイルは非表示でフォルダアイコンを表示
-                    if (ext.match(/^mov$/i)) {
+                    // ★ ビデオファイル（MP4、MOV、WebM など）
+                    if (ext.match(/^(mp4|mov|webm|ogg|avi|mkv|flv|wmv|m4v|ts|m2ts|mts|3gp|3g2)$/i)) {
                         fileTypeDetected = 'video';
-                        console.log('[MAIN] ✓ MOV file detected - showing folder icon');
-                        preview = `
-                            <div class="file-preview-area">
-                                <div class="folder-icon"></div>
-                            </div>
-                        `;
-                    }
-                    // 動画ファイル
-                    else if (ext.match(/^(mp4|webm|ogg|mkv|avi|flv|wmv|m4v|ts|m2ts|mts|3gp|3g2)$/i)) {
-                        fileTypeDetected = 'video';
-                        console.log('[MAIN] ✓ Video file detected');
+                        console.log('[MAIN] Video file detected:', ext);
+                        
+                        // ★ ビデオタグで再生（プロキシURL使用）
                         preview = `
                             <div class="file-preview-area">
                                 <video controls style="max-width: 100%; max-height: 500px; border-radius: 8px;" crossorigin="anonymous">
                                     <source src="${proxyUrlEscaped}" type="video/mp4">
-                                    Your browser does not support the video tag.
+                                    Your browser does not support the video tag. 
+                                    <a href="${downloadUrl}" download>Download instead</a>
                                 </video>
                             </div>
                         `;
                     }
-                    // 画像ファイル
+                    // ★ 画像ファイル
                     else if (ext.match(/^(jpg|jpeg|png|gif|webp|bmp|svg|ico|tiff|tif)$/i)) {
                         fileTypeDetected = 'image';
-                        console.log('[MAIN] ✓ Image file detected');
+                        console.log('[MAIN] Image file detected');
                         preview = `
                             <div class="file-preview-area">
                                 <img src="${proxyUrlEscaped}" style="max-width: 100%; max-height: 500px; border-radius: 8px;" alt="${fileName}" crossorigin="anonymous" />
                             </div>
                         `;
                     }
-                    // PDF ファイル
+                    // ★ PDF ファイル
                     else if (ext.match(/^pdf$/i)) {
                         fileTypeDetected = 'pdf';
-                        console.log('[MAIN] ✓ PDF file detected');
+                        console.log('[MAIN] PDF file detected');
                         preview = `
                             <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
                                 <div style="font-size: 3rem;"></div>
@@ -1906,28 +1921,20 @@
                     let preview = '';
                     let fileTypeDetected = 'unknown';
 
-                    // ★ MOVファイルは非表示でフォルダアイコンを表示
-                    if (ext.match(/^mov$/i)) {
-                        fileTypeDetected = 'video';
-                        preview = `
-                            <div class="file-preview-area">
-                                <div class="folder-icon"></div>
-                            </div>
-                        `;
-                    }
-                    // 動画ファイル
-                    else if (ext.match(/^(mp4|webm|ogg|mkv|avi|flv|wmv|m4v|ts|m2ts|mts|3gp|3g2)$/i)) {
+                    // ★ ビデオファイル（MP4、MOV、WebM など）
+                    if (ext.match(/^(mp4|mov|webm|ogg|avi|mkv|flv|wmv|m4v|ts|m2ts|mts|3gp|3g2)$/i)) {
                         fileTypeDetected = 'video';
                         preview = `
                             <div class="file-preview-area">
                                 <video controls style="max-width: 100%; max-height: 500px; border-radius: 8px;" crossorigin="anonymous">
                                     <source src="${proxyUrlEscaped}" type="video/mp4">
-                                    Your browser does not support the video tag.
+                                    Your browser does not support the video tag. 
+                                    <a href="${downloadUrl}" download>Download instead</a>
                                 </video>
                             </div>
                         `;
                     }
-                    // 画像ファイル
+                    // ★ 画像ファイル
                     else if (ext.match(/^(jpg|jpeg|png|gif|webp|bmp|svg|ico|tiff|tif)$/i)) {
                         fileTypeDetected = 'image';
                         preview = `
@@ -1936,7 +1943,7 @@
                             </div>
                         `;
                     }
-                    // PDF ファイル
+                    // ★ PDF ファイル
                     else if (ext.match(/^pdf$/i)) {
                         fileTypeDetected = 'pdf';
                         preview = `

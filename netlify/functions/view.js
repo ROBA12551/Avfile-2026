@@ -117,7 +117,7 @@ async function findFilesById(fileIds) {
     }
 
     const shards = indexData.shards || [];
-    const foundFiles = [];
+    const foundFilesMap = new Map();  // ★ Mapを使って順序を保持
 
     // Search through all shards
     for (const shard of shards) {
@@ -129,11 +129,13 @@ async function findFilesById(fileIds) {
           continue;
         }
 
+        console.log('[VIEW] Searching shard:', shard.path, 'items:', shardData.length);
+
         // Check each file in shard
         for (const file of shardData) {
           if (file && file.fileId && fileIds.includes(file.fileId)) {
-            console.log('[VIEW] Found file:', file.fileId, file.fileName);
-            foundFiles.push(file);
+            console.log('[VIEW] Found file:', file.fileId, file.fileName, 'downloadUrl:', file.downloadUrl?.substring(0, 50) + '...');
+            foundFilesMap.set(file.fileId, file);  // ★ Mapに保存
           }
         }
       } catch (e) {
@@ -142,7 +144,29 @@ async function findFilesById(fileIds) {
       }
     }
 
-    console.log('[VIEW] Total files found:', foundFiles.length);
+    // ★ 元の順序を保持してファイルを取得
+    const foundFiles = [];
+    for (const fileId of fileIds) {
+      if (foundFilesMap.has(fileId)) {
+        const file = foundFilesMap.get(fileId);
+        console.log('[VIEW] Adding file to results:', fileId, '-', file.fileName);
+        foundFiles.push(file);
+      } else {
+        console.warn('[VIEW] File not found in any shard:', fileId);
+      }
+    }
+
+    console.log('[VIEW] Total files found:', foundFiles.length, 'requested:', fileIds.length);
+    
+    // ★ 重要: 返すファイルの順序とダウンロードURLを確認
+    foundFiles.forEach((f, idx) => {
+      console.log(`[VIEW] Result[${idx}]:`, {
+        fileId: f.fileId,
+        fileName: f.fileName,
+        downloadUrl: f.downloadUrl?.substring(0, 60) + '...'
+      });
+    });
+
     return foundFiles;
   } catch (e) {
     console.error('[VIEW] Error searching files:', e.message);
