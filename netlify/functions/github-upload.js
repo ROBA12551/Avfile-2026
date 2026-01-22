@@ -7,7 +7,6 @@ const GITHUB_REPO = process.env.GITHUB_REPO;
 function uploadBinaryToGithub(uploadUrl, buffer) {
   return new Promise((resolve, reject) => {
     try {
-      // クエリパラメータを削除
       const cleanUrl = uploadUrl.split('{')[0];
       const url = new URL(cleanUrl);
       url.searchParams.set('name', 'file');
@@ -72,17 +71,17 @@ function callGithubApi(method, path, body) {
     req.end();
   });
 }
+
 exports.handler = async (event) => {
   const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
 
   try {
     const uploadUrl = event.headers['x-upload-url'];
-    const isBase64 = event.headers['x-is-base64'] === 'true';
-    const body = JSON.parse(event.body || '{}');
-
+    
     // バイナリアップロード
-    if (uploadUrl && isBase64) {
-      const buffer = Buffer.from(event.body, 'base64');
+    if (uploadUrl) {
+      // ★ Base64 チェック削除
+      const buffer = Buffer.from(event.body, 'binary');
       const result = await uploadBinaryToGithub(uploadUrl, buffer);
 
       return {
@@ -101,6 +100,8 @@ exports.handler = async (event) => {
     }
 
     // JSON アクション処理
+    const body = JSON.parse(event.body || '{}');
+
     if (body.action === 'create-release') {
       const result = await callGithubApi('POST', `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases`, {
         tag_name: body.releaseTag,

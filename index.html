@@ -950,36 +950,34 @@ class GitHubUploader {
     return data.data;
   }
 
-  async uploadAssetBinary(uploadUrl, fileName, fileObject) {
-    console.log('[UPLOAD_BINARY] Uploading...');
-    
-    const arrayBuffer = await fileObject.arrayBuffer();
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+async uploadAssetBinary(uploadUrl, fileName, fileObject) {
+  console.log('[UPLOAD_BINARY] Uploading...');
+  
+  const arrayBuffer = await fileObject.arrayBuffer();
+  const blob = new Blob([arrayBuffer]);
 
-    const response = await fetch(this.functionUrl, {
-      method: 'POST',
-      headers: {
-        'X-Upload-Url': uploadUrl,
-        'X-Is-Base64': 'true'
-      },
-      body: base64
-    });
+  const response = await fetch(this.functionUrl, {
+    method: 'POST',
+    headers: {
+      'X-Upload-Url': uploadUrl
+    },
+    body: blob
+  });
 
-    console.log('[UPLOAD_BINARY] Status:', response.status);
-    
-    if (!response.ok) {
-      throw new Error(`Upload failed: ${response.status}`);
-    }
-
-    const data = await response.json();
-    console.log('[UPLOAD_BINARY] Success');
-    
-    return {
-      size: data.data.size,
-      browser_download_url: data.data.download_url
-    };
+  console.log('[UPLOAD_BINARY] Status:', response.status);
+  
+  if (!response.ok) {
+    throw new Error(`Upload failed: ${response.status}`);
   }
 
+  const data = await response.json();
+  console.log('[UPLOAD_BINARY] Success');
+  
+  return {
+    size: data.data.size,
+    browser_download_url: data.data.download_url
+  };
+}
   sanitizeFileName(fileName) {
     return fileName || 'file';
   }
