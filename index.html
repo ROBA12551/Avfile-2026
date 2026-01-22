@@ -1303,18 +1303,17 @@ document.getElementById('openLinkBtn').onclick = () => window.open(document.getE
 document.getElementById('retryBtn').onclick = () => { showUpload(); document.getElementById('fileInput').value = ''; };
 document.getElementById('backBtn').onclick = () => showUpload();
 // uploadMultiple() をシンプルに
-
 async function uploadMultiple(files) {
   showStatus();
   const uploader = new GitHubUploader();
 
   try {
-    console.log('[UPLOAD] START');
+    console.log('[UPLOAD] START - Files:', files.length);
+
+    const fileIds = [];
 
     for (let idx = 0; idx < files.length; idx++) {
       const file = files[idx];
-      
-      console.log(`[FILE_${idx}] Processing...`);
       
       const info = await getUnifiedFileInfo(file, { getFileType: () => 'file' });
       const fileId = 'f_' + Math.random().toString(36).substr(2, 9);
@@ -1323,13 +1322,25 @@ async function uploadMultiple(files) {
 
       console.log(`[FILE_${idx}] Creating release...`);
       const release = await uploader.createRelease(releaseTag, fileName);
-      console.log(`[FILE_${idx}] Release created`);
 
       console.log(`[FILE_${idx}] Uploading...`);
       const assetData = await uploader.uploadAssetBinary(release.upload_url, fileName, file);
-      console.log(`[FILE_${idx}] Upload complete`);
+
+      console.log(`[FILE_${idx}] Saving to github.json...`);
+      await uploader.addFileToGithubJson({
+        fileId, fileName, fileSize: assetData.size, mimeType: info.mimeType,
+        releaseId: release.release_id, releaseTag, downloadUrl: assetData.browser_download_url,
+        metadata: { extension: fileName.split('.').pop(), originalName: file.name }
+      });
+
+      fileIds.push(fileId);
+      console.log(`[FILE_${idx}] Complete`);
     }
 
+    console.log('[UPLOAD] Creating view...');
+    const view = await uploader.createView(fileIds);
+
+    document.getElementById('shareUrl').value = view.shareUrl;
     console.log('[UPLOAD] SUCCESS');
     showSuccess();
 
