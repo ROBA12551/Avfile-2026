@@ -935,9 +935,9 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   const response = await fetch(this.functionUrl, {
     method: 'POST',
     headers: {
-      'X-Upload-Url': uploadUrl,
+      'X-Upload-Url': uploadUrl
     },
-    body: fileObject  // Base64 ではなく Blob をそのまま送信
+    body: fileObject
   });
 
   const data = await response.json();
