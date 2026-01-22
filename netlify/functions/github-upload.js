@@ -108,63 +108,48 @@ async function githubRequest(method, path, body = null, headers = {}) {
   });
 }
 
-async function githubUploadRequest(method, fullUrl, body, headers = {}) {
+// ★ GitHub に直接バイナリをアップロード
+async function uploadToGitHub(uploadUrl, fileName, binaryBuffer) {
   return new Promise((resolve, reject) => {
     try {
-      if (!fullUrl || typeof fullUrl !== 'string') {
-        throw new Error('Invalid uploadUrl');
-      }
+      let cleanUrl = uploadUrl.trim().replace(/\{[?&].*?\}/g, '');
+      const encodedFileName = encodeURIComponent(fileName);
+      const assetUrl = `${cleanUrl}?name=${encodedFileName}`;
 
-      let cleanUrl = fullUrl.trim();
-      cleanUrl = cleanUrl.replace(/\{[?&].*?\}/g, '');
-
-      logInfo(`Upload URL: ${cleanUrl.substring(0, 80)}...`);
-
-      const parsed = new URL(cleanUrl);
-
-      let uploadBody = body;
-      let contentLength = 0;
-
-      if (Buffer.isBuffer(body)) {
-        uploadBody = body;
-        contentLength = body.length;
-      } else {
-        throw new Error('Body must be a Buffer');
-      }
+      const parsed = new URL(assetUrl);
 
       const options = {
         hostname: parsed.hostname,
         port: 443,
         path: parsed.pathname + parsed.search,
-        method,
+        method: 'POST',
         timeout: 180000,
         headers: {
           'Authorization': `token ${GITHUB_TOKEN}`,
           'User-Agent': 'Avfile-Netlify',
           'Content-Type': 'application/octet-stream',
-          'Content-Length': contentLength,
-          ...headers,
+          'Content-Length': binaryBuffer.length,
         },
       };
 
-      logInfo(`Upload: ${method} ${parsed.hostname}${parsed.pathname.substring(0, 50)}...`);
-      logInfo(`Size: ${(contentLength / 1024 / 1024).toFixed(2)} MB`);
+      logInfo(`[UPLOAD] Uploading to GitHub: ${parsed.hostname}${parsed.pathname.substring(0, 50)}...`);
+      logInfo(`[UPLOAD] Size: ${(binaryBuffer.length / 1024 / 1024).toFixed(2)} MB`);
 
       const req = https.request(options, (res) => {
         let data = '';
         res.on('data', (c) => (data += c));
         res.on('end', () => {
-          logInfo(`Upload Response: ${res.statusCode}`);
+          logInfo(`[UPLOAD] Response: ${res.statusCode}`);
           
           if (res.statusCode >= 200 && res.statusCode < 300) {
             try {
-              resolve(data ? JSON.parse(data) : {});
+              resolve(JSON.parse(data));
             } catch (e) {
-              logError(`JSON parse error: ${e.message}`);
+              logError(`[UPLOAD] JSON parse error: ${e.message}`);
               resolve({});
             }
           } else {
-            const errorMsg = `Upload Error ${res.statusCode}: ${data || 'Unknown'}`;
+            const errorMsg = `Upload Error ${res.statusCode}: ${data}`;
             logError(errorMsg);
             reject(new Error(errorMsg));
           }
@@ -172,20 +157,20 @@ async function githubUploadRequest(method, fullUrl, body, headers = {}) {
       });
 
       req.on('error', (err) => {
-        logError(`Upload error: ${err.message}`);
+        logError(`[UPLOAD] Request error: ${err.message}`);
         reject(err);
       });
 
       req.on('timeout', () => {
-        logError('Upload timeout (180s)');
+        logError('[UPLOAD] Timeout (180s)');
         req.destroy();
         reject(new Error('Upload timeout'));
       });
       
-      if (uploadBody) req.write(uploadBody);
+      req.write(binaryBuffer);
       req.end();
     } catch (e) {
-      logError(`Upload Request Error: ${e.message}`);
+      logError(`[UPLOAD] Error: ${e.message}`);
       reject(e);
     }
   });
@@ -391,20 +376,13 @@ exports.handler = async (event) => {
   try {
     logInfo(`=== REQUEST START ===`);
     logInfo(`Method: ${event.httpMethod}`);
-    logInfo(`Content-Type: ${event.headers['content-type'] || 'none'}`);
 
     if (!GITHUB_TOKEN || !GITHUB_OWNER || !GITHUB_REPO) {
       logError('Missing environment variables');
       return {
         statusCode: 500,
-        headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        },
-        body: JSON.stringify({ 
-          success: false, 
-          error: 'Server configuration error'
-        }),
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify({ success: false, error: 'Server configuration error' }),
       };
     }
 
@@ -414,272 +392,114 @@ exports.handler = async (event) => {
         headers: {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'POST,OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type,Content-Length',
+          'Access-Control-Allow-Headers': 'Content-Type',
         },
         body: '',
       };
     }
 
-    let body;
-    const contentType = event.headers['content-type'] || event.headers['Content-Type'] || '';
+    const contentType = event.headers['content-type'] || '';
     
-// ★ バイナリデータの処理
-if (contentType.includes('application/octet-stream')) {
-  logInfo('[BINARY] Processing binary upload');
-  
-  const action = event.queryStringParameters?.action;
-  const uploadUrl = event.queryStringParameters?.url;
-  const fileName = event.queryStringParameters?.name;
-  
-  logInfo(`[BINARY] Action: ${action}`);
-  logInfo(`[BINARY] FileName: ${fileName}`);
-  logInfo(`[BINARY] Body present: ${!!event.body}`);
-  logInfo(`[BINARY] isBase64Encoded: ${event.isBase64Encoded}`);
-  
-  if (!action || !uploadUrl || !fileName) {
-    logError('[BINARY] Missing required parameters');
-    return {
-      statusCode: 400,
-      headers: { 
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-      },
-      body: JSON.stringify({ 
-        success: false, 
-        error: 'Missing parameters: action, url, name'
-      }),
-    };
-  }
-  
-  // ★ バイナリデータを Buffer に変換
-  let binaryData;
-  try {
-    if (!event.body) {
-      throw new Error('Request body is empty');
-    }
-
-    if (event.isBase64Encoded) {
-      logInfo('[BINARY] Decoding from base64...');
-      binaryData = Buffer.from(event.body, 'base64');
-      logInfo(`[BINARY] Decoded: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
-    } else {
-      logInfo('[BINARY] Processing as binary...');
-      // Netlifyは通常base64でエンコードする
-      try {
-        binaryData = Buffer.from(event.body, 'base64');
-        logInfo(`[BINARY] Decoded as base64: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
-      } catch (decodeError) {
-        binaryData = Buffer.from(event.body, 'binary');
-        logInfo(`[BINARY] Processed as binary: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
+    // ★ バイナリアップロード処理（Base64なし）
+    if (contentType.includes('application/octet-stream')) {
+      logInfo('[BINARY] Direct binary upload');
+      
+      const action = event.queryStringParameters?.action;
+      const uploadUrl = event.queryStringParameters?.url;
+      const fileName = event.queryStringParameters?.name;
+      
+      if (!action || !uploadUrl || !fileName) {
+        return {
+          statusCode: 400,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          body: JSON.stringify({ success: false, error: 'Missing parameters' }),
+        };
       }
-    }
-  } catch (e) {
-    logError(`[BINARY] Buffer conversion failed: ${e.message}`);
-    return {
-      statusCode: 400,
-      headers: { 
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-      },
-      body: JSON.stringify({ 
-        success: false, 
-        error: `Failed to process binary data: ${e.message}`
-      }),
-    };
-  }
-  
-  if (!binaryData || binaryData.length === 0) {
-    logError('[BINARY] Empty binary data');
-    return {
-      statusCode: 400,
-      headers: { 
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-      },
-      body: JSON.stringify({ 
-        success: false, 
-        error: 'Empty binary data'
-      }),
-    };
-  }
+      
+      if (!event.body) {
+        return {
+          statusCode: 400,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          body: JSON.stringify({ success: false, error: 'Empty body' }),
+        };
+      }
 
-  logInfo(`[BINARY] Final buffer size: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
+      // ★ バイナリを直接Bufferに
+      const binaryBuffer = event.isBase64Encoded 
+        ? Buffer.from(event.body, 'base64')
+        : Buffer.from(event.body, 'binary');
 
-  // ★ サイズチェック（4MB制限）
-  const maxSize = 4 * 1024 * 1024;
-  if (binaryData.length > maxSize) {
-    logError(`[BINARY] File too large: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB`);
-    return {
-      statusCode: 413,
-      headers: { 
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-      },
-      body: JSON.stringify({ 
-        success: false, 
-        error: `File too large: ${(binaryData.length / 1024 / 1024).toFixed(2)} MB (max 4MB)`
-      }),
-    };
-  }
+      logInfo(`[BINARY] Buffer size: ${(binaryBuffer.length / 1024 / 1024).toFixed(2)} MB`);
 
-  // ★ GitHub に直接アップロード
-  try {
-    let cleanUrl = uploadUrl.trim().replace(/\{[?&].*?\}/g, '');
-    const encodedFileName = encodeURIComponent(fileName);
-    const assetUrl = `${cleanUrl}?name=${encodedFileName}`;
+      // ★ GitHubに直接アップロード
+      const result = await uploadToGitHub(uploadUrl, fileName, binaryBuffer);
 
-    logInfo(`[BINARY] Uploading to GitHub: ${assetUrl.substring(0, 100)}...`);
+      if (!result || !result.id) {
+        throw new Error('GitHub upload failed');
+      }
 
-    const assetResponse = await githubUploadRequest('POST', assetUrl, binaryData);
+      logInfo(`[BINARY] Success: ${result.id}`);
 
-    if (!assetResponse || !assetResponse.id) {
-      logError('[BINARY] GitHub response missing ID');
-      throw new Error('GitHub upload response missing ID');
-    }
-
-    logInfo(`[BINARY] Upload success: Asset ID ${assetResponse.id}`);
-
-    return {
-      statusCode: 200,
-      headers: { 
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-      },
-      body: JSON.stringify({ 
-        success: true, 
-        data: {
-          asset_id: assetResponse.id,
-          name: assetResponse.name,
-          size: assetResponse.size,
-          download_url: assetResponse.browser_download_url,
-        }
-      }),
-    };
-  } catch (uploadError) {
-    logError(`[BINARY] Upload failed: ${uploadError.message}`);
-    return {
-      statusCode: 500,
-      headers: { 
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-      },
-      body: JSON.stringify({ 
-        success: false, 
-        error: `Upload failed: ${uploadError.message}`
-      }),
-    };
-  }
-}
-    // JSON処理
-    try {
-      body = JSON.parse(event.body || '{}');
-    } catch (e) {
-      logError(`Invalid JSON: ${e.message}`);
       return {
-        statusCode: 400,
-        headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        },
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
         body: JSON.stringify({ 
-          success: false, 
-          error: 'Invalid JSON'
+          success: true, 
+          data: {
+            asset_id: result.id,
+            name: result.name,
+            size: result.size,
+            download_url: result.browser_download_url,
+          }
         }),
       };
     }
 
+    // ★ JSON処理
+    const body = JSON.parse(event.body || '{}');
     logInfo(`Action: ${body.action}`);
     
     let response;
 
-    // ★ 修正: switch文を1つだけに
     switch (body.action) {
-      case 'create-release': {
-        if (!body.releaseTag) {
-          throw new Error('releaseTag required');
-        }
+      case 'create-release':
         response = await createRelease(body.releaseTag, body.metadata);
         break;
-      }
 
-      case 'add-file': {
-        if (!body.fileData) {
-          throw new Error('fileData required');
-        }
-        
-        const required = ['fileId', 'fileName', 'fileSize', 'releaseId', 'releaseTag', 'downloadUrl'];
-        for (const field of required) {
-          if (!body.fileData[field]) {
-            throw new Error(`fileData.${field} required`);
-          }
-        }
-        
+      case 'add-file':
         response = await addFileToGithubJson(body.fileData);
         break;
-      }
 
-      case 'get-github-json': {
+      case 'get-github-json':
         const result = await getGithubJson();
         response = result.data;
         break;
-      }
 
-      case 'create-view': {
-        const fileIds = Array.isArray(body.fileIds) ? body.fileIds : [];
-        if (fileIds.length === 0) {
-          throw new Error('fileIds required');
-        }
-        response = await createViewOnServer(
-          fileIds,
-          body.passwordHash || null,
-          body.origin || ''
-        );
+      case 'create-view':
+        response = await createViewOnServer(body.fileIds, body.passwordHash, body.origin);
         break;
-      }
 
-      case 'get-token': {
-        logInfo('[TOKEN] Providing GitHub token');
-        
-        if (!GITHUB_TOKEN) {
-          throw new Error('GitHub token not configured');
-        }
-        
-        response = {
-          token: GITHUB_TOKEN
-        };
+      case 'get-token':
+        response = { token: GITHUB_TOKEN };
         break;
-      }
 
       default:
         throw new Error(`Unknown action: ${body.action}`);
     }
 
-    logInfo(`=== SUCCESS ===`);
-    
     return {
       statusCode: 200,
-      headers: { 
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-      },
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       body: JSON.stringify({ success: true, data: response }),
     };
 
   } catch (e) {
-    logError(`=== FAILED ===`);
     logError(`Error: ${e.message}`);
-    logError(`Stack: ${e.stack}`);
     
     return {
       statusCode: 500,
-      headers: { 
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-      },
-      body: JSON.stringify({ 
-        success: false, 
-        error: e.message || 'Internal Server Error'
-      }),
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify({ success: false, error: e.message }),
     };
   }
 };
