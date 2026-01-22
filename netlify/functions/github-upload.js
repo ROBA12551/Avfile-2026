@@ -79,10 +79,15 @@ exports.handler = async (event) => {
     const uploadUrl = event.headers['x-upload-url'];
     
     // バイナリアップロード
-    if (uploadUrl) {
-      // ★ Base64 チェック削除
-      const buffer = Buffer.from(event.body, 'binary');
-      const result = await uploadBinaryToGithub(uploadUrl, buffer);
+if (uploadUrl) {
+  console.log('[HANDLER] uploadUrl present, processing binary');
+  console.log('[HANDLER] body type:', typeof event.body);
+  console.log('[HANDLER] body length:', event.body ? event.body.length : 0);
+  
+  const buffer = Buffer.from(event.body, 'binary');
+  console.log('[HANDLER] buffer created, size:', buffer.length);
+  
+  const result = await uploadBinaryToGithub(uploadUrl, buffer);
 
       return {
         statusCode: 200,
