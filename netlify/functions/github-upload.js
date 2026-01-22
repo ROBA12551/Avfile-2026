@@ -528,7 +528,19 @@ if (contentType.includes('application/octet-stream')) {
         response = await createRelease(body.releaseTag, body.metadata);
         break;
       }
-
+case 'get-upload-token': {
+  // セキュリティ警告: 本番環境では適切な認証を実装すること
+  logInfo('[TOKEN] Providing upload token');
+  
+  if (!GITHUB_TOKEN) {
+    throw new Error('GitHub token not configured');
+  }
+  
+  response = {
+    token: GITHUB_TOKEN
+  };
+  break;
+}
 // ★ バイナリアップロード
 case 'upload-asset-binary': {
   logInfo(`[UPLOAD] Starting binary upload`);

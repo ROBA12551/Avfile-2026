@@ -983,7 +983,7 @@ class GitHubUploader {
     
     return data.data;
   }
-// ★ バイナリを Netlify Functions 経由で GitHub へアップロード
+  // ★ バイナリを Netlify Functions 経由で GitHub へアップロード
 async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   const sanitizedFileName = this.sanitizeFileName(fileName);
 
@@ -1015,10 +1015,17 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
     }
   }
 
+  // ★ サイズチェック - Netlify Functions は 6MB 制限
+  const NETLIFY_MAX_SIZE = 4.5 * 1024 * 1024; // 安全のため4.5MBに設定
+  if (processedFile.size > NETLIFY_MAX_SIZE) {
+    console.log('[UPLOAD_BINARY] File too large for Netlify Functions, uploading directly to GitHub...');
+    return await this.uploadDirectlyToGitHub(uploadUrl, sanitizedFileName, processedFile);
+  }
+
   // ArrayBuffer に変換
   const arrayBuffer = await processedFile.arrayBuffer();
 
-  // ★ Netlify Functions 経由でアップロード（CORS回避）
+  // ★ Netlify Functions 経由でアップロード
   const params = new URLSearchParams({
     action: 'upload-asset-binary',
     url: uploadUrl,
@@ -1028,6 +1035,7 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   const finalUrl = `${this.functionUrl}?${params.toString()}`;
 
   console.log('[UPLOAD_BINARY] Uploading via Netlify Functions...');
+  console.log('[UPLOAD_BINARY] Request size:', (arrayBuffer.byteLength / 1024 / 1024).toFixed(2), 'MB');
 
   const response = await fetch(finalUrl, {
     method: 'POST',
@@ -1041,6 +1049,13 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   if (!response.ok) {
     const errorText = await response.text().catch(() => '');
     console.error('[UPLOAD_BINARY] Error:', response.status, errorText);
+    
+    // ★ 500エラーの場合、直接GitHubにアップロードを試みる
+    if (response.status === 500 || response.status === 413) {
+      console.log('[UPLOAD_BINARY] Retrying with direct GitHub upload...');
+      return await this.uploadDirectlyToGitHub(uploadUrl, sanitizedFileName, processedFile);
+    }
+    
     throw new Error(`Upload failed: ${response.status}`);
   }
 
@@ -1059,6 +1074,73 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
     name: data.data.name,
     size: data.data.size
   };
+}
+
+// ★ GitHub に直接アップロードする代替メソッド（Netlify Functions をバイパス）
+async uploadDirectlyToGitHub(uploadUrl, fileName, fileBlob) {
+  console.log('[DIRECT_UPLOAD] Uploading directly to GitHub...');
+  console.log('[DIRECT_UPLOAD] File:', fileName);
+  console.log('[DIRECT_UPLOAD] Size:', (fileBlob.size / 1024 / 1024).toFixed(2), 'MB');
+
+  try {
+    // GitHub Personal Access Token を使用（環境変数から取得）
+    // 注意: これはクライアント側なので、トークンを直接埋め込まないこと
+    // 代わりに、Netlify Functions経由で取得する
+    
+    const tokenResponse = await fetch('/.netlify/functions/github-upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'get-upload-token' })
+    });
+    
+    const tokenData = await tokenResponse.json();
+    if (!tokenData.success) {
+      throw new Error('Failed to get upload token');
+    }
+    
+    const token = tokenData.data.token;
+    
+    // URL をクリーンアップ
+    let cleanUrl = uploadUrl.trim().replace(/\{[?&].*?\}/g, '');
+    const encodedFileName = encodeURIComponent(fileName);
+    const assetUrl = `${cleanUrl}?name=${encodedFileName}`;
+
+    console.log('[DIRECT_UPLOAD] Upload URL:', assetUrl.substring(0, 100) + '...');
+
+    const arrayBuffer = await fileBlob.arrayBuffer();
+
+    const response = await fetch(assetUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `token ${token}`,
+        'Content-Type': 'application/octet-stream',
+        'Content-Length': arrayBuffer.byteLength.toString()
+      },
+      body: arrayBuffer
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[DIRECT_UPLOAD] Error:', response.status, errorText);
+      throw new Error(`GitHub upload failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    console.log('[DIRECT_UPLOAD] Success:', data.id);
+
+    return {
+      success: true,
+      asset_id: data.id,
+      browser_download_url: data.browser_download_url,
+      name: data.name,
+      size: data.size
+    };
+
+  } catch (error) {
+    console.error('[DIRECT_UPLOAD] Failed:', error.message);
+    throw error;
+  }
 }
 
   // ★ ファイル情報を github.json に即座に追加
