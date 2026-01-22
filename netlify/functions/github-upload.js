@@ -377,88 +377,193 @@ async function createViewOnServer(fileIds, passwordHash, origin) {
 // =====================================================
 // ★ チャンク処理を追加
 // =====================================================
-
-/**
- * チャンク受信ハンドラー
- */
+// 修正された handleUploadChunk() メソッド
 async function handleUploadChunk(event) {
   try {
     const params = event.queryStringParameters || {};
-    const { uploadId, chunkIndex, totalChunks, fileName, mimeType } = params;
+    const uploadId = params.uploadId;
+    const chunkIndex = parseInt(params.chunkIndex);
+    const totalChunks = parseInt(params.totalChunks);
+    const fileName = params.fileName;
+    const mimeType = params.mimeType;
 
-    const chunkBuffer = event.isBase64Encoded
-      ? Buffer.from(event.body, 'base64')
-      : Buffer.from(event.body, 'binary');
+    console.log(`[CHUNK] uploadId: ${uploadId}`);
+    console.log(`[CHUNK] chunkIndex: ${chunkIndex}, totalChunks: ${totalChunks}`);
+    console.log(`[CHUNK] fileName: ${fileName}`);
 
-    console.log(`[CHUNK] Received chunk ${chunkIndex}/${totalChunks}`);
+    // ボディをバイナリに変換
+    let chunkBuffer;
+    if (event.isBase64Encoded) {
+      chunkBuffer = Buffer.from(event.body, 'base64');
+      console.log(`[CHUNK] Decoded from base64: ${chunkBuffer.length} bytes`);
+    } else {
+      chunkBuffer = Buffer.from(event.body, 'binary');
+      console.log(`[CHUNK] Binary buffer: ${chunkBuffer.length} bytes`);
+    }
 
-    if (!uploadCache[uploadId]) {
-      uploadCache[uploadId] = {
-        chunks: [],
-        fileName,
-        mimeType,
-        totalChunks: parseInt(totalChunks)
+    // バリデーション
+    if (!uploadId || chunkIndex === undefined || totalChunks === undefined) {
+      console.error(`[CHUNK] Missing required parameters`);
+      return {
+        statusCode: 400,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify({
+          success: false,
+          error: 'Missing required parameters: uploadId, chunkIndex, totalChunks'
+        })
       };
     }
 
-    uploadCache[uploadId].chunks[parseInt(chunkIndex)] = chunkBuffer;
+    if (!chunkBuffer || chunkBuffer.length === 0) {
+      console.error(`[CHUNK] Empty chunk buffer`);
+      return {
+        statusCode: 400,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify({
+          success: false,
+          error: 'Empty chunk buffer'
+        })
+      };
+    }
 
-    const cache = uploadCache[uploadId];
-    const received = cache.chunks.filter(c => c).length;
+    // キャッシュを初期化
+    if (!uploadCache[uploadId]) {
+      uploadCache[uploadId] = {
+        chunks: {},  // ★ 配列ではなくオブジェクトに変更
+        fileName: fileName,
+        mimeType: mimeType,
+        totalChunks: totalChunks,
+        createdAt: Date.now()
+      };
+      console.log(`[CHUNK] Created new upload session: ${uploadId}`);
+    }
+
+    // チャンクを保存
+    uploadCache[uploadId].chunks[chunkIndex] = chunkBuffer;
+    console.log(`[CHUNK] Saved chunk ${chunkIndex}: ${chunkBuffer.length} bytes`);
+
+    // 受信完了したチャンク数をカウント
+    const receivedChunks = Object.keys(uploadCache[uploadId].chunks).length;
+    console.log(`[CHUNK] Progress: ${receivedChunks}/${totalChunks} chunks received`);
 
     return {
       statusCode: 200,
-      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      headers: { 
+        'Content-Type': 'application/json', 
+        'Access-Control-Allow-Origin': '*' 
+      },
       body: JSON.stringify({
         success: true,
-        chunkIndex: parseInt(chunkIndex),
-        receivedChunks: received,
-        totalChunks: cache.totalChunks
+        uploadId: uploadId,
+        chunkIndex: chunkIndex,
+        receivedChunks: receivedChunks,
+        totalChunks: totalChunks
       })
     };
+
   } catch (error) {
-    logError(`[CHUNK] Error: ${error.message}`);
+    console.error(`[CHUNK] Error: ${error.message}`);
+    console.error(`[CHUNK] Stack: ${error.stack}`);
+    
     return {
       statusCode: 500,
-      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      body: JSON.stringify({ success: false, error: error.message })
+      headers: { 
+        'Content-Type': 'application/json', 
+        'Access-Control-Allow-Origin': '*' 
+      },
+      body: JSON.stringify({
+        success: false,
+        error: error.message
+      })
     };
   }
 }
 
 /**
- * チャンク統合ハンドラー
+ * 修正された handleFinalizeChunks() メソッド
  */
 async function handleFinalizeChunks(body) {
   try {
-    const { uploadId, fileName, mimeType } = body;
+    const uploadId = body.uploadId;
+    const fileName = body.fileName;
+    const mimeType = body.mimeType;
+
+    console.log(`[FINALIZE] uploadId: ${uploadId}`);
+    console.log(`[FINALIZE] fileName: ${fileName}`);
+
     const cache = uploadCache[uploadId];
 
     if (!cache) {
-      throw new Error('Upload session not found');
+      console.error(`[FINALIZE] Upload session not found: ${uploadId}`);
+      return {
+        statusCode: 404,
+        headers: { 
+          'Content-Type': 'application/json', 
+          'Access-Control-Allow-Origin': '*' 
+        },
+        body: JSON.stringify({
+          success: false,
+          error: 'Upload session not found'
+        })
+      };
     }
 
-    console.log(`[FINALIZE] Merging ${cache.chunks.length} chunks...`);
+    // チャンクをソートして統合
+    const chunkIndices = Object.keys(cache.chunks)
+      .map(i => parseInt(i))
+      .sort((a, b) => a - b);
 
-    // チャンク統合
-    const merged = Buffer.concat(cache.chunks);
-    console.log(`[FINALIZE] Merged size: ${(merged.length / 1024 / 1024).toFixed(2)}MB`);
+    console.log(`[FINALIZE] Chunk indices: ${chunkIndices.join(', ')}`);
 
-    // リリース作成
-    const release = await createRelease(`file_${uploadId}`, {
+    // すべてのチャンクが揃っているか確認
+    if (chunkIndices.length !== cache.totalChunks) {
+      console.error(`[FINALIZE] Missing chunks. Expected ${cache.totalChunks}, got ${chunkIndices.length}`);
+      return {
+        statusCode: 400,
+        headers: { 
+          'Content-Type': 'application/json', 
+          'Access-Control-Allow-Origin': '*' 
+        },
+        body: JSON.stringify({
+          success: false,
+          error: `Missing chunks. Expected ${cache.totalChunks}, got ${chunkIndices.length}`
+        })
+      };
+    }
+
+    // チャンクを順序通りに取得
+    const chunksArray = chunkIndices.map(i => cache.chunks[i]);
+    
+    // バッファを統合
+    const merged = Buffer.concat(chunksArray);
+    console.log(`[FINALIZE] Merged size: ${merged.length} bytes (${(merged.length / 1024 / 1024).toFixed(2)}MB)`);
+
+    // Release を作成
+    const fileId = uploadId.split('_')[1] || uploadId;
+    const releaseTag = `file_${fileId}`;
+    
+    console.log(`[FINALIZE] Creating release: ${releaseTag}`);
+    const release = await createRelease(releaseTag, {
       title: fileName
     });
 
+    console.log(`[FINALIZE] Release created: ${release.release_id}`);
+    console.log(`[FINALIZE] Upload URL: ${release.upload_url.substring(0, 100)}...`);
+
     // GitHub にアップロード
+    console.log(`[FINALIZE] Uploading to GitHub...`);
     const result = await uploadToGitHub(
       release.upload_url,
       fileName,
       merged
     );
 
+    console.log(`[FINALIZE] GitHub upload success: ${result.id}`);
+
     // github.json に追加
+    console.log(`[FINALIZE] Adding to github.json...`);
     await addFileToGithubJson({
-      fileId: `f_${uploadId}`,
+      fileId: fileId,
       fileName: fileName,
       fileSize: merged.length,
       mimeType: mimeType,
@@ -467,38 +572,48 @@ async function handleFinalizeChunks(body) {
       downloadUrl: result.browser_download_url
     });
 
-    // クリア
+    console.log(`[FINALIZE] Added to github.json`);
+
+    // キャッシュをクリア
     delete uploadCache[uploadId];
+    console.log(`[FINALIZE] Cache cleared`);
 
     console.log(`[FINALIZE] ✓ Complete`);
 
     return {
       statusCode: 200,
-      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      headers: { 
+        'Content-Type': 'application/json', 
+        'Access-Control-Allow-Origin': '*' 
+      },
       body: JSON.stringify({
         success: true,
         data: {
-          fileId: `f_${uploadId}`,
+          fileId: fileId,
           fileName: fileName,
           size: merged.length,
           downloadUrl: result.browser_download_url
         }
       })
     };
+
   } catch (error) {
-    logError(`[FINALIZE] Error: ${error.message}`);
+    console.error(`[FINALIZE] Error: ${error.message}`);
+    console.error(`[FINALIZE] Stack: ${error.stack}`);
+    
     return {
       statusCode: 500,
-      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      body: JSON.stringify({ success: false, error: error.message })
+      headers: { 
+        'Content-Type': 'application/json', 
+        'Access-Control-Allow-Origin': '*' 
+      },
+      body: JSON.stringify({
+        success: false,
+        error: error.message
+      })
     };
   }
 }
-
-// =====================================================
-// メインハンドラー
-// =====================================================
-
 exports.handler = async (event) => {
   try {
     logInfo(`=== REQUEST START ===`);
