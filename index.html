@@ -1013,7 +1013,8 @@ class GitHubUploader {
     
     return data.data;
   }
-// ★ バイナリを Netlify Functions 経由で GitHub へアップロード（元の方式）
+
+// ★ バイナリを Netlify Functions 経由で GitHub へアップロード
 async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   const sanitizedFileName = this.sanitizeFileName(fileName);
 
@@ -1025,18 +1026,15 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   // 圧縮スキップ
   console.log('[UPLOAD_BINARY] Skipping compression for now');
 
-  // ★ 4MB制限チェック
+  // ★ 5MB制限チェック
   if (processedFile.size > 5 * 1024 * 1024) {
-    console.error('[UPLOAD_BINARY] File too large for Netlify Functions (>4MB)');
-    throw new Error(`File too large: ${(processedFile.size / 1024 / 1024).toFixed(2)}MB. Maximum 4MB supported.`);
+    console.error('[UPLOAD_BINARY] File too large for Netlify Functions (>5MB)');
+    throw new Error(`File too large: ${(processedFile.size / 1024 / 1024).toFixed(2)}MB. Maximum 5MB supported.`);
   }
 
-  // ArrayBuffer に変換
-  console.log('[UPLOAD_BINARY] Converting to ArrayBuffer...');
-  const arrayBuffer = await processedFile.arrayBuffer();
-  console.log('[UPLOAD_BINARY] Buffer size:', (arrayBuffer.byteLength / 1024 / 1024).toFixed(2), 'MB');
+  console.log('[UPLOAD_BINARY] File size check passed');
 
-  // ★ 元の方式: github-upload に直接送信
+  // ★ Netlify Functions に直接送信（ArrayBuffer変換なし）
   const params = new URLSearchParams({
     action: 'upload-asset-binary',
     url: uploadUrl,
@@ -1045,15 +1043,16 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
 
   const finalUrl = `${this.functionUrl}?${params.toString()}`;
 
-  console.log('[UPLOAD_BINARY] Uploading via Netlify Functions (github-upload)...');
+  console.log('[UPLOAD_BINARY] Uploading via Netlify Functions...');
+  console.log('[UPLOAD_BINARY] Request size:', (processedFile.size / 1024 / 1024).toFixed(2), 'MB');
 
+  // ★ Fileオブジェクトをそのまま送信
   const response = await fetch(finalUrl, {
     method: 'POST',
     headers: { 
       'Content-Type': 'application/octet-stream',
-      'Content-Length': arrayBuffer.byteLength.toString()
     },
-    body: arrayBuffer
+    body: processedFile  // ★ ArrayBuffer変換なし、Fileオブジェクトそのまま
   });
 
   if (!response.ok) {
