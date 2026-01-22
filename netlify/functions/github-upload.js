@@ -442,14 +442,33 @@ async function handleChunkUpload(event) {
 
 async function finalizeCombinedUpload(event) {
   try {
+    // URLクエリパラメータまたはボディから取得
+    const url = new URL(event.rawUrl || `http://localhost${event.rawPath || ''}`);
+    let uploadId = url.searchParams.get('uploadId');
+    let fileName = url.searchParams.get('fileName');
+    let releaseUploadUrl = url.searchParams.get('releaseUploadUrl');
+    
+    // ボディにも含まれている場合は優先
     const body = safeJsonParse(event.body || '{}', {});
-    const { uploadId, fileName, releaseUploadUrl } = body;
+    if (body.uploadId) uploadId = body.uploadId;
+    if (body.fileName) fileName = body.fileName;
+    if (body.releaseUploadUrl) releaseUploadUrl = body.releaseUploadUrl;
 
-    console.log('[FINALIZE] Processing:', { uploadId, fileName });
+    console.log('[FINALIZE] Processing:', { uploadId, fileName, releaseUploadUrl });
+
+    if (!uploadId) {
+      console.error('[FINALIZE] Missing uploadId');
+      return {
+        statusCode: 400,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ success: false, error: 'Missing uploadId' })
+      };
+    }
 
     const session = uploadChunks.get(uploadId);
     if (!session) {
       console.error('[FINALIZE] Upload session not found:', uploadId);
+      console.log('[FINALIZE] Available sessions:', Array.from(uploadChunks.keys()));
       return {
         statusCode: 404,
         headers: { 'Content-Type': 'application/json' },
@@ -527,13 +546,18 @@ exports.handler = async (event) => {
     const url = new URL(event.rawUrl || `http://localhost${event.rawPath || ''}`);
     let action = url.searchParams.get('action');
     
-    // JSONボディにactionがある場合は優先
+    console.log('[HANDLER] URL action:', action);
+    
+    // URLクエリにアクションがない場合、JSONボディから取得
     if (!action && event.body) {
       const bodyData = safeJsonParse(event.body || '{}', {});
-      action = bodyData.action;
+      if (bodyData.action) {
+        action = bodyData.action;
+        console.log('[HANDLER] Body action:', action);
+      }
     }
 
-    console.log('[HANDLER] action:', action, 'method:', event.httpMethod);
+    console.log('[HANDLER] Final action:', action, 'method:', event.httpMethod);
 
     // Handle CORS
     if (event.httpMethod === 'OPTIONS') {
