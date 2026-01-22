@@ -1027,7 +1027,7 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   console.log('[UPLOAD_BINARY] Skipping compression for now');
 
   // ★ 5MB制限チェック
-  if (processedFile.size > 3 * 1024 * 1024) {
+  if (processedFile.size > 6 * 1024 * 1024) {
     console.error('[UPLOAD_BINARY] File too large for Netlify Functions (>5MB)');
     throw new Error(`File too large: ${(processedFile.size / 1024 / 1024).toFixed(2)}MB. Maximum 5MB supported.`);
   }
