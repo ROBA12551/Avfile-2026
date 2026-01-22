@@ -834,6 +834,7 @@
                     <p class="upload-hint">Up to 10 files • 100MB limit per file • Unlimited transfers • Completely free • Optional password protection</p>
                 </div>
 
+                <!-- ★ パスワード保護セクション -->
                 <div class="password-section">
                     <div class="password-section-title">
                         Password Protection (Optional)
@@ -950,7 +951,7 @@
             
             <!-- ★ パスワード保護状態を表示 -->
             <div id="passwordStatusBox" class="password-status-box" style="display: none;">
-                🔒 This link is password protected
+                This link is password protected
             </div>
 
             <div class="share-url-box">
@@ -1502,7 +1503,7 @@
         const viewId = getViewIdFromPath();
 
         /**
-         * ★ ファイルビューアー
+         * ★ ファイルビューアー（パスワード保護対応）
          */
         async function loadView(viewId) {
             try {
@@ -1510,6 +1511,18 @@
 
                 const filesRes = await fetch(`/.netlify/functions/view?id=${viewId}`);
                 console.log('[MAIN] Files response status:', filesRes.status);
+                
+                // ★ パスワード保護されている場合
+                if (filesRes.status === 403) {
+                    const errorData = await filesRes.json();
+                    console.log('[MAIN] Password required:', errorData);
+                    
+                    if (errorData.requiresPassword) {
+                        // パスワード入力ダイアログを表示
+                        showPasswordPrompt(viewId);
+                        return;
+                    }
+                }
                 
                 if (!filesRes.ok) {
                     const errorText = await filesRes.text();
@@ -1618,6 +1631,193 @@
                         preview = `
                             <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
                                 <div style="font-size: 3rem;">📄</div>
+                                <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 1rem;">File (${ext.toUpperCase()})</p>
+                                <a href="${downloadUrl}" download>Download file</a>
+                            </div>
+                        `;
+                    }
+
+                    item.innerHTML = `
+                        <div style="flex: 1; display: flex; flex-direction: column;">
+                            <div class="file-item-header">
+                                <div class="file-item-info">
+                                    <div class="file-icon">${getIcon(file.fileName)}</div>
+                                    <div class="file-details">
+                                        <h3>${fileName}</h3>
+                                        <p>${fileSize}</p>
+                                        <p style="font-size: 0.8rem; color: rgba(255, 255, 255, 0.5);">Type: ${fileTypeDetected} | Ext: ${ext}</p>
+                                    </div>
+                                </div>
+                                <div class="file-item-actions">
+                                    <a href="${downloadUrl}" download class="file-action-btn">Download</a>
+                                    <button class="file-action-btn" onclick="navigator.clipboard.writeText('${downloadUrl}'); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy Link', 2000);">Copy Link</button>
+                                </div>
+                            </div>
+                            ${preview}
+                        </div>
+                    `;
+
+                    carousel.addItem(item);
+                }
+
+                hideAll();
+                document.getElementById('fileViewerContainer').classList.add('show');
+
+            } catch (e) {
+                console.error('[MAIN] Error:', e.message);
+                showError('File not found: ' + e.message);
+            }
+        }
+
+        /**
+         * ★ パスワード入力プロンプト
+         */
+        function showPasswordPrompt(viewId) {
+            const password = prompt(' This file is password protected.\n\nPlease enter the password:');
+            
+            if (password === null) {
+                console.log('[PASSWORD] User cancelled');
+                showError('Password required to access this file');
+                return;
+            }
+
+            if (password.trim() === '') {
+                console.log('[PASSWORD] Empty password');
+                showError('Password cannot be empty');
+                return;
+            }
+
+            // パスワードをハッシュ化
+            sha256(password).then(hash => {
+                console.log('[PASSWORD] Hash calculated:', hash.substring(0, 16) + '...');
+                // パスワードハッシュをクエリパラメータに追加
+                loadViewWithPassword(viewId, hash);
+            }).catch(e => {
+                console.error('[PASSWORD] Hashing error:', e.message);
+                showError('Error processing password');
+            });
+        }
+
+        /**
+         * ★ パスワード付きでファイルを読み込む
+         */
+        async function loadViewWithPassword(viewId, passwordHash) {
+            try {
+                console.log('[MAIN] Loading view with password:', viewId);
+
+                const filesRes = await fetch(`/.netlify/functions/view?id=${viewId}&pwd=${passwordHash}`);
+                console.log('[MAIN] Files response status:', filesRes.status);
+                
+                if (!filesRes.ok) {
+                    const errorData = await filesRes.json();
+                    console.error('[MAIN] Files error:', errorData);
+                    
+                    if (filesRes.status === 403) {
+                        showError('Invalid password');
+                        showPasswordPrompt(viewId);
+                        return;
+                    }
+                    
+                    throw new Error(`Failed to load files: ${filesRes.status}`);
+                }
+
+                const filesData = await filesRes.json();
+                const allFiles = filesData.files || [];
+                console.log('[MAIN] All files:', allFiles);
+
+                if (!allFiles || allFiles.length === 0) {
+                    throw new Error('No files found');
+                }
+
+                // ファイル表示処理（上記のloadViewと同じ）
+                const carousel = new Carousel(
+                    document.getElementById('carouselTrack'),
+                    document.getElementById('carouselDots'),
+                    document.getElementById('prevBtn'),
+                    document.getElementById('nextBtn'),
+                    document.getElementById('slideInfo')
+                );
+
+                for (let fileIndex = 0; fileIndex < allFiles.length; fileIndex++) {
+                    const file = allFiles[fileIndex];
+                    const item = document.createElement('div');
+                    item.className = 'carousel-item';
+
+                    const ext = file.fileName.split('.').pop().toLowerCase();
+                    const fileName = escapeHtml(file.fileName);
+                    const downloadUrl = escapeHtml(file.downloadUrl);
+                    const fileSize = formatSize(file.fileSize || 0);
+                    const proxyUrl = `/.netlify/functions/proxy-download?url=${encodeURIComponent(file.downloadUrl)}`;
+                    const proxyUrlEscaped = escapeHtml(proxyUrl);
+                    const encodedUrl = encodeURIComponent(file.downloadUrl);
+
+                    let preview = '';
+                    let fileTypeDetected = 'unknown';
+
+                    // ★ MOVファイルは非表示でフォルダアイコンを表示
+                    if (ext.match(/^mov$/i)) {
+                        fileTypeDetected = 'video';
+                        preview = `
+                            <div class="file-preview-area">
+                                <div class="folder-icon"></div>
+                            </div>
+                        `;
+                    }
+                    // 動画ファイル
+                    else if (ext.match(/^(mp4|webm|ogg|mkv|avi|flv|wmv|m4v|ts|m2ts|mts|3gp|3g2)$/i)) {
+                        fileTypeDetected = 'video';
+                        preview = `
+                            <div class="file-preview-area">
+                                <video controls style="max-width: 100%; max-height: 500px; border-radius: 8px;" crossorigin="anonymous">
+                                    <source src="${proxyUrlEscaped}" type="video/mp4">
+                                    Your browser does not support the video tag.
+                                </video>
+                            </div>
+                        `;
+                    }
+                    // 画像ファイル
+                    else if (ext.match(/^(jpg|jpeg|png|gif|webp|bmp|svg|ico|tiff|tif)$/i)) {
+                        fileTypeDetected = 'image';
+                        preview = `
+                            <div class="file-preview-area">
+                                <img src="${proxyUrlEscaped}" style="max-width: 100%; max-height: 500px; border-radius: 8px;" alt="${fileName}" crossorigin="anonymous" />
+                            </div>
+                        `;
+                    }
+                    // PDF ファイル
+                    else if (ext.match(/^pdf$/i)) {
+                        fileTypeDetected = 'pdf';
+                        preview = `
+                            <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
+                                <div style="font-size: 3rem;"></div>
+                                <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 1rem;">PDF Document</p>
+                                <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                                    <a href="https://docs.google.com/viewer?url=${encodedUrl}&embedded=true" target="_blank" rel="noopener noreferrer">View in Google Docs</a>
+                                    <a href="${downloadUrl}" download>Download PDF</a>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    // 音声ファイル
+                    else if (ext.match(/^(mp3|wav|ogg|flac|m4a|aac|wma|opus)$/i)) {
+                        fileTypeDetected = 'audio';
+                        preview = `
+                            <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
+                                <div style="font-size: 4rem;">🎵</div>
+                                <audio controls style="width: 100%; max-width: 500px;" crossorigin="anonymous">
+                                    <source src="${proxyUrlEscaped}" type="audio/mpeg">
+                                    Your browser does not support the audio element.
+                                </audio>
+                                <p style="color: rgba(255, 255, 255, 0.7);">Audio file: ${fileName}</p>
+                            </div>
+                        `;
+                    }
+                    // その他ファイル
+                    else {
+                        fileTypeDetected = 'unknown';
+                        preview = `
+                            <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
+                                <div style="font-size: 3rem;"></div>
                                 <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 1rem;">File (${ext.toUpperCase()})</p>
                                 <a href="${downloadUrl}" download>Download file</a>
                             </div>
