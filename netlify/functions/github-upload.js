@@ -441,6 +441,60 @@ async function handleUploadChunk(event) {
     };
   }
 }
+async function handleUploadAssetBinary(event) {
+  try {
+    const params = event.queryStringParameters || {};
+    const uploadUrl = params.url;
+    const fileName = params.name;
+
+    console.log(`[ASSET] uploadUrl: ${uploadUrl ? uploadUrl.substring(0, 100) : 'missing'}...`);
+    console.log(`[ASSET] fileName: ${fileName}`);
+
+    if (!uploadUrl || !fileName || !event.body) {
+      return {
+        statusCode: 400,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify({ success: false, error: 'Missing parameters: url, name, or body' })
+      };
+    }
+
+    // バイナリをバッファに変換
+    const buffer = event.isBase64Encoded
+      ? Buffer.from(event.body, 'base64')
+      : Buffer.from(event.body, 'binary');
+
+    console.log(`[ASSET] Buffer size: ${(buffer.length / 1024 / 1024).toFixed(2)}MB`);
+
+    // GitHub にアップロード
+    console.log(`[ASSET] Uploading to GitHub...`);
+    const result = await uploadToGitHub(uploadUrl, fileName, buffer);
+
+    console.log(`[ASSET] Success: ${result.id}`);
+
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify({
+        success: true,
+        data: {
+          asset_id: result.id,
+          name: result.name,
+          size: result.size,
+          download_url: result.browser_download_url
+        }
+      })
+    };
+
+  } catch (error) {
+    console.error(`[ASSET] Error: ${error.message}`);
+    console.error(`[ASSET] Stack: ${error.stack}`);
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify({ success: false, error: error.message })
+    };
+  }
+}
 
 async function handleFinalizeChunks(body) {
   try {
@@ -510,10 +564,11 @@ async function handleFinalizeChunks(body) {
     };
   }
 }
-
 exports.handler = async (event) => {
   try {
     const action = event.queryStringParameters?.action;
+
+    console.log(`[HANDLER] Action: ${action}`);
 
     // ★ チャンク関連を追加
     if (action === 'upload-chunk') {
@@ -525,7 +580,12 @@ exports.handler = async (event) => {
       return await handleFinalizeChunks(body);
     }
 
-    // 既存のコード（以下は変わらない）
+    // ★ バイナリアセット（5MB未満）を追加
+    if (action === 'upload-asset-binary') {
+      return await handleUploadAssetBinary(event);
+    }
+
+    // 既存のコード（JSON ボディを期待）
     const body = JSON.parse(event.body || '{}');
 
     let response;
@@ -533,19 +593,24 @@ exports.handler = async (event) => {
       case 'create-release':
         response = await createRelease(body.releaseTag, body.metadata);
         break;
+
       case 'add-file':
         response = await addFileToGithubJson(body.fileData);
         break;
+
       case 'get-github-json':
         const result = await getGithubJson();
         response = result.data;
         break;
+
       case 'create-view':
         response = await createViewOnServer(body.fileIds, body.passwordHash, body.origin);
         break;
+
       case 'get-token':
         response = { token: GITHUB_TOKEN };
         break;
+
       default:
         throw new Error(`Unknown action: ${body.action}`);
     }
@@ -558,6 +623,8 @@ exports.handler = async (event) => {
 
   } catch (e) {
     console.error(`[ERROR] ${e.message}`);
+    console.error(`[ERROR] Stack: ${e.stack}`);
+    
     return {
       statusCode: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
