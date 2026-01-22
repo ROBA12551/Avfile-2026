@@ -936,7 +936,6 @@ async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
     method: 'POST',
     headers: {
       'X-Upload-Url': uploadUrl,
-      'X-Upload-Name': this.sanitizeFileName(fileName),
     },
     body: fileObject  // Base64 ではなく Blob をそのまま送信
   });
