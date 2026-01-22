@@ -35,9 +35,9 @@
     <link rel="shortcut icon" href="/images/folder.png">
     <link rel="apple-touch-icon" href="/images/folder.png">
     
-    <!-- ★ 修正: ローカル圧縮対応のFFmpeg -->
-    <script async src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
     
+    <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+
     <title>Avfile - Fast File Sharing Service | Unlimited Storage</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -728,11 +728,9 @@
         <p>&copy; 2026 Avfile • Fast & Simple File Sharing</p>
     </footer>
 
-<!-- ★ 修正: ローカル圧縮対応のスクリプトを読み込む（順序重要） -->
 <!-- ローカル圧縮エンジン -->
 <script src="/js/video-compression-local.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.6/dist/umd/ffmpeg.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
+ 
 <!-- ファイルアップロード強化版 -->
 <script src="/js/universal-file-uploader-enhanced.js"></script>
 <script>
