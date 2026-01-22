@@ -137,12 +137,54 @@ async function ensureIndex() {
   try {
     const { sha, json } = await getContent(INDEX_PATH);
     if (json && typeof json.current === 'number' && Array.isArray(json.shards)) {
+      console.log('[INDEX] Found existing index:', { current: json.current, shardCount: json.shards.length });
       return { sha, index: json };
     }
   } catch (e) {
-    console.log('[INDEX] Not found, creating new');
+    console.log('[INDEX] Index not found, checking for existing shards...');
   }
 
+  // ★ 既存の github.shard_00XX.json を探してインデックスを再構築
+  let existingShards = [];
+  for (let n = 1; n <= 100; n++) {  // 最大100個のシャードをチェック
+    const path = shardPath(n);
+    try {
+      const { json: shardData } = await getContent(path);
+      if (Array.isArray(shardData)) {
+        console.log('[INDEX] Found existing shard:', path, 'items:', shardData.length);
+        existingShards.push({ n, path, items: shardData.length });
+      }
+    } catch (e) {
+      // シャードが見つからない = ここまでということ
+      break;
+    }
+  }
+
+  // ★ 既存のシャードが見つかった場合は、それを使用
+  if (existingShards.length > 0) {
+    console.log('[INDEX] Rebuilding index from', existingShards.length, 'existing shards');
+    const now = new Date().toISOString();
+    const index = {
+      version: 1,
+      current: existingShards[existingShards.length - 1].n,  // 最後のシャードを current に
+      shards: existingShards.map(s => ({ n: s.n, path: s.path, createdAt: now }))
+    };
+
+    let indexSha = null;
+    try {
+      const res = await getContent(INDEX_PATH);
+      indexSha = res.sha;
+    } catch (e) {
+      // indexがない場合
+    }
+
+    await putContent(INDEX_PATH, index, 'Rebuild index from existing shards', indexSha);
+    console.log('[INDEX] Index rebuilt:', { current: index.current, shards: index.shards.length });
+    return { sha: indexSha, index };
+  }
+
+  // ★ シャードも見つからない = 完全に新規
+  console.log('[INDEX] No existing shards found, creating new');
   const now = new Date().toISOString();
   const fresh = {
     version: 1,
