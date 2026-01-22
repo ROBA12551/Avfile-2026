@@ -1082,6 +1082,23 @@ class GitHubUploader {
 }
 
 async function waitForFFmpegReady(maxWaitTime = 30000) {
+
+  // ★ FFmpeg グローバルが出るまで少し待つ（最大5秒）
+const waitFFmpegGlobal = async (timeout = 5000) => {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    if (window.FFmpeg || window.FFmpegWASM || window.createFFmpeg) return true;
+    await new Promise(r => setTimeout(r, 50));
+  }
+  return false;
+};
+
+const ok = await waitFFmpegGlobal(5000);
+if (!ok) {
+  console.warn('[UPLOAD] FFmpeg global still missing after wait');
+  return false;
+}
+
   console.log('[UPLOAD] Checking FFmpeg status...');
   if (!window.videoCompressor) return false;
 

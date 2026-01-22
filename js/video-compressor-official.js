@@ -48,14 +48,21 @@
       console.log('[VIDEO_COMPRESSOR] Class initialized');
     }
 
-    // ★ ここで初めて FFmpeg を参照する（重要）
-    _getFFmpegAPI() {
-      const api = window.FFmpeg;
-      if (!api) throw new Error('FFmpeg global not found (ffmpeg.min.js not loaded)');
-      if (!api.createFFmpeg) throw new Error('FFmpeg.createFFmpeg not found');
-      if (!api.fetchFile) throw new Error('FFmpeg.fetchFile not found');
-      return api;
-    }
+_getFFmpegAPI() {
+  // 1) 一番期待する形
+  if (window.FFmpeg?.createFFmpeg && window.FFmpeg?.fetchFile) return window.FFmpeg;
+
+  // 2) FFmpegWASM 名で入ってるパターン
+  if (window.FFmpegWASM?.createFFmpeg && window.FFmpegWASM?.fetchFile) return window.FFmpegWASM;
+
+  // 3) createFFmpeg / fetchFile が直で生えてるパターン
+  if (typeof window.createFFmpeg === 'function' && typeof window.fetchFile === 'function') {
+    return { createFFmpeg: window.createFFmpeg, fetchFile: window.fetchFile };
+  }
+
+  // 4) ここまで来たら本当に未ロード
+  throw new Error('FFmpeg API not found (ffmpeg script not loaded or different build)');
+}
 
     async initFFmpeg() {
       if (this.isLoaded || this.isLoading) return;
