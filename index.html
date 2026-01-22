@@ -40,8 +40,8 @@
     <link rel="shortcut icon" href="/images/folder.png">
     <link rel="apple-touch-icon" href="/images/folder.png">
     
-    <!-- ★ FFmpeg.wasm CDN (公式推奨) -->
-    <script async src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.6/dist/ffmpeg.min.js"></script>
+    <!-- ★ FFmpeg.wasm CDN (async属性を削除 - 同期読み込み必須) -->
+    <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.6/dist/ffmpeg.min.js"></script>
 
     <title>Avfile - Fast File Sharing Service | Unlimited Storage</title>
     <style>
@@ -1085,6 +1085,28 @@ class GitHubUploader {
   }
 }
 
+// ★ FFmpeg初期化を待機する関数
+async function waitForFFmpegReady(maxWaitTime = 30000) {
+  console.log('[UPLOAD] Checking FFmpeg status...');
+  console.log('[UPLOAD] isLoaded:', window.videoCompressor.isLoaded);
+  console.log('[UPLOAD] isLoading:', window.videoCompressor.isLoading);
+  
+  const startTime = Date.now();
+  
+  // FFmpegが読み込み途中なら完了を待つ
+  while (window.videoCompressor.isLoading) {
+    if (Date.now() - startTime > maxWaitTime) {
+      console.warn('[UPLOAD] FFmpeg initialization timeout (was loading)');
+      return false;
+    }
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  
+  const isReady = window.videoCompressor.isLoaded;
+  console.log('[UPLOAD] FFmpeg ready:', isReady);
+  return isReady;
+}
+
 // ★ 複数ファイルの同時アップロード（最大10個の並列処理）
 async function uploadMultiple(files) {
   showStatus();
@@ -1092,6 +1114,11 @@ async function uploadMultiple(files) {
 
   try {
     console.log('[UPLOAD] START - Files:', files.length);
+    
+    // ★ FFmpeg初期化状態を確認（最大30秒待機）
+    console.log('[UPLOAD] Waiting for FFmpeg readiness check...');
+    const ffmpegReady = await waitForFFmpegReady(30000);
+    console.log('[UPLOAD] FFmpeg preparation complete. Ready:', ffmpegReady);
 
     if (files.length > MAX_FILES) {
       throw new Error(`Maximum ${MAX_FILES} files allowed`);
