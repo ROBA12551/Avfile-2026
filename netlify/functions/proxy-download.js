@@ -1,128 +1,165 @@
 /**
- * netlify/functions/proxy-download.js - デバッグ版
- * GitHub リリースアセットを CORS プロキシ経由で配信
+ * netlify/functions/proxy-download.js
+ * ★ GitHub からのファイルダウンロードをプロキシ
+ * mp4、画像、PDFなどをサイト内で再生・表示するために必要
  */
 
 const https = require('https');
+const url = require('url');
+
+function proxyDownload(downloadUrl) {
+  return new Promise((resolve, reject) => {
+    try {
+      const parsedUrl = new URL(downloadUrl);
+      
+      const options = {
+        hostname: parsedUrl.hostname,
+        path: parsedUrl.pathname + parsedUrl.search,
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Avfile-Proxy/1.0',
+          'Accept': '*/*',
+        },
+        timeout: 30000  // 30秒タイムアウト
+      };
+
+      console.log('[PROXY] Downloading from:', parsedUrl.hostname + parsedUrl.pathname);
+
+      const req = https.request(options, (res) => {
+        const buffers = [];
+        
+        console.log('[PROXY] Response status:', res.statusCode);
+        
+        res.on('data', (chunk) => {
+          buffers.push(chunk);
+        });
+        
+        res.on('end', () => {
+          const buffer = Buffer.concat(buffers);
+          console.log('[PROXY] Downloaded:', buffer.length, 'bytes');
+          
+          resolve({
+            statusCode: res.statusCode,
+            contentType: res.headers['content-type'] || 'application/octet-stream',
+            contentLength: buffer.length,
+            buffer: buffer
+          });
+        });
+      });
+
+      req.on('error', (e) => {
+        console.error('[PROXY] Request error:', e.message);
+        reject(e);
+      });
+
+      req.on('timeout', () => {
+        console.error('[PROXY] Request timeout');
+        req.abort();
+        reject(new Error('Download timeout'));
+      });
+
+      req.end();
+    } catch (e) {
+      console.error('[PROXY] Parse error:', e.message);
+      reject(e);
+    }
+  });
+}
 
 exports.handler = async (event) => {
   try {
-    const { url } = event.queryStringParameters || {};
+    const downloadUrl = event.queryStringParameters?.url;
 
     console.log('[PROXY] Request received');
-    console.log('[PROXY] Query params:', event.queryStringParameters);
+    console.log('[PROXY] URL param present:', !!downloadUrl);
 
-    if (!url) {
-      console.log('[PROXY] Error: No URL parameter');
+    if (!downloadUrl) {
+      console.error('[PROXY] Missing url parameter');
       return {
         statusCode: 400,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ error: 'URL parameter required' })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: 'Missing url parameter' })
       };
     }
 
-    // URL をデコード
-    const decodedUrl = decodeURIComponent(url);
-    console.log('[PROXY] Fetching URL:', decodedUrl);
+    console.log('[PROXY] URL to download:', downloadUrl.substring(0, 80) + '...');
 
-    // ファイルを取得
-    const fileData = await new Promise((resolve, reject) => {
-      const chunks = [];
-      let redirectCount = 0;
-      const maxRedirects = 5;
+    // URLがGitHub Release Assetsか確認
+    if (!downloadUrl.includes('github.com') && !downloadUrl.includes('githubusercontent.com')) {
+      console.error('[PROXY] Invalid host');
+      return {
+        statusCode: 403,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: 'Invalid host' })
+      };
+    }
 
-      function makeRequest(currentUrl) {
-        if (redirectCount > maxRedirects) {
-          reject(new Error(`Too many redirects (${redirectCount})`));
-          return;
-        }
+    // ダウンロード実行
+    const result = await proxyDownload(downloadUrl);
 
-        console.log(`[PROXY] Request ${redirectCount + 1}: ${currentUrl}`);
+    if (result.statusCode !== 200) {
+      console.error('[PROXY] Download failed with status:', result.statusCode);
+      return {
+        statusCode: result.statusCode,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: 'Download failed', status: result.statusCode })
+      };
+    }
 
-        https
-          .get(currentUrl, { 
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-          }, (res) => {
-            console.log(`[PROXY] Response status: ${res.statusCode}`);
-            console.log(`[PROXY] Response headers:`, Object.keys(res.headers));
-
-            // リダイレクトハンドリング
-            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-              redirectCount++;
-              console.log(`[PROXY] Redirect ${redirectCount} to:`, res.headers.location);
-
-              const redirectUrl = res.headers.location.startsWith('http')
-                ? res.headers.location
-                : new URL(res.headers.location, currentUrl).toString();
-              
-              return makeRequest(redirectUrl);
-            }
-
-            if (res.statusCode !== 200) {
-              reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`));
-              return;
-            }
-
-            console.log(`[PROXY] Content-Type: ${res.headers['content-type']}`);
-            console.log(`[PROXY] Content-Length: ${res.headers['content-length']}`);
-
-            res.on('data', (chunk) => {
-              chunks.push(chunk);
-              console.log(`[PROXY] Received chunk: ${chunk.length} bytes`);
-            });
-
-            res.on('end', () => {
-              const buffer = Buffer.concat(chunks);
-              console.log(`[PROXY] Total size: ${buffer.length} bytes`);
-              resolve({
-                data: buffer,
-                contentType: res.headers['content-type'] || 'application/octet-stream'
-              });
-            });
-
-            res.on('error', reject);
-          })
-          .on('error', reject);
+    // ファイルタイプ判定
+    let contentType = result.contentType;
+    
+    // MIME Type の修正
+    if (contentType.includes('video/quicktime')) {
+      contentType = 'video/mp4';  // MOVをMP4として扱う
+    } else if (contentType.includes('octet-stream')) {
+      // 拡張子から判定
+      const pathname = new URL(downloadUrl).pathname.toLowerCase();
+      if (pathname.endsWith('.mp4')) {
+        contentType = 'video/mp4';
+      } else if (pathname.endsWith('.mov')) {
+        contentType = 'video/mp4';
+      } else if (pathname.endsWith('.webm')) {
+        contentType = 'video/webm';
+      } else if (pathname.endsWith('.ogg')) {
+        contentType = 'video/ogg';
+      } else if (pathname.endsWith('.png')) {
+        contentType = 'image/png';
+      } else if (pathname.endsWith('.jpg') || pathname.endsWith('.jpeg')) {
+        contentType = 'image/jpeg';
+      } else if (pathname.endsWith('.gif')) {
+        contentType = 'image/gif';
+      } else if (pathname.endsWith('.webp')) {
+        contentType = 'image/webp';
+      } else if (pathname.endsWith('.pdf')) {
+        contentType = 'application/pdf';
       }
+    }
 
-      makeRequest(decodedUrl);
-    });
+    console.log('[PROXY] Content-Type:', contentType);
 
-    // Base64 エンコード
-    const base64 = fileData.data.toString('base64');
-    console.log(`[PROXY] Base64 size: ${base64.length} bytes`);
+    // Base64エンコード
+    const base64Body = result.buffer.toString('base64');
 
     return {
       statusCode: 200,
       headers: {
-        'Content-Type': fileData.contentType,
+        'Content-Type': contentType,
+        'Content-Length': result.contentLength.toString(),
+        'Cache-Control': 'public, max-age=3600',
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-        'Access-Control-Expose-Headers': 'Content-Length, Content-Type',
-        'Cache-Control': 'public, max-age=31536000',
-        'Content-Disposition': 'inline'
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Range',
       },
       isBase64Encoded: true,
-      body: base64
+      body: base64Body
     };
-  } catch (error) {
-    console.error('[PROXY] Error:', error.message);
-    console.error('[PROXY] Stack:', error.stack);
+  } catch (e) {
+    console.error('[PROXY] Error:', e.message);
     return {
       statusCode: 500,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ 
-        error: error.message,
-        type: error.constructor.name 
-      })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: e.message })
     };
   }
 };
