@@ -1,7 +1,6 @@
 /**
  * netlify/functions/view.js
- * ★ グループID対応版
- * 単一ファイルID（f_）およびグループID（g_）に対応
+ * ★ 統合版 - グループID・単一ファイルID・パスワル保護対応
  */
 
 const https = require('https');
@@ -11,7 +10,7 @@ const GITHUB_OWNER = process.env.GITHUB_OWNER;
 const GITHUB_REPO = process.env.GITHUB_REPO;
 
 const INDEX_PATH = 'github.index.json';
-const GROUPS_PATH = 'groups.json';  // ★ グループ管理ファイル
+const GROUPS_PATH = 'groups.json';
 const SHARD_PREFIX = 'github.';
 const SHARD_SUFFIX = '.json';
 
@@ -78,43 +77,38 @@ async function getContent(pathInRepo) {
   };
 }
 
-/**
- * ★ グループからファイルIDを取得
- */
+// ===================== Group Management =====================
 async function getGroupFileIds(groupId) {
   try {
-    console.log('[VIEW] Fetching group:', groupId);
+    console.log('[GROUP] Fetching group:', groupId);
 
     const { json: groups } = await getContent(GROUPS_PATH);
     
     if (!Array.isArray(groups)) {
-      console.warn('[VIEW] Groups file is not an array');
+      console.warn('[GROUP] Groups file is not an array');
       return null;
     }
 
     const group = groups.find(g => g && g.groupId === groupId);
     
     if (!group) {
-      console.warn('[VIEW] Group not found:', groupId);
+      console.warn('[GROUP] Group not found:', groupId);
       return null;
     }
 
-    console.log('[VIEW] Found group with', group.fileIds.length, 'files');
+    console.log('[GROUP] Found group with', group.fileIds.length, 'files');
     return group;
   } catch (e) {
-    console.warn('[VIEW] Error fetching group:', e.message);
+    console.warn('[GROUP] Error fetching group:', e.message);
     return null;
   }
 }
 
-/**
- * ★ 複数IDからファイル情報を検索
- */
+// ===================== File Search =====================
 async function findFilesById(fileIds) {
   console.log('[VIEW] Searching for files:', fileIds);
 
   try {
-    // インデックスを取得
     const { json: indexData } = await getContent(INDEX_PATH);
     
     if (!indexData || !Array.isArray(indexData.shards)) {
@@ -125,7 +119,7 @@ async function findFilesById(fileIds) {
     const shards = indexData.shards || [];
     const foundFiles = [];
 
-    // ★ 各シャードから対象ファイルを検索
+    // Search through all shards
     for (const shard of shards) {
       try {
         const { json: shardData } = await getContent(shard.path);
@@ -135,7 +129,7 @@ async function findFilesById(fileIds) {
           continue;
         }
 
-        // ★ シャード内の各ファイルをチェック
+        // Check each file in shard
         for (const file of shardData) {
           if (file && file.fileId && fileIds.includes(file.fileId)) {
             console.log('[VIEW] Found file:', file.fileId, file.fileName);
@@ -156,32 +150,24 @@ async function findFilesById(fileIds) {
   }
 }
 
-/**
- * ★ パスワード検証
- */
+// ===================== Password Validation =====================
 function validatePassword(filePasswordHash, providedHash) {
   if (!filePasswordHash) {
-    // パスワル保護なし
     return { valid: true, message: 'OK' };
   }
 
   if (!providedHash) {
-    // パスワル要求
     return { valid: false, message: 'Password required' };
   }
 
   if (filePasswordHash === providedHash) {
-    // パスワル正解
     return { valid: true, message: 'OK' };
   }
 
-  // パスワル不正
   return { valid: false, message: 'Invalid password' };
 }
 
-/**
- * ★ メインハンドラー
- */
+// ===================== Main Handler =====================
 exports.handler = async (event) => {
   const headers = {
     'Content-Type': 'application/json',
@@ -197,7 +183,6 @@ exports.handler = async (event) => {
       };
     }
 
-    // ★ クエリパラメータを解析
     const url = new URL(event.rawUrl || `http://localhost${event.rawPath || ''}`);
     const idParam = url.searchParams.get('id');
     const pwdParam = url.searchParams.get('pwd');
@@ -212,11 +197,10 @@ exports.handler = async (event) => {
       };
     }
 
-    // ★ グループID（g_xxxxx）か単一ファイルID（f_xxxxx）か判定
+    // ===================== Handle Group ID (g_xxxxx) =====================
     let fileIds = [];
 
     if (idParam.startsWith('g_')) {
-      // ★ グループID
       console.log('[VIEW] Processing group ID:', idParam);
       const group = await getGroupFileIds(idParam);
 
@@ -231,7 +215,7 @@ exports.handler = async (event) => {
       fileIds = group.fileIds;
       console.log('[VIEW] Group contains', fileIds.length, 'files');
 
-      // ★ グループ全体のパスワル保護をチェック
+      // Check group-level password protection
       if (group.passwordHash) {
         const validation = validatePassword(group.passwordHash, pwdParam);
         
@@ -262,7 +246,7 @@ exports.handler = async (event) => {
         }
       }
     } else {
-      // ★ 単一ファイルID または コンマ区切りID（従来互換）
+      // Handle single file ID (f_xxxxx) or comma-separated IDs
       if (idParam.includes(',')) {
         fileIds = idParam.split(',').map(id => id.trim().toLowerCase()).filter(id => id.length > 0);
       } else {
@@ -272,7 +256,7 @@ exports.handler = async (event) => {
       console.log('[VIEW] Processing', fileIds.length, 'file ID(s)');
     }
 
-    // ★ ファイルを検索
+    // ===================== Retrieve Files =====================
     const files = await findFilesById(fileIds);
 
     if (files.length === 0) {
@@ -284,10 +268,9 @@ exports.handler = async (event) => {
       };
     }
 
-    // ★ パスワル保護をチェック（ファイル個別）
+    // ===================== Validate Passwords =====================
     const filesWithPasswordCheck = files.map(file => {
       if (file.passwordHash && !idParam.startsWith('g_')) {
-        // グループレベルではなくファイルレベルのパスワル保護
         const validation = validatePassword(file.passwordHash, pwdParam);
         
         if (!validation.valid) {
@@ -298,7 +281,7 @@ exports.handler = async (event) => {
       return file;
     });
 
-    // ★ パスワル要求が必要かチェック
+    // Check for required passwords
     const needsPassword = filesWithPasswordCheck.some(f => f.passwordError === 'Password required');
     
     if (needsPassword) {
@@ -315,7 +298,7 @@ exports.handler = async (event) => {
       };
     }
 
-    // ★ パスワル不正がないかチェック
+    // Check for invalid passwords
     const invalidPassword = filesWithPasswordCheck.find(f => f.passwordError === 'Invalid password');
     
     if (invalidPassword) {
@@ -332,7 +315,7 @@ exports.handler = async (event) => {
       };
     }
 
-    // ★ パスワル情報を削除（セキュリティ）
+    // ===================== Clean and Return =====================
     const cleanFiles = filesWithPasswordCheck.map(f => {
       const { passwordHash, passwordError, ...clean } = f;
       return clean;

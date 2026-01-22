@@ -1,21 +1,25 @@
 /**
  * netlify/functions/github-upload.js
- * ★ 完全版 - すべてのアクション実装
- * - create-release
- * - upload-chunk
- * - finalize-chunks
- * - add-file
- * - create-group
- * - get-group
+ * ★ 統合版 - 開発過程で追加されたすべての機能を1つに統合
+ * 
+ * 機能:
+ * - ファイルのシャード管理
+ * - チャンク受信・最終化
+ * - GitHub リリース作成
+ * - バイナリアップロード
+ * - ファイル情報の JSON 保存
+ * - グループ管理（複数ファイル）
+ * - パスワル保護
  */
 
 const https = require('https');
+const fs = require('fs');
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_OWNER = process.env.GITHUB_OWNER;
 const GITHUB_REPO = process.env.GITHUB_REPO;
 
-// ===================== shard settings =====================
+// ===================== Shard Settings =====================
 const INDEX_PATH = 'github.index.json';
 const GROUPS_PATH = 'groups.json';
 const SHARD_PREFIX = 'github.';
@@ -23,10 +27,11 @@ const SHARD_SUFFIX = '.json';
 const SHARD_MAX_ITEMS = 8000;
 const SHARD_MAX_CHARS = 2_500_000;
 
-// ===================== chunk settings =====================
+// ===================== Chunk Settings =====================
 const uploadChunks = new Map();
-const CHUNK_TIMEOUT = 3600000; // 1h
+const CHUNK_TIMEOUT = 3600000; // 1 hour
 
+// Clean up expired chunks
 setInterval(() => {
   const now = Date.now();
   for (const [uploadId, data] of uploadChunks.entries()) {
@@ -35,14 +40,19 @@ setInterval(() => {
       uploadChunks.delete(uploadId);
     }
   }
-}, 600000);
+}, 600000); // 10 minutes
 
+// ===================== Utility Functions =====================
 function shardPath(n) {
   return `${SHARD_PREFIX}${String(n).padStart(4, '0')}${SHARD_SUFFIX}`;
 }
 
 function safeJsonParse(s, fallback) {
-  try { return JSON.parse(s); } catch { return fallback; }
+  try {
+    return JSON.parse(s);
+  } catch {
+    return fallback;
+  }
 }
 
 function githubApi(method, path, body) {
@@ -61,22 +71,30 @@ function githubApi(method, path, body) {
 
     const req = https.request(options, (res) => {
       let data = '';
-      res.on('data', (chunk) => (data += chunk));
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
       res.on('end', () => {
         let json = null;
-        try { json = data ? JSON.parse(data) : {}; } catch { /* ignore */ }
+        try {
+          json = data ? JSON.parse(data) : {};
+        } catch (e) {
+          // ignore parse errors
+        }
 
         if (res.statusCode >= 200 && res.statusCode < 300) {
           resolve(json || {});
         } else {
-          const msg = (json && json.message) ? json.message : data;
+          const msg = json && json.message ? json.message : data;
           reject(new Error(`GitHub API Error ${res.statusCode}: ${msg}`));
         }
       });
     });
 
     req.on('error', reject);
-    if (body) req.write(JSON.stringify(body));
+    if (body) {
+      req.write(JSON.stringify(body));
+    }
     req.end();
   });
 }
@@ -103,7 +121,9 @@ async function putContent(pathInRepo, jsonObj, message, sha = null) {
     message,
     content: Buffer.from(JSON.stringify(jsonObj, null, 2), 'utf8').toString('base64'),
   };
-  if (sha) payload.sha = sha;
+  if (sha) {
+    payload.sha = sha;
+  }
 
   return await githubApi(
     'PUT',
@@ -112,13 +132,16 @@ async function putContent(pathInRepo, jsonObj, message, sha = null) {
   );
 }
 
+// ===================== Shard Management =====================
 async function ensureIndex() {
   try {
     const { sha, json } = await getContent(INDEX_PATH);
     if (json && typeof json.current === 'number' && Array.isArray(json.shards)) {
       return { sha, index: json };
     }
-  } catch (_) {}
+  } catch (e) {
+    console.log('[INDEX] Not found, creating new');
+  }
 
   const now = new Date().toISOString();
   const fresh = {
@@ -152,21 +175,25 @@ async function getWritableShard() {
     const res = await getContent(path);
     shardSha = res.sha;
     files = Array.isArray(res.json) ? res.json : [];
-  } catch (_) {
+  } catch (e) {
     shardSha = null;
     files = [];
   }
 
+  // Check if current shard is full
   if (!shardIsFull(files)) {
     return { n, path, sha: shardSha, files, rotated: false };
   }
 
+  // Rotate to next shard
   n += 1;
   path = shardPath(n);
 
   const now = new Date().toISOString();
   index.current = n;
-  if (!Array.isArray(index.shards)) index.shards = [];
+  if (!Array.isArray(index.shards)) {
+    index.shards = [];
+  }
   if (!index.shards.find(s => s && s.n === n)) {
     index.shards.push({ n, path, createdAt: now });
   }
@@ -175,7 +202,9 @@ async function getWritableShard() {
   try {
     const res = await getContent(INDEX_PATH);
     indexSha = res.sha;
-  } catch (_) {}
+  } catch (e) {
+    // ignore
+  }
   await putContent(INDEX_PATH, index, `Rotate shard -> ${path}`, indexSha);
 
   await putContent(path, [], `Create shard: ${path}`);
@@ -183,6 +212,7 @@ async function getWritableShard() {
   return { n, path, sha: null, files: [], rotated: true };
 }
 
+// ===================== File Upload =====================
 function uploadBinaryToGithub(uploadUrl, buffer, fileName) {
   return new Promise((resolve, reject) => {
     try {
@@ -197,13 +227,15 @@ function uploadBinaryToGithub(uploadUrl, buffer, fileName) {
         headers: {
           'Authorization': `token ${GITHUB_TOKEN}`,
           'Content-Type': 'application/octet-stream',
-          'Content-Length': buffer.length
+          'Content-Length': buffer.length,
         }
       };
 
       const req = https.request(options, (res) => {
         let data = '';
-        res.on('data', (chunk) => { data += chunk; });
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
         res.on('end', () => {
           try {
             const json = JSON.parse(data || '{}');
@@ -240,6 +272,7 @@ async function addFileToShardedJson(fileData) {
     shard: shard.path,
   };
 
+  // Add password hash if provided
   if (fileData.passwordHash) {
     fileRecord.passwordHash = fileData.passwordHash;
     console.log('[ADD_FILE] Password hash added');
@@ -257,9 +290,28 @@ async function addFileToShardedJson(fileData) {
   return { success: true, shard: shard.path, shardNumber: shard.n, rotated: shard.rotated };
 }
 
-/**
- * ★ グループを作成（複数ファイル用）
- */
+// ===================== Release Management =====================
+async function createRelease(tag, title, description) {
+  console.log('[RELEASE] Creating:', tag);
+  
+  const result = await githubApi('POST', `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases`, {
+    tag_name: tag,
+    name: title || tag,
+    body: description || '',
+    draft: false,
+    prerelease: false
+  });
+
+  console.log('[RELEASE] Created:', result.id, 'upload_url:', result.upload_url?.substring(0, 50));
+  
+  return {
+    id: result.id,
+    upload_url: result.upload_url,
+    tag_name: result.tag_name
+  };
+}
+
+// ===================== Group Management =====================
 async function createGroup(groupId, fileIds, passwordHash) {
   try {
     console.log('[GROUP] Creating group:', groupId, 'with', fileIds.length, 'files');
@@ -301,9 +353,6 @@ async function createGroup(groupId, fileIds, passwordHash) {
   }
 }
 
-/**
- * ★ グループからファイルIDを取得
- */
 async function getGroupFileIds(groupId) {
   try {
     console.log('[GROUP] Fetching group:', groupId);
@@ -330,9 +379,7 @@ async function getGroupFileIds(groupId) {
   }
 }
 
-/**
- * ★ チャンク受信処理
- */
+// ===================== Chunk Upload =====================
 async function handleChunkUpload(event) {
   try {
     const params = new URLSearchParams(event.rawUrl?.split('?')[1] || '');
@@ -343,14 +390,23 @@ async function handleChunkUpload(event) {
 
     if (!uploadId || Number.isNaN(chunkIndex) || !totalChunks || !fileName) {
       console.error('[CHUNK] Missing parameters');
-      return { statusCode: 400, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'Missing parameters' }) };
+      return {
+        statusCode: 400,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: 'Missing parameters' })
+      };
     }
 
     let buffer;
-    if (event.isBase64Encoded) buffer = Buffer.from(event.body || '', 'base64');
-    else if (typeof event.body === 'string') buffer = Buffer.from(event.body, 'binary');
-    else if (Buffer.isBuffer(event.body)) buffer = event.body;
-    else buffer = Buffer.from(event.body || '');
+    if (event.isBase64Encoded) {
+      buffer = Buffer.from(event.body || '', 'base64');
+    } else if (typeof event.body === 'string') {
+      buffer = Buffer.from(event.body, 'binary');
+    } else if (Buffer.isBuffer(event.body)) {
+      buffer = event.body;
+    } else {
+      buffer = Buffer.from(event.body || '');
+    }
 
     if (!uploadChunks.has(uploadId)) {
       uploadChunks.set(uploadId, {
@@ -367,7 +423,6 @@ async function handleChunkUpload(event) {
     session.timestamp = Date.now();
 
     const receivedCount = session.chunks.filter(Boolean).length;
-
     console.log('[CHUNK] Received chunk', chunkIndex + 1, '/', totalChunks);
 
     return {
@@ -377,13 +432,14 @@ async function handleChunkUpload(event) {
     };
   } catch (error) {
     console.error('[CHUNK] Error:', error.message);
-    return { statusCode: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: error.message }) };
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: error.message })
+    };
   }
 }
 
-/**
- * ★ チャンク最終化処理
- */
 async function finalizeCombinedUpload(event) {
   try {
     const body = safeJsonParse(event.body || '{}', {});
@@ -394,20 +450,20 @@ async function finalizeCombinedUpload(event) {
     const session = uploadChunks.get(uploadId);
     if (!session) {
       console.error('[FINALIZE] Upload session not found:', uploadId);
-      return { 
-        statusCode: 404, 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify({ success: false, error: 'Upload session not found' }) 
+      return {
+        statusCode: 404,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ success: false, error: 'Upload session not found' })
       };
     }
 
     const missing = session.chunks.map((c, i) => (c ? null : i)).filter(v => v !== null);
     if (missing.length) {
       console.error('[FINALIZE] Missing chunks:', missing);
-      return { 
-        statusCode: 400, 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify({ success: false, error: 'Missing chunks', missingChunks: missing }) 
+      return {
+        statusCode: 400,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ success: false, error: 'Missing chunks', missingChunks: missing })
       };
     }
 
@@ -444,21 +500,28 @@ async function finalizeCombinedUpload(event) {
     };
   } catch (error) {
     console.error('[FINALIZE] Error:', error.message);
-    return { 
-      statusCode: 500, 
-      headers: { 'Content-Type': 'application/json' }, 
-      body: JSON.stringify({ success: false, error: error.message }) 
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ success: false, error: error.message })
     };
   }
 }
 
-// ===================== メインハンドラー =====================
+// ===================== Main Handler =====================
 exports.handler = async (event) => {
-  const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+  const headers = {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*'
+  };
 
   try {
     if (!GITHUB_TOKEN || !GITHUB_OWNER || !GITHUB_REPO) {
-      return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: 'Server not configured' }) };
+      return {
+        statusCode: 500,
+        headers,
+        body: JSON.stringify({ success: false, error: 'Server not configured' })
+      };
     }
 
     const url = new URL(event.rawUrl || `http://localhost${event.rawPath || ''}`);
@@ -466,6 +529,7 @@ exports.handler = async (event) => {
 
     console.log('[HANDLER] action:', action, 'method:', event.httpMethod);
 
+    // Handle CORS
     if (event.httpMethod === 'OPTIONS') {
       return {
         statusCode: 204,
@@ -478,17 +542,16 @@ exports.handler = async (event) => {
       };
     }
 
-    // ★ チャンク受信
+    // ===================== Chunk Actions =====================
     if (action === 'upload-chunk') {
       return await handleChunkUpload(event);
     }
 
-    // ★ チャンク最終化
     if (action === 'finalize-chunks') {
       return await finalizeCombinedUpload(event);
     }
 
-    // ★ グループ作成アクション
+    // ===================== Group Actions =====================
     if (action === 'create-group') {
       const body = safeJsonParse(event.body || '{}', {});
       const { groupId, fileIds, passwordHash } = body;
@@ -509,7 +572,6 @@ exports.handler = async (event) => {
       };
     }
 
-    // ★ グループ取得アクション
     if (action === 'get-group') {
       const groupId = url.searchParams.get('groupId');
       if (!groupId) {
@@ -536,15 +598,15 @@ exports.handler = async (event) => {
       };
     }
 
-    // ★ binary upload（小ファイル）
+    // ===================== Binary Upload =====================
     const uploadUrl = event.headers['x-upload-url'] || event.headers['X-Upload-Url'];
     if (uploadUrl) {
       const isBase64Str = event.headers['x-is-base64'] || event.headers['X-Is-Base64'];
       const isBase64 = isBase64Str === 'true';
       const fileName = (event.headers['x-file-name'] || event.headers['X-File-Name'] || 'file').replace(/^"|"$/g, '');
-      
+
       console.log('[BINARY] Uploading:', { fileName, isBase64, bodyLength: event.body?.length });
-      
+
       let buffer;
       if (isBase64) {
         buffer = Buffer.from(event.body || '', 'base64');
@@ -559,50 +621,58 @@ exports.handler = async (event) => {
         headers,
         body: JSON.stringify({
           success: true,
-          data: { asset_id: result.id, download_url: result.browser_download_url, name: result.name, size: result.size }
+          data: {
+            asset_id: result.id,
+            download_url: result.browser_download_url,
+            name: result.name,
+            size: result.size
+          }
         })
       };
     }
 
-    // ★ JSON アクション
+    // ===================== JSON Actions =====================
     const body = safeJsonParse(event.body || '{}', {});
 
-    // ★ create-release アクション
+    // Create Release
     if (body.action === 'create-release') {
-      const result = await githubApi(
-        'POST',
-        `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases`,
-        {
-          tag_name: body.releaseTag,
-          name: body.metadata?.title || body.releaseTag,
-          body: body.metadata?.description || '',
-          draft: false,
-          prerelease: false
-        }
-      );
-
-      console.log('[RELEASE] Created:', result.id);
-
+      const release = await createRelease(body.releaseTag, body.metadata?.title, body.metadata?.description);
       return {
         statusCode: 200,
         headers,
         body: JSON.stringify({
           success: true,
-          data: { release_id: result.id, tag_name: result.tag_name, upload_url: result.upload_url }
+          data: {
+            release_id: release.id,
+            tag_name: release.tag_name,
+            upload_url: release.upload_url
+          }
         })
       };
     }
 
-    // ★ add-file アクション
+    // Add File to Shard
     if (body.action === 'add-file') {
       const res = await addFileToShardedJson(body.fileData);
-      return { statusCode: 200, headers, body: JSON.stringify({ success: true, ...res }) };
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ success: true, ...res })
+      };
     }
 
     console.error('[HANDLER] Unknown action:', action);
-    return { statusCode: 400, headers, body: JSON.stringify({ success: false, error: 'Unknown action: ' + action }) };
+    return {
+      statusCode: 400,
+      headers,
+      body: JSON.stringify({ success: false, error: 'Unknown action: ' + action })
+    };
   } catch (error) {
-    console.error('[ERROR]', error.message);
-    return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: error.message }) };
+    console.error('[ERROR]', error.message, error.stack);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ success: false, error: error.message })
+    };
   }
 };
