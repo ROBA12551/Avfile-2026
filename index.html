@@ -1633,7 +1633,7 @@ async function uploadMultiple(files) {
         // ★★★ ここから修正 ★★★
         // ファイルサイズでチャンク化を判定
         let assetData;
-        const CHUNK_SIZE = 3 * 1024 * 1024; // 5MB
+        const CHUNK_SIZE = 4 * 1024 * 1024; // 5MB
         const fileSize = processedFile.size;
 
         if (fileSize >= CHUNK_SIZE) {
