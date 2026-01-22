@@ -1,0 +1,28 @@
+# robots.txt for Avfile.io
+# Google、Bing など全ての検索エンジンに対する指示
+
+# デフォルト（全クローラ）
+User-agent: *
+
+# 許可（クローラがアクセス可能）
+Allow: /
+
+# 禁止（クローラがアクセス禁止）
+Disallow: /.netlify
+Disallow: /.functions
+Disallow: /api/
+Disallow: /admin/
+Disallow: /internal/
+
+# キャッシュの有効期限
+# （Google にまかせる）
+Cache-Control: public, max-age=86400
+
+# サイトマップへのリンク
+Sitemap: https://avfile.io/sitemap.xml
+
+# クロール遅延（秒単位、デフォルト）
+# Crawl-delay: 1
+
+# リクエストレート（秒単位）
+# Request-rate: 1/1s
