@@ -525,7 +525,13 @@ exports.handler = async (event) => {
     }
 
     const url = new URL(event.rawUrl || `http://localhost${event.rawPath || ''}`);
-    const action = url.searchParams.get('action');
+    let action = url.searchParams.get('action');
+    
+    // JSONボディにactionがある場合は優先
+    if (!action && event.body) {
+      const bodyData = safeJsonParse(event.body || '{}', {});
+      action = bodyData.action;
+    }
 
     console.log('[HANDLER] action:', action, 'method:', event.httpMethod);
 
@@ -556,7 +562,10 @@ exports.handler = async (event) => {
       const body = safeJsonParse(event.body || '{}', {});
       const { groupId, fileIds, passwordHash } = body;
 
+      console.log('[HANDLER] create-group - groupId:', groupId, 'fileIds:', fileIds?.length);
+
       if (!groupId || !fileIds || !Array.isArray(fileIds)) {
+        console.error('[HANDLER] Missing parameters:', { groupId, fileIds });
         return {
           statusCode: 400,
           headers,
@@ -564,12 +573,22 @@ exports.handler = async (event) => {
         };
       }
 
-      const result = await createGroup(groupId, fileIds, passwordHash);
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify(result)
-      };
+      try {
+        const result = await createGroup(groupId, fileIds, passwordHash);
+        console.log('[HANDLER] Group created successfully:', result);
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(result)
+        };
+      } catch (e) {
+        console.error('[HANDLER] Group creation error:', e.message);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ success: false, error: e.message })
+        };
+      }
     }
 
     if (action === 'get-group') {
