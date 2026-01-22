@@ -1,6 +1,7 @@
 /**
  * netlify/functions/view.js
  * ★ 統合版 - グループID・単一ファイルID・パスワル保護対応
+ * ★ downloadUrl 検証ログを追加
  */
 
 const https = require('https');
@@ -97,6 +98,7 @@ async function getGroupFileIds(groupId) {
     }
 
     console.log('[GROUP] Found group with', group.fileIds.length, 'files');
+    console.log('[GROUP] fileIds:', group.fileIds);
     return group;
   } catch (e) {
     console.warn('[GROUP] Error fetching group:', e.message);
@@ -117,11 +119,14 @@ async function findFilesById(fileIds) {
     }
 
     const shards = indexData.shards || [];
+    console.log('[VIEW] Total shards to search:', shards.length);
+    
     const foundFilesMap = new Map();  // ★ Mapを使って順序を保持
 
     // Search through all shards
     for (const shard of shards) {
       try {
+        console.log('[VIEW] Reading shard:', shard.path);
         const { json: shardData } = await getContent(shard.path);
         
         if (!Array.isArray(shardData)) {
@@ -129,12 +134,17 @@ async function findFilesById(fileIds) {
           continue;
         }
 
-        console.log('[VIEW] Searching shard:', shard.path, 'items:', shardData.length);
+        console.log('[VIEW] Shard contains', shardData.length, 'files');
 
         // Check each file in shard
         for (const file of shardData) {
           if (file && file.fileId && fileIds.includes(file.fileId)) {
-            console.log('[VIEW] Found file:', file.fileId, file.fileName, 'downloadUrl:', file.downloadUrl?.substring(0, 50) + '...');
+            console.log('[VIEW] Found file in', shard.path, ':', {
+              fileId: file.fileId,
+              fileName: file.fileName,
+              fileSize: file.fileSize,
+              downloadUrl: file.downloadUrl?.substring(0, 60) + '...'
+            });
             foundFilesMap.set(file.fileId, file);  // ★ Mapに保存
           }
         }
@@ -149,7 +159,11 @@ async function findFilesById(fileIds) {
     for (const fileId of fileIds) {
       if (foundFilesMap.has(fileId)) {
         const file = foundFilesMap.get(fileId);
-        console.log('[VIEW] Adding file to results:', fileId, '-', file.fileName);
+        console.log('[VIEW] Returning file:', {
+          fileId: file.fileId,
+          fileName: file.fileName,
+          downloadUrl: file.downloadUrl
+        });
         foundFiles.push(file);
       } else {
         console.warn('[VIEW] File not found in any shard:', fileId);
@@ -157,15 +171,6 @@ async function findFilesById(fileIds) {
     }
 
     console.log('[VIEW] Total files found:', foundFiles.length, 'requested:', fileIds.length);
-    
-    // ★ 重要: 返すファイルの順序とダウンロードURLを確認
-    foundFiles.forEach((f, idx) => {
-      console.log(`[VIEW] Result[${idx}]:`, {
-        fileId: f.fileId,
-        fileName: f.fileName,
-        downloadUrl: f.downloadUrl?.substring(0, 60) + '...'
-      });
-    });
 
     return foundFiles;
   } catch (e) {
@@ -237,7 +242,7 @@ exports.handler = async (event) => {
       }
 
       fileIds = group.fileIds;
-      console.log('[VIEW] Group contains', fileIds.length, 'files');
+      console.log('[VIEW] Group contains', fileIds.length, 'files:', fileIds);
 
       // Check group-level password protection
       if (group.passwordHash) {
@@ -277,7 +282,7 @@ exports.handler = async (event) => {
         fileIds = [idParam.toLowerCase()];
       }
 
-      console.log('[VIEW] Processing', fileIds.length, 'file ID(s)');
+      console.log('[VIEW] Processing', fileIds.length, 'file ID(s):', fileIds);
     }
 
     // ===================== Retrieve Files =====================
@@ -346,6 +351,15 @@ exports.handler = async (event) => {
     });
 
     console.log('[VIEW] Returning', cleanFiles.length, 'files');
+    
+    // ★ 返すファイル情報を詳細ログ
+    cleanFiles.forEach((f, idx) => {
+      console.log('[VIEW] Response file[' + idx + ']:', {
+        fileId: f.fileId,
+        fileName: f.fileName,
+        downloadUrl: f.downloadUrl?.substring(0, 80) + '...'
+      });
+    });
 
     return {
       statusCode: 200,
