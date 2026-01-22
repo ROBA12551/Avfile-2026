@@ -1,420 +1,205 @@
 /**
- * js/video-compressor.js
- * ★ FFmpeg.wasm を使用した動画圧縮
- * 720p/30fps + 低ビットレート設定で最大50-80%の圧縮
- * 対応形式: MP4, MOV, AVI, MKV, WebM, OGV, FLV, WMV, 3GP等
+ * js/chunked-binary-uploader.js
+ * ★ 修正版: GitHubUploader を参照しない独立版
  */
 
-class VideoCompressor {
+class ChunkedBinaryUploader {
   constructor() {
-    this.ffmpeg = null;
-    this.isLoaded = false;
-    this.isLoading = false;
-    this.VIDEO_COMPRESSION_THRESHOLD = 50 * 1024 * 1024; // 50MB以上は圧縮
-    
-    // ★ 圧縮設定
-    this.COMPRESSION_SETTINGS = {
-      resolution: '1280x720',      // 720p
-      fps: 30,                      // 30fps
-      videoBitrate: '800k',         // 800kbps（低圧縮）
-      audioBitrate: '64k',          // 64kbps
-      audioSampleRate: '44100',     // 44.1kHz
-      codec: 'libx264',            // H.264 codec
-      preset: 'faster',            // 圧縮速度重視（faster > fast > medium）
-      crf: 23                       // CRF値 (0-51, 低いほど高品質)
-    };
-
-    // ★ 対応動画形式
-    this.SUPPORTED_VIDEO_FORMATS = {
-      'mp4': 'video/mp4',
-      'mov': 'video/quicktime',
-      'avi': 'video/x-msvideo',
-      'mkv': 'video/x-matroska',
-      'webm': 'video/webm',
-      'ogv': 'video/ogg',
-      'ogg': 'video/ogg',
-      'flv': 'video/x-flv',
-      'wmv': 'video/x-ms-wmv',
-      '3gp': 'video/3gpp',
-      '3g2': 'video/3gpp2',
-      'ts': 'video/mp2t',
-      'm2ts': 'video/mp2t',
-      'mts': 'video/mp2t',
-      'mpg': 'video/mpeg',
-      'mpeg': 'video/mpeg',
-      'm4v': 'video/x-m4v',
-      'asf': 'video/x-ms-asf',
-      'vob': 'video/x-vob'
-    };
-
-    // ★ スクリプト読み込み完了後に初期化（遅延初期化）
-    this.scheduleInitFFmpeg();
+    this.CHUNK_THRESHOLD = 3 * 1024 * 1024;   // ★ 3MB以上でチャンク分割（Base64化で ~4MB）
+    this.CHUNK_SIZE = 1 * 1024 * 1024;        // ★ 1MBごとに分割
+    this.functionUrl = '/.netlify/functions/github-upload';
   }
 
   /**
-   * FFmpeg.wasmの初期化をスケジュール（遅延実行）
+   * ファイルサイズに応じて通常/チャンク分割を切り替え
    */
-  scheduleInitFFmpeg() {
-    console.log('[VIDEO_COMPRESSOR] Scheduling FFmpeg initialization...');
-    
-    // ★ FFmpegオブジェクトが利用可能になるまで待機
-    if (typeof FFmpeg !== 'undefined') {
-      console.log('[VIDEO_COMPRESSOR] FFmpeg available, initializing...');
-      this.initFFmpeg();
-    } else {
-      console.log('[VIDEO_COMPRESSOR] Waiting for FFmpeg script to load...');
-      // スクリプト読み込みを待つ（最大10秒）
-      let waitCount = 0;
-      const checkFFmpeg = setInterval(() => {
-        if (typeof FFmpeg !== 'undefined') {
-          clearInterval(checkFFmpeg);
-          console.log('[VIDEO_COMPRESSOR] FFmpeg loaded, initializing...');
-          this.initFFmpeg();
-        } else if (++waitCount > 20) {
-          clearInterval(checkFFmpeg);
-          console.error('[VIDEO_COMPRESSOR] FFmpeg failed to load after timeout');
-        }
-      }, 500);
-    }
-  }
-
-  /**
-   * FFmpeg.wasmの初期化
-   */
-  async initFFmpeg() {
-    if (this.isLoaded || this.isLoading) return;
-    this.isLoading = true;
-
-    try {
-      // ★ FFmpegが存在することを確認
-      if (typeof FFmpeg === 'undefined') {
-        throw new Error('FFmpeg not available - script may not be loaded');
-      }
-
-      const { FFmpeg, fetchFile } = FFmpeg;
-      
-      if (!FFmpeg || !FFmpeg.FFmpeg) {
-        throw new Error('FFmpeg module not properly loaded');
-      }
-
-      this.ffmpeg = new FFmpeg.FFmpeg();
-
-      console.log('[VIDEO_COMPRESSOR] Loading FFmpeg WASM...');
-      
-      this.ffmpeg.on('log', ({ type, message }) => {
-        if (type === 'error') {
-          console.error('[FFMPEG]', message);
-        } else if (type === 'info' || type === 'warning') {
-          console.log('[FFMPEG]', message);
-        }
-      });
-
-      this.ffmpeg.on('progress', (progress) => {
-        console.log('[FFMPEG_PROGRESS]', {
-          currentTime: progress.currentTime,
-          ratio: Math.round(progress.ratio * 100) + '%'
-        });
-      });
-
-      // ★ CDN URL を修正（jsDelivr - COEP対応）
-      await this.ffmpeg.load({
-        coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js'
-      });
-
-      this.isLoaded = true;
-      this.isLoading = false;
-      console.log('[VIDEO_COMPRESSOR] ✓ FFmpeg loaded successfully');
-      console.log('[VIDEO_COMPRESSOR] Compression settings:', this.COMPRESSION_SETTINGS);
-
-    } catch (error) {
-      this.isLoading = false;
-      console.error('[VIDEO_COMPRESSOR] ✗ Failed to load FFmpeg:', error.message);
-      console.error('[VIDEO_COMPRESSOR] Stack:', error.stack);
-    }
-  }
-
-  /**
-   * 動画ファイルが圧縮対象か判定
-   */
-  shouldCompress(file) {
-    const ext = this.getFileExtension(file.name).toLowerCase();
-    const isVideoFile = file.type && file.type.startsWith('video/') || 
-                        this.SUPPORTED_VIDEO_FORMATS[ext];
-    const isLargeFile = file.size > this.VIDEO_COMPRESSION_THRESHOLD;
-    
-    console.log('[VIDEO_COMPRESSOR] Compression check:', {
-      fileName: file.name,
-      fileExt: ext,
-      fileSize: (file.size / 1024 / 1024).toFixed(2) + ' MB',
-      isVideo: isVideoFile,
-      isLarge: isLargeFile,
-      shouldCompress: isVideoFile && isLargeFile,
-      mimeType: file.type
+  async uploadAssetBinary(uploadUrl, fileName, fileObject) {
+    console.log('[UPLOAD_BINARY] Starting upload:', {
+      fileName: fileName,
+      fileSize: fileObject.size,
+      fileSizeMB: (fileObject.size / 1024 / 1024).toFixed(2) + ' MB'
     });
 
-    return isVideoFile && isLargeFile;
-  }
-
-  /**
-   * ファイル拡張子を取得
-   */
-  getFileExtension(fileName) {
-    return fileName.split('.').pop().toLowerCase();
-  }
-
-  /**
-   * ファイル形式がサポートされているか判定
-   */
-  isFormatSupported(fileName) {
-    const ext = this.getFileExtension(fileName);
-    return ext in this.SUPPORTED_VIDEO_FORMATS;
-  }
-
-  /**
-   * 出力形式を決定（サポートされていない形式はMP4に変換）
-   */
-  getOutputFormat(inputFileName) {
-    const ext = this.getFileExtension(inputFileName);
-    
-    // ★ WebM, OGV以外はMP4に統一（互換性向上）
-    if (ext === 'webm' || ext === 'ogv' || ext === 'ogg') {
-      return ext;
-    }
-    
-    return 'mp4';
-  }
-
-  /**
-   * オーディオコーデックを自動選択
-   */
-  getAudioCodec(outputFormat) {
-    switch(outputFormat) {
-      case 'webm':
-        return 'libopus';  // WebMはOpus推奨
-      case 'ogv':
-      case 'ogg':
-        return 'libvorbis'; // OGVはVorbis推奨
-      default:
-        return 'aac';       // MP4はAAC
-    }
-  }
-
-  /**
-   * ★ 動画を圧縮（複数形式対応）
-   */
-  async compressVideo(file, onProgress = () => {}) {
-    try {
-      // ★ FFmpegの初期化待機（より堅牢）
-      if (!this.isLoaded) {
-        console.log('[VIDEO_COMPRESSOR] Waiting for FFmpeg to load...');
-        onProgress(0, '動画圧縮エンジンを初期化中...');
-        
-        let waitTime = 0;
-        const maxWaitTime = 60000; // 60秒タイムアウト
-        
-        while (!this.isLoaded && waitTime < maxWaitTime) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-          waitTime += 500;
-          
-          if (waitTime % 5000 === 0) {
-            console.log(`[VIDEO_COMPRESSOR] Still waiting... (${waitTime/1000}s)`);
-          }
-        }
-
-        if (!this.isLoaded) {
-          throw new Error('FFmpeg failed to initialize after 60 seconds. Check your internet connection.');
-        }
-
-        console.log('[VIDEO_COMPRESSOR] FFmpeg ready after', (waitTime/1000).toFixed(1), 'seconds');
-      }
-
-      const inputExt = this.getFileExtension(file.name);
-      const outputFormat = this.getOutputFormat(file.name);
-      const inputFileName = `input_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${inputExt}`;
-      const outputFileName = `output_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${outputFormat}`;
-
-      console.log('[VIDEO_COMPRESSOR] Starting compression:', {
-        inputFile: inputFileName,
-        outputFile: outputFileName,
-        inputFormat: inputExt,
-        outputFormat: outputFormat,
-        originalSize: (file.size / 1024 / 1024).toFixed(2) + ' MB',
-        settings: this.COMPRESSION_SETTINGS
-      });
-
-      onProgress(5, 'ファイルを読み込み中...');
-
-      // ★ ファイルをFFmpeg FileSystemに書き込み
-      const fileData = await file.arrayBuffer();
-      this.ffmpeg.FS('writeFile', inputFileName, new Uint8Array(fileData));
-
-      console.log('[VIDEO_COMPRESSOR] File written to FFmpeg FS:', inputFileName);
-      onProgress(10, 'ビデオエンコード中...');
-
-      // ★ 出力形式に応じたFFmpegコマンド生成
-      const audioCodec = this.getAudioCodec(outputFormat);
-      const ffmpegCommand = this.buildFFmpegCommand(
-        inputFileName,
-        outputFileName,
-        outputFormat,
-        audioCodec
-      );
-
-      console.log('[VIDEO_COMPRESSOR] Executing FFmpeg command:', ffmpegCommand.join(' '));
-      
-      await this.ffmpeg.run(...ffmpegCommand);
-
-      console.log('[VIDEO_COMPRESSOR] Encoding completed');
-      onProgress(85, '圧縮ファイルを取得中...');
-
-      // ★ 圧縮後のファイルを取得
-      const compressedData = this.ffmpeg.FS('readFile', outputFileName);
-      
-      // ★ 出力形式に応じたMIMEタイプ設定
-      const mimeType = this.getMimeType(outputFormat);
-      const compressedBlob = new Blob([compressedData.buffer], { type: mimeType });
-
-      // ★ ファイルシステムをクリーンアップ
-      try {
-        this.ffmpeg.FS('unlink', inputFileName);
-        this.ffmpeg.FS('unlink', outputFileName);
-        console.log('[VIDEO_COMPRESSOR] Cleaned up temporary files');
-      } catch (e) {
-        console.warn('[VIDEO_COMPRESSOR] Cleanup warning:', e.message);
-      }
-
-      const originalSize = file.size;
-      const compressedSize = compressedBlob.size;
-      const compressionRatio = ((1 - compressedSize / originalSize) * 100).toFixed(1);
-
-      console.log('[VIDEO_COMPRESSOR] ✓ Compression complete:', {
-        originalSize: (originalSize / 1024 / 1024).toFixed(2) + ' MB',
-        compressedSize: (compressedSize / 1024 / 1024).toFixed(2) + ' MB',
-        compressionRatio: compressionRatio + '%',
-        outputFormat: outputFormat
-      });
-
-      onProgress(100, `圧縮完了！（${compressionRatio}%削減）`);
-
-      return {
-        blob: compressedBlob,
-        originalSize: originalSize,
-        compressedSize: compressedSize,
-        compressionRatio: compressionRatio,
-        fileName: `compressed_${this.getFileNameWithoutExt(file.name)}.${outputFormat}`,
-        outputFormat: outputFormat
-      };
-
-    } catch (error) {
-      console.error('[VIDEO_COMPRESSOR] ✗ Error:', error.message);
-      console.error('[VIDEO_COMPRESSOR] Stack:', error.stack);
-      throw new Error(`Video compression failed: ${error.message}`);
-    }
-  }
-
-  /**
-   * FFmpegコマンドを生成（形式別最適化）
-   */
-  buildFFmpegCommand(inputFile, outputFile, outputFormat, audioCodec) {
-    const baseCommand = [
-      '-i', inputFile,
-      '-vf', `scale=${this.COMPRESSION_SETTINGS.resolution}`, // 解像度変更
-      '-r', String(this.COMPRESSION_SETTINGS.fps),            // フレームレート変更
-      '-c:v', this.COMPRESSION_SETTINGS.codec,                // ビデオコーデック
-      '-preset', this.COMPRESSION_SETTINGS.preset,            // 圧縮プリセット
-      '-crf', String(this.COMPRESSION_SETTINGS.crf),          // 品質
-      '-b:v', this.COMPRESSION_SETTINGS.videoBitrate,         // ビデオビットレート
-      '-c:a', audioCodec,                                     // オーディオコーデック
-      '-b:a', this.COMPRESSION_SETTINGS.audioBitrate,         // オーディオビットレート
-      '-ar', this.COMPRESSION_SETTINGS.audioSampleRate        // サンプリングレート
-    ];
-
-    // ★ 形式別の追加オプション
-    if (outputFormat === 'webm') {
-      return [
-        ...baseCommand,
-        '-deadline', 'good',      // WebMの圧縮レベル
-        '-y',
-        outputFile
-      ];
-    } else if (outputFormat === 'ogv' || outputFormat === 'ogg') {
-      return [
-        ...baseCommand,
-        '-q:a', '6',              // OGVの品質
-        '-y',
-        outputFile
-      ];
+    if (fileObject.size > this.CHUNK_THRESHOLD) {
+      console.log('[UPLOAD_BINARY] Using chunked upload');
+      return await this.uploadAssetBinaryChunked(uploadUrl, fileName, fileObject);
     } else {
-      // MP4とその他形式（デフォルト）
-      return [
-        ...baseCommand,
-        '-movflags', 'faststart', // ストリーミング最適化
-        '-y',
-        outputFile
-      ];
+      console.log('[UPLOAD_BINARY] Using regular upload');
+      return await this.uploadAssetBinaryRegular(uploadUrl, fileName, fileObject);
     }
   }
 
   /**
-   * ファイル名から拡張子を除去
+   * 通常のアップロード（50MB以下）
    */
-  getFileNameWithoutExt(fileName) {
-    return fileName.substring(0, fileName.lastIndexOf('.'));
-  }
-
-  /**
-   * MIMEタイプを取得
-   */
-  getMimeType(format) {
-    const mimeMap = {
-      'mp4': 'video/mp4',
-      'webm': 'video/webm',
-      'ogv': 'video/ogg',
-      'ogg': 'video/ogg',
-      'mov': 'video/quicktime',
-      'avi': 'video/x-msvideo',
-      'mkv': 'video/x-matroska'
-    };
-    return mimeMap[format] || 'video/mp4';
-  }
-
-  /**
-   * ビデオ情報を取得（メタデータ）
-   */
-  async getVideoInfo(file) {
+  async uploadAssetBinaryRegular(uploadUrl, fileName, fileObject) {
     try {
-      if (!this.isLoaded) {
-        await this.initFFmpeg();
+      const arrayBuffer = await fileObject.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      
+      console.log('[UPLOAD_REGULAR] Converting to Base64...');
+      let base64 = '';
+      const chunkSize = 10000;
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        base64 += String.fromCharCode.apply(null, uint8Array.subarray(i, i + chunkSize));
+      }
+      base64 = btoa(base64);
+
+      console.log('[UPLOAD_REGULAR] Sending to GitHub...');
+      const response = await fetch(this.functionUrl, {
+        method: 'POST',
+        headers: {
+          'X-Upload-Url': uploadUrl,
+          'X-Is-Base64': 'true',
+          'X-File-Name': fileName,
+          'Content-Type': 'text/plain'
+        },
+        body: base64
+      });
+
+      console.log('[UPLOAD_REGULAR] Response status:', response.status);
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('[UPLOAD_REGULAR] Error:', text.substring(0, 500));
+        throw new Error(`Upload failed: ${response.status}`);
       }
 
-      const inputFileName = `info_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const fileData = await file.arrayBuffer();
-      this.ffmpeg.FS('writeFile', inputFileName, new Uint8Array(fileData));
+      const data = await response.json();
+      console.log('[UPLOAD_REGULAR] Success');
+      
+      return {
+        size: data.data.size,
+        browser_download_url: data.data.download_url
+      };
+    } catch (e) {
+      console.error('[UPLOAD_REGULAR] Error:', e.message);
+      throw e;
+    }
+  }
 
-      // ffprobeコマンド実行
-      await this.ffmpeg.run('-i', inputFileName);
+  /**
+   * チャンク分割アップロード（50MB以上）
+   */
+  async uploadAssetBinaryChunked(uploadUrl, fileName, fileObject) {
+    try {
+      const uploadId = `upload_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const totalChunks = Math.ceil(fileObject.size / this.CHUNK_SIZE);
 
-      this.ffmpeg.FS('unlink', inputFileName);
+      console.log('[UPLOAD_CHUNKED] Starting:', {
+        uploadId,
+        fileName,
+        totalChunks,
+        fileSizeMB: (fileObject.size / 1024 / 1024).toFixed(2)
+      });
+
+      // チャンクをアップロード
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * this.CHUNK_SIZE;
+        const end = Math.min(start + this.CHUNK_SIZE, fileObject.size);
+        const chunk = fileObject.slice(start, end);
+
+        console.log(`[UPLOAD_CHUNKED] Uploading chunk ${i + 1}/${totalChunks}:`, {
+          start,
+          end,
+          chunkSize: chunk.size
+        });
+
+        // ★ Blob をそのまま body に使用（Buffer は不要）
+        const params = new URLSearchParams({
+          action: 'upload-chunk',
+          uploadId,
+          chunkIndex: i,
+          totalChunks,
+          fileName
+        });
+
+        const response = await fetch(`${this.functionUrl}?${params}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/octet-stream'
+          },
+          body: chunk  // ★ Blob を直接送信
+        });
+
+        console.log(`[UPLOAD_CHUNKED] Chunk ${i + 1} response status:`, response.status);
+
+        if (!response.ok) {
+          const text = await response.text();
+          console.error(`[UPLOAD_CHUNKED] Chunk ${i + 1} failed:`, text.substring(0, 500));
+          throw new Error(`Chunk ${i + 1} failed: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log(`[UPLOAD_CHUNKED] Chunk ${i + 1} success:`, {
+          uploadId: data.uploadId,
+          receivedChunks: data.receivedChunks,
+          totalChunks: data.totalChunks
+        });
+      }
+
+      // チャンクを結合
+      console.log('[UPLOAD_CHUNKED] All chunks uploaded, finalizing...');
+
+      const finalizeResponse = await fetch(this.functionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          action: 'finalize-chunks',
+          uploadId,
+          fileName,
+          releaseUploadUrl: uploadUrl
+        })
+      });
+
+      console.log('[UPLOAD_CHUNKED] Finalize response status:', finalizeResponse.status);
+
+      if (!finalizeResponse.ok) {
+        const text = await finalizeResponse.text();
+        console.error('[UPLOAD_CHUNKED] Finalize failed:', text.substring(0, 500));
+        throw new Error(`Finalize failed: ${finalizeResponse.status}`);
+      }
+
+      const data = await finalizeResponse.json();
+      console.log('[UPLOAD_CHUNKED] Success');
 
       return {
-        fileName: file.name,
-        fileSize: file.size,
-        duration: 'N/A'
+        size: data.data.size,
+        browser_download_url: data.data.download_url
       };
-    } catch (error) {
-      console.error('[VIDEO_INFO] Error:', error);
-      return null;
+    } catch (e) {
+      console.error('[UPLOAD_CHUNKED] Error:', e.message);
+      throw e;
     }
+  }
+
+  /**
+   * ファイルサイズをフォーマット
+   */
+  formatSize(bytes) {
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    if (bytes === 0) return '0 B';
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
   }
 }
 
-// ★ グローバルインスタンス作成
-window.videoCompressor = new VideoCompressor();
+// ★ グローバルにインスタンスを作成
+window.chunkedBinaryUploader = new ChunkedBinaryUploader();
 
-console.log('[VIDEO_COMPRESSOR] Initialized - Video compression support enabled');
-console.log('[VIDEO_COMPRESSOR] Settings:', {
-  resolution: '1280x720',
-  fps: 30,
-  videoBitrate: '800kbps',
-  compressionThreshold: '50MB'
-});
+console.log('[CHUNKED_UPLOADER] Initialized - Chunked upload support enabled');
+
+// ★ GitHubUploader.prototype.uploadAssetBinary を割り当て（後から定義される）
+// ただし、この行は削除するか、GitHubUploader が定義された後に実行
+setTimeout(() => {
+  if (window.GitHubUploader && !window.GitHubUploader.prototype.uploadAssetBinary_overridden) {
+    window.GitHubUploader.prototype.uploadAssetBinary_original = window.GitHubUploader.prototype.uploadAssetBinary;
+    window.GitHubUploader.prototype.uploadAssetBinary = function(uploadUrl, fileName, fileObject) {
+      return window.chunkedBinaryUploader.uploadAssetBinary(uploadUrl, fileName, fileObject);
+    };
+    window.GitHubUploader.prototype.uploadAssetBinary_overridden = true;
+    console.log('[CHUNKED_UPLOADER] Hooked into GitHubUploader.uploadAssetBinary');
+  }
+}, 100);

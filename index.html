@@ -3,6 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- ★ COEP/COOP セキュリティヘッダー（FFmpeg.wasm対応） -->
+    <meta http-equiv="Cross-Origin-Embedder-Policy" content="credentialless">
+    <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin">
+    
     <meta name="description" content="Avfile - Fast and secure file sharing service. Share files instantly with anyone, anywhere. Upload multiple files at once, get shareable links, no registration required, unlimited storage.">
     <meta name="keywords" content="file sharing,video sharing,image sharing,file transfer,cloud storage,online file sharing,document sharing">
     <meta name="author" content="Avfile">
@@ -35,7 +40,7 @@
     <link rel="shortcut icon" href="/images/folder.png">
     <link rel="apple-touch-icon" href="/images/folder.png">
     
-    <!-- ★ FFmpeg.wasm CDN (COEP対応版) -->
+    <!-- ★ FFmpeg.wasm CDN (公式推奨) -->
     <script async src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.6/dist/ffmpeg.min.js"></script>
 
     <title>Avfile - Fast File Sharing Service | Unlimited Storage</title>
@@ -859,6 +864,10 @@
     </footer>
 
  <script src="/js/chunked-binary-uploader.js"></script>
+
+<!-- ★ ビデオ圧縮スクリプト（公式FFmpeg.wasm対応） -->
+<script src="/js/video-compressor-official.js"></script>
+
 <script src="/js/universal-file-uploader-enhanced.js"></script>
 <script>
 
@@ -1098,6 +1107,44 @@ async function uploadMultiple(files) {
         
         // ファイル情報を取得
         const fileInfo = await getUnifiedFileInfo(file, uploader);
+        
+        // ★ ビデオファイルの圧縮処理（新規追加）
+        let uploadFile = file;
+        if (file.type && file.type.startsWith('video/')) {
+          console.log(`[FILE_${idx}] Video file detected, checking compression...`);
+          
+          // VideoCompressorが利用可能か確認
+          if (window.videoCompressor && window.videoCompressor.shouldCompress(file)) {
+            console.log(`[FILE_${idx}] Starting video compression...`);
+            updateUploadProgress(idx, files.length, 'Compressing video...');
+            
+            try {
+              const compressionResult = await window.videoCompressor.compressVideo(
+                file,
+                (percent, status) => {
+                  // ログ出力のみ
+                }
+              );
+              
+              // 圧縮後のファイルを使用
+              uploadFile = new File(
+                [compressionResult.blob],
+                compressionResult.fileName,
+                { type: compressionResult.blob.type }
+              );
+              
+              console.log(`[FILE_${idx}] ✓ Compression complete: ${compressionResult.compressionRatio}% reduction`);
+              updateUploadProgress(idx, files.length, `Video compressed (${compressionResult.compressionRatio}%)`);
+            } catch (error) {
+              console.warn(`[FILE_${idx}] Compression failed, using original file:`, error.message);
+              updateUploadProgress(idx, files.length, 'Compression failed, using original');
+              // 圧縮失敗時は元のファイルを使用
+            }
+          } else {
+            console.log(`[FILE_${idx}] Video compression skipped (FFmpeg not ready or file too small)`);
+          }
+        }
+        
         const fileId = 'f_' + Math.random().toString(36).substr(2, 9);
         const fileName = fileInfo.name;
         const releaseTag = `file_${fileId}`;
@@ -1110,7 +1157,8 @@ async function uploadMultiple(files) {
         console.log(`[FILE_${idx}] Uploading binary: ${fileName}`);
         updateUploadProgress(idx, files.length, 'Uploading file...');
         
-        const assetData = await uploader.uploadAssetBinary(release.upload_url, fileName, file);
+        // ★ 圧縮後のファイルをアップロード
+        const assetData = await uploader.uploadAssetBinary(release.upload_url, fileName, uploadFile);
 
         console.log(`[FILE_${idx}] Saving to github.json: ${fileName}`);
         updateUploadProgress(idx, files.length, 'Saving metadata...');
