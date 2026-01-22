@@ -8,7 +8,8 @@ class VideoCompressor {
     this.isLoaded = false;
     this.isLoading = false;
 
-    this.VIDEO_COMPRESSION_THRESHOLD = 50 * 1024 * 1024; // 50MB（必要に応じて調整）
+    // ここはアップロード側と揃えるのが理想（テストは1MBなどに下げてもOK）
+    this.VIDEO_COMPRESSION_THRESHOLD = 50 * 1024 * 1024; // 50MB
 
     this.COMPRESSION_SETTINGS = {
       resolution: "1280x720",
@@ -25,18 +26,25 @@ class VideoCompressor {
   }
 
   async initFFmpeg() {
-    if (this.isLoaded || this.isLoading) return;
+    if (this.isLoaded || this.isLoading) {
+      console.log("[VIDEO_COMPRESSOR] initFFmpeg skipped (loaded/loading)");
+      return;
+    }
+
     this.isLoading = true;
 
     try {
-      // ドキュメントの load config（coreURL/wasmURL/workerURL） :contentReference[oaicite:2]{index=2}
       const CORE_VERSION = "0.12.10";
-      await this.ffmpeg.load({
-        coreURL: `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${CORE_VERSION}/dist/umd/ffmpeg-core.js`,
-        wasmURL: `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${CORE_VERSION}/dist/umd/ffmpeg-core.wasm`,
-        // workerURL は “mt版” を使うときに必要（今回は単純化して省略でもOK）
-        // workerURL: `https://cdn.jsdelivr.net/npm/@ffmpeg/core-mt@${CORE_VERSION}/dist/umd/ffmpeg-core.worker.js`,
-      });
+
+      // ✅ 0.12系：FFmpeg.load に coreURL/wasmURL を渡す
+      // ※ パスは “dist/umd” が安定（ブラウザでのfetchが通りやすい）
+      const coreURL = `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${CORE_VERSION}/dist/umd/ffmpeg-core.js`;
+      const wasmURL = `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${CORE_VERSION}/dist/umd/ffmpeg-core.wasm`;
+
+      console.log("[VIDEO_COMPRESSOR] Loading core:", coreURL);
+      console.log("[VIDEO_COMPRESSOR] Loading wasm:", wasmURL);
+
+      await this.ffmpeg.load({ coreURL, wasmURL });
 
       this.isLoaded = true;
       console.log("[VIDEO_COMPRESSOR] ✓ FFmpeg LOADED");
@@ -50,7 +58,12 @@ class VideoCompressor {
 
   shouldCompress(file) {
     if (!file) return false;
-    const isVideo = (file.type && file.type.startsWith("video/")) || /\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(file.name || "");
+
+    const name = file.name || "";
+    const isVideo =
+      (file.type && file.type.startsWith("video/")) ||
+      /\.(mp4|mov|mkv|webm|avi|m4v|mpe?g|ts|mts|m2ts|3gp|3g2)$/i.test(name);
+
     const isLarge = file.size >= this.VIDEO_COMPRESSION_THRESHOLD;
     return isVideo && isLarge;
   }
@@ -62,27 +75,35 @@ class VideoCompressor {
     const inputName = `input.${inputExt}`;
     const outputName = "output.mp4";
 
-    // progress/log（ドキュメント） :contentReference[oaicite:3]{index=3}
     const onProg = ({ progress }) => {
       const pct = Math.max(0, Math.min(100, Math.round(progress * 100)));
       onProgress(pct, "Encoding...");
     };
+
     const onLog = ({ message }) => {
-      // 必要なら message 解析してUIへ
+      // 必要ならログを見たい時だけ有効化
       // console.log("[FFMPEG]", message);
     };
 
     this.ffmpeg.on("progress", onProg);
     this.ffmpeg.on("log", onLog);
 
+    const cleanup = async () => {
+      try { await this.ffmpeg.deleteFile(inputName); } catch {}
+      try { await this.ffmpeg.deleteFile(outputName); } catch {}
+    };
+
     try {
       onProgress(5, "Reading file...");
-      await this.ffmpeg.writeFile(inputName, await fetchFile(file)); // :contentReference[oaicite:4]{index=4}
+
+      // writeFile: Uint8Array を渡す
+      const data = await fetchFile(file);
+      await this.ffmpeg.writeFile(inputName, data);
 
       onProgress(10, "Encoding...");
 
       const s = this.COMPRESSION_SETTINGS;
-      // exec は args 配列で実行 :contentReference[oaicite:5]{index=5}
+
       await this.ffmpeg.exec([
         "-i", inputName,
         "-vf", `scale=${s.resolution}`,
@@ -93,14 +114,15 @@ class VideoCompressor {
         "-b:v", s.videoBitrate,
         "-c:a", "aac",
         "-b:a", s.audioBitrate,
-        "-ar", s.audioSampleRate,
+        "-ar", String(s.audioSampleRate),
         outputName,
       ]);
 
       onProgress(90, "Finalizing...");
 
-      const data = await this.ffmpeg.readFile(outputName, "binary"); // :contentReference[oaicite:6]{index=6}
-      const blob = new Blob([data.buffer], { type: "video/mp4" });
+      // readFile: Uint8Array が返る
+      const out = await this.ffmpeg.readFile(outputName);
+      const blob = new Blob([out.buffer], { type: "video/mp4" });
 
       const originalSize = file.size;
       const compressedSize = blob.size;
@@ -116,15 +138,17 @@ class VideoCompressor {
         fileName: `compressed_${(file.name || "video").replace(/\.[^.]+$/, "")}.mp4`,
       };
     } finally {
-      // イベント解除
+      await cleanup();
       this.ffmpeg.off("progress", onProg);
       this.ffmpeg.off("log", onLog);
     }
   }
 }
 
-// window に生やして既存コード（uploadMultiple）から使えるようにする
+// ✅ グローバル公開（既存の uploadMultiple から使える）
 if (!window.videoCompressor) {
   window.videoCompressor = new VideoCompressor();
   console.log("[VIDEO_COMPRESSOR] Ready (module)");
+} else {
+  console.warn("[VIDEO_COMPRESSOR] Already exists (module loaded twice?)");
 }
