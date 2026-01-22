@@ -1506,8 +1506,194 @@ document.getElementById('openLinkBtn').onclick = () => window.open(document.getE
 document.getElementById('retryBtn').onclick = () => { showUpload(); document.getElementById('fileInput').value = ''; };
 document.getElementById('backBtn').onclick = () => showUpload();
 
-// ★ グローバル定数
+
 const MAX_SIZE_WITHOUT_COMPRESSION = 1.5 * 1024 * 1024;
+const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
+
+/**
+ * ★ 修正: uploadAssetBinary をチャンク化対応に
+ */
+async function uploadAssetBinaryChunked(uploadUrl, fileName, file, fileId, fileSize, onProgress = () => {}) {
+  console.log(`[UPLOAD] uploadAssetBinaryChunked: ${fileName} (${(fileSize / 1024 / 1024).toFixed(2)}MB)`);
+
+
+  if (fileSize < CHUNK_SIZE) {
+    // 5MB未満: 既存の方法（バイナリ直接送信）
+    console.log(`[UPLOAD] File < 5MB, using direct upload`);
+    return await uploadAssetBinaryDirect(uploadUrl, fileName, file, fileId, fileSize, onProgress);
+  }
+
+  // 5MB以上: チャンク化
+  console.log(`[UPLOAD] File >= 5MB, using chunked upload`);
+  return await uploadAssetBinaryChunks(file, fileName, fileSize, onProgress);
+}
+
+/**
+ * 直接アップロード（5MB未満）
+ */
+async function uploadAssetBinaryDirect(uploadUrl, fileName, file, fileId, fileSize, onProgress = () => {}) {
+  try {
+    console.log(`[UPLOAD_DIRECT] Starting: ${fileName}`);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const xhr = new XMLHttpRequest();
+
+    return new Promise((resolve, reject) => {
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const percent = (e.loaded / e.total) * 100;
+          onProgress(percent, `アップロード中 ${percent.toFixed(0)}%`);
+        }
+      });
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            console.log(`[UPLOAD_DIRECT] ✓ Success:`, data);
+            resolve({
+              id: data.id,
+              size: data.size,
+              browser_download_url: data.browser_download_url,
+              name: data.name
+            });
+          } catch (e) {
+            reject(new Error(`Parse error: ${xhr.responseText}`));
+          }
+        } else {
+          reject(new Error(`Status ${xhr.status}: ${xhr.responseText}`));
+        }
+      });
+
+      xhr.addEventListener('error', () => {
+        reject(new Error('Network error'));
+      });
+
+      xhr.open('POST', uploadUrl);
+      xhr.send(formData);
+    });
+
+  } catch (error) {
+    console.error(`[UPLOAD_DIRECT] Error:`, error.message);
+    throw error;
+  }
+}
+
+/**
+ * チャンク化アップロード（5MB以上）
+ */
+async function uploadAssetBinaryChunks(file, fileName, fileSize, onProgress = () => {}) {
+  try {
+    console.log(`[UPLOAD_CHUNKS] Starting: ${fileName} (${(fileSize / 1024 / 1024).toFixed(2)}MB)`);
+
+    const uploadId = `upload_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
+
+    console.log(`[UPLOAD_CHUNKS] Upload ID: ${uploadId}`);
+    console.log(`[UPLOAD_CHUNKS] Total chunks: ${totalChunks}`);
+
+    // ========================================
+    // チャンク送信
+    // ========================================
+
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, fileSize);
+      const chunk = file.slice(start, end);
+
+      console.log(`[UPLOAD_CHUNKS] Sending chunk ${i + 1}/${totalChunks} (${(chunk.size / 1024 / 1024).toFixed(2)}MB)`);
+
+      const params = new URLSearchParams({
+        action: 'upload-chunk',
+        uploadId,
+        chunkIndex: i,
+        totalChunks,
+        fileName: fileName,
+        mimeType: file.type
+      });
+
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            const chunkProgress = (e.loaded / e.total) * 100;
+            const overallProgress = ((i + chunkProgress / 100) / totalChunks) * 100;
+            onProgress(overallProgress, `チャンク ${i + 1}/${totalChunks}`);
+          }
+        });
+
+        xhr.addEventListener('load', () => {
+          if (xhr.status === 200) {
+            try {
+              const data = JSON.parse(xhr.responseText);
+              console.log(`[UPLOAD_CHUNKS] Chunk ${i} OK - Progress: ${data.receivedChunks}/${data.totalChunks}`);
+              resolve(data);
+            } catch (e) {
+              reject(new Error(`Parse error: ${xhr.responseText}`));
+            }
+          } else {
+            reject(new Error(`Status ${xhr.status}`));
+          }
+        });
+
+        xhr.addEventListener('error', () => {
+          reject(new Error('Network error'));
+        });
+
+        xhr.open('POST', `/.netlify/functions/github-upload?${params}`);
+        xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+        xhr.send(chunk);
+      });
+    }
+
+    console.log(`[UPLOAD_CHUNKS] All chunks sent, finalizing...`);
+
+    // ========================================
+    // チャンク統合
+    // ========================================
+
+    const finalResponse = await fetch(`/.netlify/functions/github-upload?action=finalize-chunks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        uploadId,
+        fileName,
+        mimeType: file.type
+      })
+    });
+
+    if (!finalResponse.ok) {
+      throw new Error(`Finalize failed: ${finalResponse.status}`);
+    }
+
+    const finalData = await finalResponse.json();
+
+    if (!finalData.success) {
+      throw new Error(finalData.error || 'Finalize failed');
+    }
+
+    console.log(`[UPLOAD_CHUNKS] ✓ Complete`);
+
+    return {
+      id: finalData.data.fileId,
+      size: finalData.data.size,
+      browser_download_url: finalData.data.downloadUrl,
+      name: finalData.data.fileName
+    };
+
+  } catch (error) {
+    console.error(`[UPLOAD_CHUNKS] Error:`, error.message);
+    throw error;
+  }
+}
+
+// ========================================
+// 修正された uploadMultiple()
+// ========================================
+
 async function uploadMultiple(files) {
   showStatus();
   const uploader = new GitHubUploader();
@@ -1549,13 +1735,19 @@ async function uploadMultiple(files) {
 
         console.log(`[FILE_${idx}] Uploading to GitHub...`);
         
-        // ★ バイナリデータを直接アップロード
-        const assetData = await uploader.uploadAssetBinary(
+        // ★ チャンク化対応のアップロード
+        const assetData = await uploadAssetBinaryChunked(
           release.upload_url,
           fileName,
           processedFile,
           fileId,
-          processedFile.size
+          processedFile.size,
+          (progress, message) => {
+            const percent = Math.round(progress);
+            document.getElementById('statusMessage').textContent = `${idx + 1}/${files.length}: ${message}`;
+            document.getElementById('progressPercent').textContent = percent + '%';
+            document.getElementById('progressFill').style.width = percent + '%';
+          }
         );
 
         console.log(`[FILE_${idx}] Adding to github.json...`);
