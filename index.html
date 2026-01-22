@@ -1140,42 +1140,56 @@ async function uploadMultiple(files) {
         // ファイル情報を取得
         const fileInfo = await getUnifiedFileInfo(file, uploader);
         
-        // ★ ビデオファイルの圧縮処理（新規追加）
-        let uploadFile = file;
-        if (file.type && file.type.startsWith('video/')) {
-          console.log(`[FILE_${idx}] Video file detected, checking compression...`);
-          
-          // VideoCompressorが利用可能か確認
-          if (window.videoCompressor && window.videoCompressor.shouldCompress(file)) {
-            console.log(`[FILE_${idx}] Starting video compression...`);
-            updateUploadProgress(idx, files.length, 'Compressing video...');
-            
-            try {
-              const compressionResult = await window.videoCompressor.compressVideo(
-                file,
-                (percent, status) => {
-                  // ログ出力のみ
-                }
-              );
-              
-              // 圧縮後のファイルを使用
-              uploadFile = new File(
-                [compressionResult.blob],
-                compressionResult.fileName,
-                { type: compressionResult.blob.type }
-              );
-              
-              console.log(`[FILE_${idx}] ✓ Compression complete: ${compressionResult.compressionRatio}% reduction`);
-              updateUploadProgress(idx, files.length, `Video compressed (${compressionResult.compressionRatio}%)`);
-            } catch (error) {
-              console.warn(`[FILE_${idx}] Compression failed, using original file:`, error.message);
-              updateUploadProgress(idx, files.length, 'Compression failed, using original');
-              // 圧縮失敗時は元のファイルを使用
-            }
-          } else {
-            console.log(`[FILE_${idx}] Video compression skipped (FFmpeg not ready or file too small)`);
+        // ★ ビデオファイルの圧縮処理（圧縮→チャンクの順にする）
+let uploadFile = file;
+
+if (file.type && file.type.startsWith('video/')) {
+  console.log(`[FILE_${idx}] Video file detected`);
+
+  // 1) サイズ条件：ここで判定（VIDEO_COMPRESSION_THRESHOLD を使う）
+  const isLarge = file.size >= VIDEO_COMPRESSION_THRESHOLD;
+
+  // 2) 圧縮対象なら FFmpeg を確実に起動して待つ
+  if (isLarge && window.videoCompressor) {
+    updateUploadProgress(idx, files.length, 'Preparing compressor...');
+    const ready = await waitForFFmpegReady(120000); // ★大きい動画は2分くらい待て
+
+    if (ready) {
+      console.log(`[FILE_${idx}] Starting video compression...`);
+      updateUploadProgress(idx, files.length, 'Compressing video...');
+
+      try {
+        const compressionResult = await window.videoCompressor.compressVideo(
+          file,
+          (percent, status) => {
+            // UI反映したいならここで
+            // updateUploadProgress(idx, files.length, `Compressing... ${percent}%`);
           }
-        }
+        );
+
+        uploadFile = new File(
+          [compressionResult.blob],
+          compressionResult.fileName,
+          { type: compressionResult.blob.type }
+        );
+
+        console.log(`[FILE_${idx}] ✓ Compression complete: ${compressionResult.compressionRatio}% reduction`);
+        updateUploadProgress(idx, files.length, `Video compressed (${compressionResult.compressionRatio}%)`);
+      } catch (err) {
+        console.warn(`[FILE_${idx}] Compression failed, using original:`, err?.message || err);
+        updateUploadProgress(idx, files.length, 'Compression failed, using original');
+        uploadFile = file;
+      }
+    } else {
+      console.warn(`[FILE_${idx}] FFmpeg not ready, using original`);
+      updateUploadProgress(idx, files.length, 'FFmpeg not ready, using original');
+      uploadFile = file;
+    }
+  } else {
+    console.log(`[FILE_${idx}] Skip compression (below threshold)`);
+  }
+}
+
         
         const fileId = 'f_' + Math.random().toString(36).substr(2, 9);
         const fileName = fileInfo.name;
