@@ -338,6 +338,15 @@ exports.handler = async (event) => {
   try {
     const uploadUrl = event.headers['x-upload-url'];
     
+    // ★ 最初にチャンクアップロードをチェック（JSON パース前）
+    const url = new URL(event.rawUrl || `http://localhost${event.rawPath}`);
+    const action = url.searchParams.get('action');
+    
+    if (action === 'upload-chunk') {
+      console.log('[MAIN] Chunk upload detected');
+      return await handleChunkUpload(event);
+    }
+
     // バイナリアップロード（小ファイル）
     if (uploadUrl) {
       const isBase64 = event.headers['x-is-base64'] === 'true';
@@ -369,12 +378,7 @@ exports.handler = async (event) => {
     }
 
     // JSON アクション処理
-    const body = JSON.parse(event.body || '{}');
-
-    // チャンクアップロード
-    if (body.action === 'upload-chunk') {
-      return await handleChunkUpload(event);
-    }
+    const body = JSON.parse(event.body || '{}')
 
     // チャンク統合
     if (body.action === 'finalize-chunks') {
