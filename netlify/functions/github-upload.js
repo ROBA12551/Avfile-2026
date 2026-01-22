@@ -6,36 +6,42 @@ const GITHUB_REPO = process.env.GITHUB_REPO;
 
 function uploadBinaryToGithub(uploadUrl, buffer) {
   return new Promise((resolve, reject) => {
-    const url = new URL(uploadUrl.replace('{?name,label}', ''));
-    url.searchParams.set('name', 'file');
+    try {
+      // クエリパラメータを削除
+      const cleanUrl = uploadUrl.split('{')[0];
+      const url = new URL(cleanUrl);
+      url.searchParams.set('name', 'file');
 
-    const options = {
-      hostname: url.hostname,
-      path: url.pathname + url.search,
-      method: 'POST',
-      headers: {
-        'Authorization': `token ${GITHUB_TOKEN}`,
-        'Content-Type': 'application/octet-stream',
-        'Content-Length': buffer.length
-      }
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => {
-        const json = JSON.parse(data);
-        if (res.statusCode >= 400) {
-          reject(new Error(json.message));
-        } else {
-          resolve(json);
+      const options = {
+        hostname: url.hostname,
+        path: url.pathname + url.search,
+        method: 'POST',
+        headers: {
+          'Authorization': `token ${GITHUB_TOKEN}`,
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': buffer.length
         }
-      });
-    });
+      };
 
-    req.on('error', reject);
-    req.write(buffer);
-    req.end();
+      const req = https.request(options, (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          const json = JSON.parse(data);
+          if (res.statusCode >= 400) {
+            reject(new Error(json.message));
+          } else {
+            resolve(json);
+          }
+        });
+      });
+
+      req.on('error', reject);
+      req.write(buffer);
+      req.end();
+    } catch (e) {
+      reject(e);
+    }
   });
 }
 
