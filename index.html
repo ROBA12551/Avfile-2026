@@ -776,20 +776,35 @@ function clearCacheGithubJson() {
 }
 async function parallelLimit(tasks, limit) {
   const results = [];
+  let running = 0;
   let index = 0;
 
-  const worker = async () => {
-    while (index < tasks.length) {
-      const i = index++;
-      results[i] = await tasks[i]();
-    }
-  };
+  return new Promise((resolve, reject) => {
+    const run = async () => {
+      while (index < tasks.length && running < limit) {
+        running++;
+        const i = index++;
+        
+        try {
+          results[i] = await tasks[i]();
+        } catch (error) {
+          results[i] = { error };
+          reject(error);
+          return;
+        } finally {
+          running--;
+          if (index < tasks.length) {
+            run();
+          } else if (running === 0) {
+            resolve(results);
+          }
+        }
+      }
+    };
 
-  const workers = Array(Math.min(limit, tasks.length)).fill().map(worker);
-  await Promise.all(workers);
-  return results;
+    run();
+  });
 }
-
 /**
  * ランダムなアルファベット7桁文字列を生成（数字なし）
  */
