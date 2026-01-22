@@ -1013,63 +1013,56 @@ class GitHubUploader {
     
     return data.data;
   }
-// ★ GitHub に直接アップロード（Netlify Functions 経由なし）
+
 async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
   const sanitizedFileName = this.sanitizeFileName(fileName);
 
-  console.log('[UPLOAD_BINARY] File:', sanitizedFileName);
-  console.log('[UPLOAD_BINARY] Size:', (fileSize / 1024 / 1024).toFixed(2), 'MB');
+  console.log('[UPLOAD] File:', sanitizedFileName);
+  console.log('[UPLOAD] Size:', (fileSize / 1024 / 1024).toFixed(2), 'MB');
 
-  let processedFile = fileObject;
-
-  // 圧縮スキップ（後で有効化）
-  console.log('[UPLOAD_BINARY] Skipping compression for now');
-
-  // ★ GitHub トークンを取得（Netlify Functions経由）
-  const token = await this.getGitHubToken();
-
-  // ★ upload_url をクリーンアップ
-  let cleanUrl = uploadUrl.trim().replace(/\{[?&].*?\}/g, '');
-  const encodedFileName = encodeURIComponent(sanitizedFileName);
-  const assetUrl = `${cleanUrl}?name=${encodedFileName}`;
-
-  console.log('[UPLOAD_BINARY] Direct upload to GitHub...');
-  console.log('[UPLOAD_BINARY] URL:', assetUrl.substring(0, 100) + '...');
-  console.log('[UPLOAD_BINARY] Size:', (processedFile.size / 1024 / 1024).toFixed(2), 'MB');
-
-  // ★ ブラウザから直接 GitHub API にアップロード
-  const response = await fetch(assetUrl, {
+  // ★ Step 1: アップロード開始
+  const initResponse = await fetch('/.netlify/functions/initiate-upload', {
     method: 'POST',
-    headers: {
-      'Authorization': `token ${token}`,
-      'Content-Type': 'application/octet-stream',
-      'User-Agent': 'Avfile-Client',
-    },
-    body: processedFile  // ★ Fileオブジェクトを直接送信
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fileName: sanitizedFileName, uploadUrl })
   });
 
-  console.log('[UPLOAD_BINARY] Response status:', response.status);
+  const { uploadId } = await initResponse.json();
 
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => '');
-    console.error('[UPLOAD_BINARY] Error:', errorText.substring(0, 500));
-    throw new Error(`Upload failed: ${response.status}`);
+  // ★ Step 2: チャンクに分割してアップロード
+  const CHUNK_SIZE = 3 * 1024 * 1024; // 3MB chunks
+  const arrayBuffer = await fileObject.arrayBuffer();
+  const totalChunks = Math.ceil(arrayBuffer.byteLength / CHUNK_SIZE);
+
+  for (let i = 0; i < totalChunks; i++) {
+    const start = i * CHUNK_SIZE;
+    const end = Math.min(start + CHUNK_SIZE, arrayBuffer.byteLength);
+    const chunk = arrayBuffer.slice(start, end);
+
+    console.log(`[UPLOAD] Chunk ${i + 1}/${totalChunks}`);
+
+    await fetch(`/.netlify/functions/upload-chunk?id=${uploadId}&index=${i}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: chunk
+    });
   }
 
-  const data = await response.json();
-  
-  if (!data || !data.id) {
-    throw new Error('GitHub response missing ID');
-  }
-  
-  console.log('[UPLOAD_BINARY] Complete - Asset ID:', data.id);
+  // ★ Step 3: アップロード完了
+  const finalizeResponse = await fetch('/.netlify/functions/finalize-upload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ uploadId })
+  });
+
+  const data = await finalizeResponse.json();
   
   return {
     success: true,
-    asset_id: data.id,
-    browser_download_url: data.browser_download_url,
-    name: data.name,
-    size: data.size
+    asset_id: data.data.asset_id,
+    browser_download_url: data.data.download_url,
+    name: data.data.name,
+    size: data.data.size
   };
 }
   // ★ ファイル情報を github.json に即座に追加
