@@ -76,16 +76,12 @@ exports.handler = async (event) => {
   const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
 
   try {
-    console.log('[HANDLER] URL:', event.headers['x-upload-url'] ? 'present' : 'missing');
-    
     const uploadUrl = event.headers['x-upload-url'];
     const isBase64 = event.headers['x-is-base64'] === 'true';
+    const body = JSON.parse(event.body || '{}');
 
-    if (!uploadUrl) {
-      return { statusCode: 400, headers, body: JSON.stringify({ success: false, error: 'No uploadUrl' }) };
-    }
-
-    if (isBase64) {
+    // バイナリアップロード
+    if (uploadUrl && isBase64) {
       const buffer = Buffer.from(event.body, 'base64');
       const result = await uploadBinaryToGithub(uploadUrl, buffer);
 
@@ -104,8 +100,7 @@ exports.handler = async (event) => {
       };
     }
 
-    const body = JSON.parse(event.body || '{}');
-
+    // JSON アクション処理
     if (body.action === 'create-release') {
       const result = await callGithubApi('POST', `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases`, {
         tag_name: body.releaseTag,
@@ -119,19 +114,35 @@ exports.handler = async (event) => {
         headers,
         body: JSON.stringify({
           success: true,
-          data: { release_id: result.id, tag_name: result.tag_name, upload_url: result.upload_url }
+          data: { 
+            release_id: result.id, 
+            tag_name: result.tag_name, 
+            upload_url: result.upload_url 
+          }
         })
       };
     }
 
     if (body.action === 'get-token') {
-      return { statusCode: 200, headers, body: JSON.stringify({ success: true, data: { token: GITHUB_TOKEN } }) };
+      return { 
+        statusCode: 200, 
+        headers, 
+        body: JSON.stringify({ success: true, data: { token: GITHUB_TOKEN } }) 
+      };
     }
 
-    return { statusCode: 400, headers, body: JSON.stringify({ success: false }) };
+    return { 
+      statusCode: 400, 
+      headers, 
+      body: JSON.stringify({ success: false, error: 'Unknown action' }) 
+    };
 
   } catch (error) {
     console.error('[ERROR]', error.message);
-    return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: error.message }) };
+    return { 
+      statusCode: 500, 
+      headers, 
+      body: JSON.stringify({ success: false, error: error.message }) 
+    };
   }
 };
