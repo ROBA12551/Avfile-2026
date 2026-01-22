@@ -35,7 +35,8 @@
     <link rel="shortcut icon" href="/images/folder.png">
     <link rel="apple-touch-icon" href="/images/folder.png">
     
-    <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+    <!-- ★ FFmpeg.wasm CDN (最新バージョン) -->
+    <script async src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/ffmpeg.min.js"></script>
 
     <title>Avfile - Fast File Sharing Service | Unlimited Storage</title>
     <style>
@@ -858,6 +859,10 @@
     </footer>
 
  <script src="/js/chunked-binary-uploader.js"></script>
+
+<!-- ★ ビデオ圧縮スクリプト -->
+<script src="/js/video-compressor.js"></script>
+
 <script src="/js/universal-file-uploader-enhanced.js"></script>
 <script>
 
@@ -1097,6 +1102,42 @@ async function uploadMultiple(files) {
         
         // ファイル情報を取得
         const fileInfo = await getUnifiedFileInfo(file, uploader);
+        
+        // ★ ビデオファイルの圧縮処理を追加
+        let uploadFile = file;
+        if (file.type && file.type.startsWith('video/')) {
+          console.log(`[FILE_${idx}] Video file detected, checking for compression...`);
+          
+          // VideoCompressorが利用可能か確認
+          if (window.videoCompressor && window.videoCompressor.shouldCompress(file)) {
+            console.log(`[FILE_${idx}] Starting video compression (${(file.size/1024/1024).toFixed(2)}MB)...`);
+            updateUploadProgress(idx, files.length, 'Compressing video...');
+            
+            try {
+              const compressionResult = await window.videoCompressor.compressVideo(
+                file,
+                (percent, status) => {
+                  // コンソールにログ出力のみ（UIは別途更新）
+                }
+              );
+              
+              // 圧縮後のファイルを使用
+              uploadFile = new File(
+                [compressionResult.blob],
+                compressionResult.fileName,
+                { type: compressionResult.blob.type }
+              );
+              
+              console.log(`[FILE_${idx}] ✓ Compression complete: ${compressionResult.compressionRatio}% reduction`);
+              updateUploadProgress(idx, files.length, `Video compressed (${compressionResult.compressionRatio}%)`);
+            } catch (error) {
+              console.warn(`[FILE_${idx}] Compression failed, using original file:`, error.message);
+              updateUploadProgress(idx, files.length, 'Compression failed, using original');
+              // 圧縮失敗時は元のファイルを使用
+            }
+          }
+        }
+        
         const fileId = 'f_' + Math.random().toString(36).substr(2, 9);
         const fileName = fileInfo.name;
         const releaseTag = `file_${fileId}`;
@@ -1109,7 +1150,8 @@ async function uploadMultiple(files) {
         console.log(`[FILE_${idx}] Uploading binary: ${fileName}`);
         updateUploadProgress(idx, files.length, 'Uploading file...');
         
-        const assetData = await uploader.uploadAssetBinary(release.upload_url, fileName, file);
+        // ★ 圧縮後のファイルをアップロード
+        const assetData = await uploader.uploadAssetBinary(release.upload_url, fileName, uploadFile);
 
         console.log(`[FILE_${idx}] Saving to github.json: ${fileName}`);
         updateUploadProgress(idx, files.length, 'Saving metadata...');
