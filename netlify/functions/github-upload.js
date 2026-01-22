@@ -583,37 +583,73 @@ if (contentType.includes('application/octet-stream')) {
     
     let response;
 
-    switch (body.action) {
-      case 'create-release': {
-        if (!body.releaseTag) {
-          throw new Error('releaseTag required');
-        }
-        response = await createRelease(body.releaseTag, body.metadata);
-        break;
-      }
+   switch (body.action) {
+  case 'create-release': {
+    if (!body.releaseTag) {
+      throw new Error('releaseTag required');
+    }
+    response = await createRelease(body.releaseTag, body.metadata);
+    break;
+  }
 
-      case 'add-file': {
-        if (!body.fileData) {
-          throw new Error('fileData required');
-        }
-        
-        const required = ['fileId', 'fileName', 'fileSize', 'releaseId', 'releaseTag', 'downloadUrl'];
-        for (const field of required) {
-          if (!body.fileData[field]) {
-            throw new Error(`fileData.${field} required`);
-          }
-        }
-        
-        response = await addFileToGithubJson(body.fileData);
-        break;
+  case 'add-file': {
+    if (!body.fileData) {
+      throw new Error('fileData required');
+    }
+    
+    const required = ['fileId', 'fileName', 'fileSize', 'releaseId', 'releaseTag', 'downloadUrl'];
+    for (const field of required) {
+      if (!body.fileData[field]) {
+        throw new Error(`fileData.${field} required`);
       }
+    }
+    
+    response = await addFileToGithubJson(body.fileData);
+    break;
+  }
 
-      case 'get-github-json': {
-        const result = await getGithubJson();
-        response = result.data;
-        break;
-      }
+  case 'get-github-json': {
+    const result = await getGithubJson();
+    response = result.data;
+    break;
+  }
 
+  case 'create-view': {
+    const fileIds = Array.isArray(body.fileIds) ? body.fileIds : [];
+    if (fileIds.length === 0) {
+      throw new Error('fileIds required');
+    }
+    response = await createViewOnServer(
+      fileIds,
+      body.passwordHash || null,
+      body.origin || ''
+    );
+    break;
+  }
+
+  case 'get-token': {
+    logInfo('[TOKEN] Providing GitHub token');
+    
+    if (!GITHUB_TOKEN) {
+      throw new Error('GitHub token not configured');
+    }
+    
+    response = {
+      token: GITHUB_TOKEN
+    };
+    break;
+  }
+
+  default:
+    throw new Error(`Unknown action: ${body.action}`);
+}
+  
+  // ★ セキュリティ注意: 本番環境では適切な認証を実装すること
+  response = {
+    token: GITHUB_TOKEN
+  };
+  break;
+}
       case 'create-view': {
         const fileIds = Array.isArray(body.fileIds) ? body.fileIds : [];
         if (fileIds.length === 0) {
