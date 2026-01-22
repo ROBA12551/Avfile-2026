@@ -25,36 +25,30 @@ class VideoCompressor {
     console.log("[VIDEO_COMPRESSOR] Class initialized (FFmpeg class mode)");
   }
 
-  async initFFmpeg() {
-    if (this.isLoaded || this.isLoading) {
-      console.log("[VIDEO_COMPRESSOR] initFFmpeg skipped (loaded/loading)");
-      return;
-    }
+async initFFmpeg() {
+  if (this.isLoaded || this.isLoading) return;
+  this.isLoading = true;
 
-    this.isLoading = true;
+  try {
+    const coreURL = `${location.origin}/js/ffmpeg/ffmpeg-core.js`;
+    const wasmURL = `${location.origin}/js/ffmpeg/ffmpeg-core.wasm`;
+    const workerURL = `${location.origin}/js/ffmpeg/worker.js`;
 
-    try {
-      const CORE_VERSION = "0.12.10";
+    console.log("[VIDEO_COMPRESSOR] Loading core:", coreURL);
+    console.log("[VIDEO_COMPRESSOR] Loading wasm:", wasmURL);
+    console.log("[VIDEO_COMPRESSOR] Loading worker:", workerURL);
 
-      // ✅ 0.12系：FFmpeg.load に coreURL/wasmURL を渡す
-      // ※ パスは “dist/umd” が安定（ブラウザでのfetchが通りやすい）
-      const coreURL = `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${CORE_VERSION}/dist/umd/ffmpeg-core.js`;
-      const wasmURL = `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${CORE_VERSION}/dist/umd/ffmpeg-core.wasm`;
+    await this.ffmpeg.load({ coreURL, wasmURL, workerURL });
 
-      console.log("[VIDEO_COMPRESSOR] Loading core:", coreURL);
-      console.log("[VIDEO_COMPRESSOR] Loading wasm:", wasmURL);
-
-      await this.ffmpeg.load({ coreURL, wasmURL });
-
-      this.isLoaded = true;
-      console.log("[VIDEO_COMPRESSOR] ✓ FFmpeg LOADED");
-    } catch (e) {
-      console.error("[VIDEO_COMPRESSOR] ✗ Failed to load FFmpeg:", e?.message || e);
-      this.isLoaded = false;
-    } finally {
-      this.isLoading = false;
-    }
+    this.isLoaded = true;
+    console.log("[VIDEO_COMPRESSOR] ✓ FFmpeg LOADED");
+  } catch (e) {
+    console.error("[VIDEO_COMPRESSOR] ✗ Failed to load FFmpeg:", e?.message || e);
+    this.isLoaded = false;
+  } finally {
+    this.isLoading = false;
   }
+}
 
   shouldCompress(file) {
     if (!file) return false;
