@@ -57,6 +57,107 @@
             padding: 1.5rem 2rem; 
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
+        /* ★ 追加CSS: プレビューエリアの改善 */
+
+.file-preview-area {
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 8px;
+    padding: 2rem;
+    min-height: 300px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    margin-top: 1.5rem;
+}
+
+/* 動画プレビュー */
+.file-preview-area video {
+    max-width: 100%;
+    max-height: 500px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* 画像プレビュー */
+.file-preview-area img {
+    max-width: 100%;
+    max-height: 500px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    object-fit: contain;
+}
+
+/* PDF プレビュー */
+.file-preview-area iframe {
+    border: none;
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+/* 音声プレイヤー */
+.file-preview-area audio {
+    width: 100%;
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+/* その他ファイルのアイコン表示 */
+.file-preview-area > div:first-child {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+}
+
+/* ファイルプレビューエリア内のリンク */
+.file-preview-area a {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #ffffff;
+    padding: 0.8rem 1.5rem;
+    border-radius: 8px;
+    text-decoration: none;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.3s;
+    display: inline-block;
+}
+
+.file-preview-area a:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-2px);
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+    .file-preview-area {
+        padding: 1rem;
+        min-height: 250px;
+    }
+
+    .file-preview-area video,
+    .file-preview-area img {
+        max-width: 100%;
+        max-height: 300px;
+    }
+
+    .file-preview-area iframe {
+        height: 400px !important;
+    }
+
+    .file-item-header {
+        flex-direction: column;
+    }
+
+    .file-item-actions {
+        width: 100%;
+    }
+
+    .file-item-actions button,
+    .file-item-actions a {
+        flex: 1;
+    }
+}
         .navbar-content { 
             max-width: 1400px; 
             margin: 0 auto; 
@@ -1621,6 +1722,10 @@ async function uploadFileChunked(file, fileName, onProgress = () => {}) {
     throw error;
   }
 }
+/**
+ * ★ 修正版: loadView 関数
+ * ファイル拡張子に応じた正しいプレビューを表示
+ */
 async function loadView(viewId) {
   try {
     console.log('[MAIN] Loading view:', viewId);
@@ -1646,10 +1751,6 @@ async function loadView(viewId) {
       throw new Error('No files found');
     }
 
-    const file = allFiles[0];  // 最初のファイルを取得
-
-    console.log('[MAIN] Found file:', file);
-
     const carousel = new Carousel(
       document.getElementById('carouselTrack'),
       document.getElementById('carouselDots'),
@@ -1658,43 +1759,133 @@ async function loadView(viewId) {
       document.getElementById('slideInfo')
     );
 
-    // ファイル情報を表示
-    const item = document.createElement('div');
-    item.className = 'carousel-item';
+    // ★ すべてのファイルをカルーセルに追加
+    for (const file of allFiles) {
+      console.log('[MAIN] Processing file:', file.fileName);
 
-    const ext = file.fileName.split('.').pop().toLowerCase();
-    const videoExtensions = ['mp4', 'webm', 'ogg', 'mkv', 'avi', 'mov'];
-    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+      const item = document.createElement('div');
+      item.className = 'carousel-item';
 
-    let preview = '';
-    if (videoExtensions.includes(ext)) {
-      preview = `<div class="file-preview-area"><video controls style="max-width: 100%; max-height: 400px;"><source src="${file.downloadUrl}" type="video/mp4"></video></div>`;
-    } else if (imageExtensions.includes(ext)) {
-      preview = `<div class="file-preview-area"><img src="${file.downloadUrl}" style="max-width: 100%; max-height: 400px;" /></div>`;
-    } else {
-      preview = `<div class="file-preview-area"><p style="color: rgba(255, 255, 255, 0.7);"><a href="${file.downloadUrl}" download style="color: #ffffff;">Download file</a></p></div>`;
-    }
+      const ext = file.fileName.split('.').pop().toLowerCase();
+      const fileName = escapeHtml(file.fileName);
+      const downloadUrl = escapeHtml(file.downloadUrl);
+      const fileSize = formatSize(file.fileSize || 0);
 
-    item.innerHTML = `
-      <div style="flex: 1; display: flex; flex-direction: column;">
-        <div class="file-item-header">
-          <div class="file-item-info">
-            <div class="file-icon">${getIcon(file.fileName)}</div>
-            <div class="file-details">
-              <h3>${escapeHtml(file.fileName)}</h3>
-              <p>${formatSize(file.fileSize || 0)}</p>
+      console.log('[MAIN] File extension:', ext);
+
+      // ★ ファイル拡張子に応じたプレビューを生成
+      let preview = '';
+
+      // 動画ファイル
+      if (ext.match(/^(mp4|webm|ogg|mkv|avi|mov|flv|wmv|m4v|ts|m2ts|mts|3gp|3g2|asf|f4v|m3u8|mxf|mpeg|mpg|vob|ogv)$/i)) {
+        console.log('[MAIN] Video file detected');
+        preview = `
+          <div class="file-preview-area">
+            <video controls style="max-width: 100%; max-height: 500px; border-radius: 8px;">
+              <source src="${downloadUrl}" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+          </div>
+        `;
+      }
+      // 画像ファイル
+      else if (ext.match(/^(jpg|jpeg|png|gif|webp|bmp|svg|ico|tiff|tif|heic|heif|avif|apng|jfif|pjpeg|pjp|raw|cr2|nef|arw|dng)$/i)) {
+        console.log('[MAIN] Image file detected');
+        preview = `
+          <div class="file-preview-area">
+            <img src="${downloadUrl}" style="max-width: 100%; max-height: 500px; border-radius: 8px;" alt="${fileName}" />
+          </div>
+        `;
+      }
+      // PDF ファイル
+      else if (ext.match(/^pdf$/i)) {
+        console.log('[MAIN] PDF file detected');
+        preview = `
+          <div class="file-preview-area">
+            <iframe src="${downloadUrl}#toolbar=0" style="width: 100%; height: 600px; border: none; border-radius: 8px;"></iframe>
+          </div>
+        `;
+      }
+      // 音声ファイル
+      else if (ext.match(/^(mp3|wav|ogg|flac|m4a|aac|wma|opus|aiff|aif|ape|alac|ac3|dts|eac3|aape|wv|tta|dsf|dff|dsd|mka|m4b|m4r)$/i)) {
+        console.log('[MAIN] Audio file detected');
+        preview = `
+          <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
+            <div style="font-size: 4rem;"></div>
+            <audio controls style="width: 100%; max-width: 500px;">
+              <source src="${downloadUrl}" type="audio/mpeg">
+              Your browser does not support the audio element.
+            </audio>
+            <p style="color: rgba(255, 255, 255, 0.7);">Audio file: ${fileName}</p>
+          </div>
+        `;
+      }
+      // テキストファイル
+      else if (ext.match(/^(txt|json|xml|html|css|js|py|java|cpp|c|go|rs|rb|php|sql|yaml|yml|md|sh|bash)$/i)) {
+        console.log('[MAIN] Text/Code file detected');
+        preview = `
+          <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
+            <div style="font-size: 3rem;"></div>
+            <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 1rem;">Text/Code file</p>
+            <a href="${downloadUrl}" download style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">Download to View</a>
+          </div>
+        `;
+      }
+      // ドキュメントファイル
+      else if (ext.match(/^(doc|docx|xls|xlsx|ppt|pptx|odt|ods|odp|pages|numbers|keynote)$/i)) {
+        console.log('[MAIN] Document file detected');
+        preview = `
+          <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
+            <div style="font-size: 3rem;"></div>
+            <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 1rem;">Document file</p>
+            <a href="${downloadUrl}" download style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">Download to View</a>
+          </div>
+        `;
+      }
+      // 圧縮ファイル
+      else if (ext.match(/^(zip|rar|7z|tar|gz|bz2|xz|iso|dmg|pkg)$/i)) {
+        console.log('[MAIN] Archive file detected');
+        preview = `
+          <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
+            <div style="font-size: 3rem;"></div>
+            <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 1rem;">Archive file</p>
+            <a href="${downloadUrl}" download style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">Download</a>
+          </div>
+        `;
+      }
+      // その他ファイル
+      else {
+        console.log('[MAIN] Unknown file type, showing download link');
+        preview = `
+          <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
+            <div style="font-size: 3rem;"></div>
+            <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 1rem;">File</p>
+            <a href="${downloadUrl}" download style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">Download file</a>
+          </div>
+        `;
+      }
+
+      item.innerHTML = `
+        <div style="flex: 1; display: flex; flex-direction: column;">
+          <div class="file-item-header">
+            <div class="file-item-info">
+              <div class="file-icon">${getIcon(file.fileName)}</div>
+              <div class="file-details">
+                <h3>${fileName}</h3>
+                <p>${fileSize}</p>
+              </div>
+            </div>
+            <div class="file-item-actions">
+              <a href="${downloadUrl}" download class="file-action-btn">Download</a>
+              <button class="file-action-btn" onclick="navigator.clipboard.writeText('${downloadUrl}'); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy Link', 2000);">Copy Link</button>
             </div>
           </div>
-          <div class="file-item-actions">
-            <a href="${escapeHtml(file.downloadUrl)}" download class="file-action-btn">Download</a>
-            <button class="file-action-btn" onclick="navigator.clipboard.writeText('${escapeHtml(file.downloadUrl)}'); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy Link', 2000);">Copy Link</button>
-          </div>
+          ${preview}
         </div>
-        ${preview}
-      </div>
-    `;
+      `;
 
-    carousel.addItem(item);
+      carousel.addItem(item);
+    }
 
     hideAll();
     document.getElementById('fileViewerContainer').classList.add('show');
