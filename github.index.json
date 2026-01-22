@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "current": 1,
+  "shards": [
+    {
+      "n": 1,
+      "path": "github.0001.json",
+      "createdAt": "2026-01-22T20:52:37.362Z"
+    }
+  ]
+}
