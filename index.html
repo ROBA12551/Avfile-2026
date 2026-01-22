@@ -1722,6 +1722,10 @@ async function uploadFileChunked(file, fileName, onProgress = () => {}) {
     throw error;
   }
 }
+/**
+ * ★ デバッグ版: loadView 関数
+ * ファイル情報を詳細にログ出力
+ */
 async function loadView(viewId) {
   try {
     console.log('[MAIN] Loading view:', viewId);
@@ -1741,10 +1745,18 @@ async function loadView(viewId) {
     
     const allFiles = filesData.files || [];
     console.log('[MAIN] All files:', allFiles);
+    console.log('[MAIN] Number of files:', allFiles.length);
 
     if (!allFiles || allFiles.length === 0) {
       throw new Error('No files found');
     }
+
+    // ★ ファイル情報をテーブルで出力
+    console.table(allFiles.map(f => ({
+      fileName: f.fileName,
+      fileSize: f.fileSize,
+      downloadUrl: f.downloadUrl?.substring(0, 80) + '...'
+    })));
 
     const carousel = new Carousel(
       document.getElementById('carouselTrack'),
@@ -1755,8 +1767,10 @@ async function loadView(viewId) {
     );
 
     // ★ すべてのファイルをカルーセルに追加
-    for (const file of allFiles) {
-      console.log('[MAIN] Processing file:', file.fileName);
+    for (let fileIndex = 0; fileIndex < allFiles.length; fileIndex++) {
+      const file = allFiles[fileIndex];
+      console.log(`\n[MAIN] ========== File ${fileIndex + 1} ==========`);
+      console.log('[MAIN] Full file object:', file);
 
       const item = document.createElement('div');
       item.className = 'carousel-item';
@@ -1771,19 +1785,24 @@ async function loadView(viewId) {
       const proxyUrlEscaped = escapeHtml(proxyUrl);
       const encodedUrl = encodeURIComponent(file.downloadUrl);
 
+      console.log('[MAIN] File name:', fileName);
       console.log('[MAIN] File extension:', ext);
+      console.log('[MAIN] File size:', fileSize);
+      console.log('[MAIN] Download URL:', file.downloadUrl?.substring(0, 100));
       console.log('[MAIN] Proxy URL:', proxyUrl);
 
       // ★ ファイル拡張子に応じたプレビューを生成
       let preview = '';
+      let fileTypeDetected = 'unknown';
 
       // 動画ファイル
       if (ext.match(/^(mp4|webm|ogg|mkv|avi|mov|flv|wmv|m4v|ts|m2ts|mts|3gp|3g2|asf|f4v|m3u8|mxf|mpeg|mpg|vob|ogv)$/i)) {
-        console.log('[MAIN] Video file detected');
+        fileTypeDetected = 'video';
+        console.log('[MAIN] ✓ Video file detected - Extension:', ext);
         preview = `
           <div class="file-preview-area">
             <video controls style="max-width: 100%; max-height: 500px; border-radius: 8px;" crossorigin="anonymous">
-              <source src="${proxyUrlEscaped}" type="video/mp4">
+              <source src="${proxyUrlEscaped}" type="video/${ext === 'mp4' ? 'mp4' : ext === 'webm' ? 'webm' : 'mp4'}">
               Your browser does not support the video tag.
             </video>
           </div>
@@ -1791,19 +1810,21 @@ async function loadView(viewId) {
       }
       // 画像ファイル
       else if (ext.match(/^(jpg|jpeg|png|gif|webp|bmp|svg|ico|tiff|tif|heic|heif|avif|apng|jfif|pjpeg|pjp|raw|cr2|nef|arw|dng)$/i)) {
-        console.log('[MAIN] Image file detected');
+        fileTypeDetected = 'image';
+        console.log('[MAIN] ✓ Image file detected - Extension:', ext);
         preview = `
           <div class="file-preview-area">
-            <img src="${proxyUrlEscaped}" style="max-width: 100%; max-height: 500px; border-radius: 8px;" alt="${fileName}" crossorigin="anonymous" />
+            <img src="${proxyUrlEscaped}" style="max-width: 100%; max-height: 500px; border-radius: 8px;" alt="${fileName}" crossorigin="anonymous" onerror="console.error('[IMG] Error loading image:', this.src)" />
           </div>
         `;
       }
       // PDF ファイル - Google Docs Viewer
       else if (ext.match(/^pdf$/i)) {
-        console.log('[MAIN] PDF file detected');
+        fileTypeDetected = 'pdf';
+        console.log('[MAIN] ✓ PDF file detected');
         preview = `
           <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
-            <div style="font-size: 3rem;">📄</div>
+            <div style="font-size: 3rem;"></div>
             <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 1rem;">PDF Document</p>
             <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
               <a href="https://docs.google.com/viewer?url=${encodedUrl}&embedded=true" target="_blank" rel="noopener noreferrer" style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">View in Google Docs</a>
@@ -1814,11 +1835,12 @@ async function loadView(viewId) {
       }
       // 音声ファイル
       else if (ext.match(/^(mp3|wav|ogg|flac|m4a|aac|wma|opus|aiff|aif|ape|alac|ac3|dts|eac3|aape|wv|tta|dsf|dff|dsd|mka|m4b|m4r)$/i)) {
-        console.log('[MAIN] Audio file detected');
+        fileTypeDetected = 'audio';
+        console.log('[MAIN] ✓ Audio file detected - Extension:', ext);
         preview = `
           <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
-            <div style="font-size: 4rem;">🎵</div>
-            <audio controls style="width: 100%; max-width: 500px;" crossorigin="anonymous">
+            <div style="font-size: 4rem;"></div>
+            <audio controls style="width: 100%; max-width: 500px;" crossorigin="anonymous" onerror="console.error('[AUDIO] Error loading audio:', this.src)">
               <source src="${proxyUrlEscaped}" type="audio/mpeg">
               Your browser does not support the audio element.
             </audio>
@@ -1828,10 +1850,11 @@ async function loadView(viewId) {
       }
       // テキストファイル
       else if (ext.match(/^(txt|json|xml|html|css|js|py|java|cpp|c|go|rs|rb|php|sql|yaml|yml|md|sh|bash|log)$/i)) {
-        console.log('[MAIN] Text/Code file detected');
+        fileTypeDetected = 'text';
+        console.log('[MAIN] ✓ Text file detected - Extension:', ext);
         preview = `
           <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
-            <div style="font-size: 3rem;">📝</div>
+            <div style="font-size: 3rem;"></div>
             <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 1rem;">Text/Code file</p>
             <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
               <a href="${downloadUrl}" target="_blank" rel="noopener noreferrer" style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">View Raw</a>
@@ -1842,10 +1865,11 @@ async function loadView(viewId) {
       }
       // ドキュメントファイル
       else if (ext.match(/^(doc|docx|xls|xlsx|ppt|pptx|odt|ods|odp|pages|numbers|keynote)$/i)) {
-        console.log('[MAIN] Document file detected');
+        fileTypeDetected = 'document';
+        console.log('[MAIN] ✓ Document file detected - Extension:', ext);
         preview = `
           <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
-            <div style="font-size: 3rem;">📊</div>
+            <div style="font-size: 3rem;"></div>
             <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 1rem;">Document file</p>
             <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
               <a href="https://docs.google.com/viewer?url=${encodedUrl}&embedded=true" target="_blank" rel="noopener noreferrer" style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">View in Google Docs</a>
@@ -1856,10 +1880,11 @@ async function loadView(viewId) {
       }
       // 圧縮ファイル
       else if (ext.match(/^(zip|rar|7z|tar|gz|bz2|xz|iso|dmg|pkg)$/i)) {
-        console.log('[MAIN] Archive file detected');
+        fileTypeDetected = 'archive';
+        console.log('[MAIN] ✓ Archive file detected - Extension:', ext);
         preview = `
           <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
-            <div style="font-size: 3rem;">📦</div>
+            <div style="font-size: 3rem;"></div>
             <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 1rem;">Archive file</p>
             <a href="${downloadUrl}" download style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">Download</a>
           </div>
@@ -1867,15 +1892,18 @@ async function loadView(viewId) {
       }
       // その他ファイル
       else {
-        console.log('[MAIN] Unknown file type, showing download link');
+        fileTypeDetected = 'unknown';
+        console.log('[MAIN] ⚠ Unknown file type - Extension:', ext);
         preview = `
           <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
-            <div style="font-size: 3rem;">📁</div>
-            <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 1rem;">File</p>
+            <div style="font-size: 3rem;"></div>
+            <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 1rem;">File (${ext.toUpperCase()})</p>
             <a href="${downloadUrl}" download style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">Download file</a>
           </div>
         `;
       }
+
+      console.log('[MAIN] File type detected:', fileTypeDetected);
 
       item.innerHTML = `
         <div style="flex: 1; display: flex; flex-direction: column;">
@@ -1885,6 +1913,7 @@ async function loadView(viewId) {
               <div class="file-details">
                 <h3>${fileName}</h3>
                 <p>${fileSize}</p>
+                <p style="font-size: 0.8rem; color: rgba(255, 255, 255, 0.5);">Type: ${fileTypeDetected} | Ext: ${ext}</p>
               </div>
             </div>
             <div class="file-item-actions">
@@ -1897,6 +1926,7 @@ async function loadView(viewId) {
       `;
 
       carousel.addItem(item);
+      console.log('[MAIN] ==========================================\n');
     }
 
     hideAll();
@@ -1904,10 +1934,10 @@ async function loadView(viewId) {
 
   } catch (e) {
     console.error('[MAIN] Error:', e.message);
+    console.error('[MAIN] Stack:', e.stack);
     showError('File not found: ' + e.message);
   }
 }
-
 window.addEventListener('beforeunload', () => Cache.clearAll());
 
 // ★ 初期化
