@@ -116,9 +116,9 @@ class VideoCompressor {
         });
       });
 
-      // ★ CoreURLを明示的に指定（CDN から読み込み）
+      // ★ CDN URL を修正（jsDelivr - COEP対応）
       await this.ffmpeg.load({
-        coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/ffmpeg-core.js'
+        coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js'
       });
 
       this.isLoaded = true;
