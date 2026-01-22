@@ -1730,7 +1730,6 @@ async function loadView(viewId) {
   try {
     console.log('[MAIN] Loading view:', viewId);
 
-    // ★ 修正: view Functions を呼び出す
     const filesRes = await fetch(`/.netlify/functions/view?id=${viewId}`);
 
     console.log('[MAIN] Files response status:', filesRes.status);
@@ -1770,6 +1769,7 @@ async function loadView(viewId) {
       const fileName = escapeHtml(file.fileName);
       const downloadUrl = escapeHtml(file.downloadUrl);
       const fileSize = formatSize(file.fileSize || 0);
+      const encodedUrl = encodeURIComponent(file.downloadUrl);
 
       console.log('[MAIN] File extension:', ext);
 
@@ -1797,12 +1797,17 @@ async function loadView(viewId) {
           </div>
         `;
       }
-      // PDF ファイル
+      // PDF ファイル - ★ Google Docs Viewer を使用（COEP対応）
       else if (ext.match(/^pdf$/i)) {
         console.log('[MAIN] PDF file detected');
         preview = `
-          <div class="file-preview-area">
-            <iframe src="${downloadUrl}#toolbar=0" style="width: 100%; height: 600px; border: none; border-radius: 8px;"></iframe>
+          <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
+            <div style="font-size: 3rem;">📄</div>
+            <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 1rem;">PDF Document</p>
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+              <a href="https://docs.google.com/viewer?url=${encodedUrl}&embedded=true" target="_blank" style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">View in Google Docs</a>
+              <a href="${downloadUrl}" download style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">Download PDF</a>
+            </div>
           </div>
         `;
       }
@@ -1811,7 +1816,7 @@ async function loadView(viewId) {
         console.log('[MAIN] Audio file detected');
         preview = `
           <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
-            <div style="font-size: 4rem;"></div>
+            <div style="font-size: 4rem;">🎵</div>
             <audio controls style="width: 100%; max-width: 500px;">
               <source src="${downloadUrl}" type="audio/mpeg">
               Your browser does not support the audio element.
@@ -1820,14 +1825,17 @@ async function loadView(viewId) {
           </div>
         `;
       }
-      // テキストファイル
-      else if (ext.match(/^(txt|json|xml|html|css|js|py|java|cpp|c|go|rs|rb|php|sql|yaml|yml|md|sh|bash)$/i)) {
+      // テキストファイル - ★ オンラインビューアで表示
+      else if (ext.match(/^(txt|json|xml|html|css|js|py|java|cpp|c|go|rs|rb|php|sql|yaml|yml|md|sh|bash|log)$/i)) {
         console.log('[MAIN] Text/Code file detected');
         preview = `
           <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
-            <div style="font-size: 3rem;"></div>
+            <div style="font-size: 3rem;">📝</div>
             <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 1rem;">Text/Code file</p>
-            <a href="${downloadUrl}" download style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">Download to View</a>
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+              <a href="https://raw.githack.com/preview?url=${encodedUrl}" target="_blank" style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">View Online</a>
+              <a href="${downloadUrl}" download style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">Download</a>
+            </div>
           </div>
         `;
       }
@@ -1836,9 +1844,12 @@ async function loadView(viewId) {
         console.log('[MAIN] Document file detected');
         preview = `
           <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
-            <div style="font-size: 3rem;"></div>
+            <div style="font-size: 3rem;">📊</div>
             <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 1rem;">Document file</p>
-            <a href="${downloadUrl}" download style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">Download to View</a>
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+              <a href="https://docs.google.com/viewer?url=${encodedUrl}&embedded=true" target="_blank" style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">View in Google Docs</a>
+              <a href="${downloadUrl}" download style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">Download</a>
+            </div>
           </div>
         `;
       }
@@ -1847,7 +1858,7 @@ async function loadView(viewId) {
         console.log('[MAIN] Archive file detected');
         preview = `
           <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
-            <div style="font-size: 3rem;"></div>
+            <div style="font-size: 3rem;">📦</div>
             <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 1rem;">Archive file</p>
             <a href="${downloadUrl}" download style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">Download</a>
           </div>
@@ -1858,7 +1869,7 @@ async function loadView(viewId) {
         console.log('[MAIN] Unknown file type, showing download link');
         preview = `
           <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
-            <div style="font-size: 3rem;"></div>
+            <div style="font-size: 3rem;">📁</div>
             <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 1rem;">File</p>
             <a href="${downloadUrl}" download style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">Download file</a>
           </div>
@@ -1895,6 +1906,15 @@ async function loadView(viewId) {
     showError('File not found: ' + e.message);
   }
 }
+
+
+
+
+
+
+
+
+
 
 window.addEventListener('beforeunload', () => Cache.clearAll());
 
