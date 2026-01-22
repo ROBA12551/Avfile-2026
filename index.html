@@ -1426,12 +1426,8 @@ async function loadView(viewId) {
   try {
     console.log('[MAIN] Loading view:', viewId);
 
-    // ★ 修正: this を使わずに直接 URL を指定
-    const filesRes = await fetch('/.netlify/functions/github-upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'get-files' })
-    });
+    // ★ 修正: view Functions を呼び出す
+    const filesRes = await fetch(`/.netlify/functions/view?id=${viewId}`);
 
     console.log('[MAIN] Files response status:', filesRes.status);
     
@@ -1444,16 +1440,14 @@ async function loadView(viewId) {
     const filesData = await filesRes.json();
     console.log('[MAIN] Files loaded:', filesData);
     
-    const allFiles = filesData.data?.files || [];
+    const allFiles = filesData.files || [];
     console.log('[MAIN] All files:', allFiles);
 
-    // viewId に合致するファイルを探す
-    const file = allFiles.find(f => f.fileId === viewId);
-    
-    if (!file) {
-      console.error('[MAIN] File not found. ViewId:', viewId, 'Available:', allFiles.map(f => f.fileId));
-      throw new Error('File not found');
+    if (!allFiles || allFiles.length === 0) {
+      throw new Error('No files found');
     }
+
+    const file = allFiles[0];  // 最初のファイルを取得
 
     console.log('[MAIN] Found file:', file);
 
