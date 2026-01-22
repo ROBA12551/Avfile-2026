@@ -923,7 +923,7 @@ class GitHubUploader {
     this.githubToken = null;
   }
 
-async uploadAssetBinary(uploadUrl, fileName, fileObject, fileId, fileSize) {
+async uploadAssetBinary(uploadUrl, fileName, fileObject) {
   console.log('[UPLOAD_BINARY] Uploading...');
   
   const arrayBuffer = await fileObject.arrayBuffer();
