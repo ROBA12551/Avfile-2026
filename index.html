@@ -1302,6 +1302,7 @@ document.getElementById('uploadMoreBtn').onclick = () => { showUpload(); documen
 document.getElementById('openLinkBtn').onclick = () => window.open(document.getElementById('shareUrl').value);
 document.getElementById('retryBtn').onclick = () => { showUpload(); document.getElementById('fileInput').value = ''; };
 document.getElementById('backBtn').onclick = () => showUpload();
+
 async function uploadMultiple(files) {
   showStatus();
   const uploader = new GitHubUploader();
@@ -1312,9 +1313,10 @@ async function uploadMultiple(files) {
     for (let idx = 0; idx < files.length; idx++) {
       const file = files[idx];
       
-      const info = await getUnifiedFileInfo(file, { getFileType: () => 'file' });
+      // ★ 削除: const info = await getUnifiedFileInfo(file, { getFileType: () => 'file' });
+      
       const fileId = 'f_' + Math.random().toString(36).substr(2, 9);
-      const fileName = sanitizeFileName(info.name);
+      const fileName = generateRandomFileName() + '.mp4';  // ★ シンプルに
       const releaseTag = `file_${fileId}`;
 
       console.log(`[FILE_${idx}] Creating release...`);
@@ -1326,10 +1328,6 @@ async function uploadMultiple(files) {
       console.log(`[FILE_${idx}] Complete`);
     }
 
-    // ★ 削除: const view = await uploader.createView(fileIds);
-    // ★ 削除: document.getElementById('shareUrl').value = view.shareUrl;
-
-    // ★ 代わりに固定値を設定
     document.getElementById('shareUrl').value = 'https://avfile.io';
     
     console.log('[UPLOAD] SUCCESS');
