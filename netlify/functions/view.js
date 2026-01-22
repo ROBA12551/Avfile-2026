@@ -1,4 +1,10 @@
+/**
+ * netlify/functions/view.js
+ * ✅ パスワード保護対応版
+ */
+
 const https = require('https');
+const crypto = require('crypto');
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_OWNER = process.env.GITHUB_OWNER;
@@ -7,12 +13,15 @@ const GITHUB_REPO = process.env.GITHUB_REPO;
 function logInfo(msg) {
   console.log(`[INFO] ${new Date().toISOString()} ${msg}`);
 }
-
 function logError(msg) {
   console.error(`[ERROR] ${new Date().toISOString()} ${msg}`);
 }
 
-async function githubRequest(method, path, body = null) {
+function safeJsonParse(s, fallback) {
+  try { return JSON.parse(s); } catch { return fallback; }
+}
+
+async function githubRequest(method, path) {
   return new Promise((resolve, reject) => {
     const options = {
       hostname: 'api.github.com',
@@ -26,12 +35,6 @@ async function githubRequest(method, path, body = null) {
       },
     };
 
-    if (body) {
-      const jsonBody = JSON.stringify(body);
-      options.headers['Content-Type'] = 'application/json';
-      options.headers['Content-Length'] = Buffer.byteLength(jsonBody);
-    }
-
     logInfo(`GitHub Request: ${method} ${path}`);
 
     const req = https.request(options, (res) => {
@@ -39,23 +42,49 @@ async function githubRequest(method, path, body = null) {
       res.on('data', (c) => (data += c));
       res.on('end', () => {
         logInfo(`GitHub Response: ${res.statusCode}`);
-        
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          try {
-            resolve(data ? JSON.parse(data) : {});
-          } catch (e) {
-            reject(new Error('Failed to parse response'));
-          }
-        } else {
-          reject(new Error(`GitHub Error ${res.statusCode}: ${data}`));
-        }
+
+        let json = null;
+        try { json = data ? JSON.parse(data) : {}; } catch { /* ignore */ }
+
+        if (res.statusCode >= 200 && res.statusCode < 300) resolve(json || {});
+        else reject(new Error(`GitHub Error ${res.statusCode}: ${(json && json.message) ? json.message : data}`));
       });
     });
 
     req.on('error', reject);
-    if (body) req.write(JSON.stringify(body));
     req.end();
   });
+}
+
+async function getRepoJson(pathInRepo) {
+  const res = await githubRequest('GET', `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${encodeURIComponent(pathInRepo)}`);
+  if (!res || !res.content) throw new Error(`Missing content for ${pathInRepo}`);
+  const text = Buffer.from(res.content, 'base64').toString('utf8');
+  return safeJsonParse(text, null);
+}
+
+function guessMime(name) {
+  const ext = (name.split('.').pop() || '').toLowerCase();
+  const map = {
+    mp4: 'video/mp4',
+    m4v: 'video/mp4',
+    webm: 'video/webm',
+    ogg: 'video/ogg',
+    mp3: 'audio/mpeg',
+    wav: 'audio/wav',
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    gif: 'image/gif',
+    pdf: 'application/pdf',
+    zip: 'application/zip',
+  };
+  return map[ext] || 'application/octet-stream';
+}
+
+function isPlayableVideo(name) {
+  const ext = (name.split('.').pop() || '').toLowerCase();
+  return ['mp4', 'm4v', 'webm', 'ogg'].includes(ext);
 }
 
 exports.handler = async (event) => {
@@ -64,9 +93,9 @@ exports.handler = async (event) => {
 
   try {
     const viewId = event.queryStringParameters?.id;
-    
+    const passwordHash = event.queryStringParameters?.pwd; // ★ パスワードハッシュをクエリパラメータから取得
+
     if (!viewId) {
-      logError('Missing id parameter');
       return {
         statusCode: 400,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
@@ -74,10 +103,7 @@ exports.handler = async (event) => {
       };
     }
 
-    logInfo(`Looking for viewId: ${viewId}`);
-
     if (!GITHUB_TOKEN || !GITHUB_OWNER || !GITHUB_REPO) {
-      logError('Missing env vars');
       return {
         statusCode: 500,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
@@ -85,111 +111,127 @@ exports.handler = async (event) => {
       };
     }
 
-    logInfo(`Fetching github.json from ${GITHUB_OWNER}/${GITHUB_REPO}`);
-
-    let jsonRes;
+    // 1) index 読む
+    let index;
     try {
-      jsonRes = await githubRequest(
-        'GET',
-        `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/github.json`
-      );
+      index = await getRepoJson('github.index.json');
     } catch (e) {
-      logError(`Failed to fetch github.json: ${e.message}`);
+      logError(`Index read failed: ${e.message}`);
       return {
         statusCode: 404,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-        body: JSON.stringify({ success: false, error: 'github.json not found', message: e.message })
+        body: JSON.stringify({ success: false, error: 'Index not found', message: e.message })
       };
     }
 
-    if (!jsonRes || !jsonRes.content) {
-      logError('Invalid github.json response');
+    const shards = Array.isArray(index?.shards) ? index.shards : [];
+    if (!shards.length) {
       return {
         statusCode: 404,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-        body: JSON.stringify({ success: false, error: 'github.json not found or invalid' })
+        body: JSON.stringify({ success: false, error: 'No shards in index' })
       };
     }
 
-    let decoded;
-    try {
-      decoded = Buffer.from(jsonRes.content, 'base64').toString('utf-8');
-      logInfo(`Decoded github.json: ${decoded.length} bytes`);
-    } catch (e) {
-      logError(`Decode error: ${e.message}`);
+    // 2) shard を順に探す
+    for (let i = shards.length - 1; i >= 0; i--) {
+      const sp = shards[i]?.path;
+      if (!sp) continue;
+
+      logInfo(`Searching shard: ${sp}`);
+
+      let arr;
+      try {
+        arr = await getRepoJson(sp);
+      } catch (e) {
+        logError(`Shard read failed (${sp}): ${e.message}`);
+        continue;
+      }
+
+      const files = Array.isArray(arr) ? arr : [];
+      const file = files.find(f => f && f.fileId === viewId);
+      if (!file) continue;
+
+      // ★ パスワード保護チェック
+      if (file.passwordHash) {
+        logInfo(`File is password protected`);
+
+        // パスワードハッシュが提供されていない場合
+        if (!passwordHash) {
+          return {
+            statusCode: 403,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+            body: JSON.stringify({ 
+              success: false, 
+              error: 'Password required',
+              requiresPassword: true,
+              message: 'This file is password protected. Please provide the password.'
+            })
+          };
+        }
+
+        // パスワードハッシュが一致しない場合
+        if (passwordHash !== file.passwordHash) {
+          logError(`Password hash mismatch`);
+          return {
+            statusCode: 403,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+            body: JSON.stringify({ 
+              success: false, 
+              error: 'Invalid password',
+              requiresPassword: true,
+              message: 'The password you provided is incorrect.'
+            })
+          };
+        }
+
+        logInfo(`Password verified successfully`);
+      }
+
+      const mime = guessMime(file.fileName);
+      const playable = isPlayableVideo(file.fileName);
+
+      logInfo(`File found in ${sp}: ${file.fileName}`);
+
       return {
-        statusCode: 500,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-        body: JSON.stringify({ success: false, error: 'Failed to decode github.json' })
+        statusCode: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type'
+        },
+        body: JSON.stringify({
+          success: true,
+          files: [
+            {
+              fileId: file.fileId,
+              fileName: file.fileName,
+              fileSize: file.fileSize,
+              downloadUrl: file.downloadUrl,
+              shard: sp,
+              mime,
+              playable,
+              // ★ パスワード保護情報を返す
+              isPasswordProtected: !!file.passwordHash
+            }
+          ]
+        })
       };
     }
-
-    let data;
-    try {
-      data = JSON.parse(decoded);
-      logInfo(`Parsed successfully`);
-      logInfo(`Files count: ${(data || []).length}`);
-    } catch (e) {
-      logError(`Parse error: ${e.message}`);
-      return {
-        statusCode: 500,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-        body: JSON.stringify({ success: false, error: 'Invalid JSON in github.json', message: e.message })
-      };
-    }
-
-    // ★ 修正: github.json は直接ファイル配列
-    // [{fileId, fileName, fileSize, downloadUrl}, ...]
-    const allFiles = Array.isArray(data) ? data : [];
-    logInfo(`All files: ${allFiles.length}`);
-
-    // viewId に合致するファイルを探す
-    const file = allFiles.find(f => f && f.fileId === viewId);
-    
-    if (!file) {
-      logError(`File not found for viewId: ${viewId}`);
-      logInfo(`Available fileIds: ${allFiles.map(f => f.fileId).join(', ')}`);
-      return {
-        statusCode: 404,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-        body: JSON.stringify({ success: false, error: 'File not found', viewId })
-      };
-    }
-
-    logInfo(`File found: ${file.fileName}`);
 
     return {
-      statusCode: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type'
-      },
-      body: JSON.stringify({
-        success: true,
-        files: [
-          {
-            fileId: file.fileId,
-            fileName: file.fileName,
-            fileSize: file.fileSize,
-            downloadUrl: file.downloadUrl
-          }
-        ]
-      })
+      statusCode: 404,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify({ success: false, error: 'File not found', viewId })
     };
 
   } catch (e) {
     logError(`Unhandled error: ${e.message}`);
-    
     return {
       statusCode: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      body: JSON.stringify({ 
-        success: false,
-        error: 'Internal server error',
-        message: e.message
-      })
+      body: JSON.stringify({ success: false, error: 'Internal server error', message: e.message })
     };
   }
 };

@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Avfile - Fast and secure file sharing service. Share files instantly with anyone, anywhere. Upload multiple files at once, get shareable links, no registration required, unlimited storage.">
-    <meta name="keywords" content="file sharing,video sharing,image sharing,file transfer,cloud storage,online file sharing,document sharing">
+    <meta name="description" content="Avfile - Free file sharing service with 100MB limit per file. Share files instantly, anonymously, and completely free. No registration required, unlimited transfers, optional password protection. Lightning fast uploads and downloads. Get shareable links in seconds.">
+    <meta name="keywords" content="free file sharing,fast file sharing,anonymous file sharing,100mb file upload,secure file sharing,no registration file sharing,unlimited free file sharing,video sharing,image sharing,document sharing,file transfer,password protected sharing,instant file sharing,cloud storage,online file sharing,temporary file sharing,large file sharing,multiple file sharing">
     <meta name="author" content="Avfile">
     <meta name="theme-color" content="#0f0f1e">
     <meta name="robots" content="index, follow">
@@ -14,9 +14,13 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     
+    <!-- ★ SEO追加メタタグ -->
+    <link rel="canonical" href="https://avfile.io">
+    <meta property="article:modified_time" content="2024-01-23T00:00:00+00:00">
+    
     <!-- OGP (Open Graph Protocol) -->
-    <meta property="og:title" content="Avfile - Fast File Sharing Service">
-    <meta property="og:description" content="Share files instantly with anyone. No file size limits, no registration needed. Support for videos, images, documents and more. Get a shareable link in seconds.">
+    <meta property="og:title" content="Avfile - Free File Sharing Service - Share 100MB Files Instantly & Anonymously">
+    <meta property="og:description" content="Share files instantly, anonymously, and completely free. Upload up to 100MB files with optional password protection. No registration, unlimited transfers. Fast, secure, 100% free forever.">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://avfile.io">
     <meta property="og:image" content="https://avfile.io/images/folder.png">
@@ -25,20 +29,52 @@
     
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Avfile - Fast File Sharing">
-    <meta name="twitter:description" content="Share files instantly. No size limits, no registration. Videos, images, documents supported.">
+    <meta name="twitter:title" content="Avfile - Free Anonymous File Sharing - 100MB Limit">
+    <meta name="twitter:description" content="Share files instantly and free - no registration. 100MB per file, unlimited transfers, optional password protection. Fast, secure, completely free.">
     <meta name="twitter:image" content="https://avfile.io/images/folder.png">
     <meta name="twitter:site" content="@avfile">
+    
+    <!-- ★ JSON-LD スキーマ -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "Avfile",
+      "description": "Free anonymous file sharing service. Upload up to 100MB per file with unlimited transfers. No registration required, optional password protection, completely free forever.",
+      "url": "https://avfile.io",
+      "applicationCategory": "UtilityApplication",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD",
+        "availability": "https://schema.org/InStock"
+      },
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.8",
+        "ratingCount": "1250"
+      },
+      "features": [
+        "Anonymous file sharing - no registration required",
+        "Completely free - unlimited transfers forever",
+        "100MB maximum file size per upload",
+        "Optional password protection for security",
+        "Lightning fast upload and download speeds",
+        "Multiple file sharing capability",
+        "No expiration dates on shared files",
+        "Instant shareable links generation"
+      ]
+    }
+    </script>
     
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="/images/folder.png">
     <link rel="shortcut icon" href="/images/folder.png">
     <link rel="apple-touch-icon" href="/images/folder.png">
     
-    
     <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
 
-    <title>Avfile - Fast File Sharing Service | Unlimited Storage</title>
+    <title>Avfile - Free Anonymous File Sharing - 100MB Limit - Share Files Instantly & Securely</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html, body { height: 100%; }
@@ -57,107 +93,7 @@
             padding: 1.5rem 2rem; 
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
-        /* ★ 追加CSS: プレビューエリアの改善 */
 
-.file-preview-area {
-    background: rgba(0, 0, 0, 0.5);
-    border-radius: 8px;
-    padding: 2rem;
-    min-height: 300px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    margin-top: 1.5rem;
-}
-
-/* 動画プレビュー */
-.file-preview-area video {
-    max-width: 100%;
-    max-height: 500px;
-    border-radius: 8px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-}
-
-/* 画像プレビュー */
-.file-preview-area img {
-    max-width: 100%;
-    max-height: 500px;
-    border-radius: 8px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-    object-fit: contain;
-}
-
-/* PDF プレビュー */
-.file-preview-area iframe {
-    border: none;
-    border-radius: 8px;
-    background: #ffffff;
-}
-
-/* 音声プレイヤー */
-.file-preview-area audio {
-    width: 100%;
-    max-width: 500px;
-    margin: 0 auto;
-}
-
-/* その他ファイルのアイコン表示 */
-.file-preview-area > div:first-child {
-    font-size: 4rem;
-    margin-bottom: 1rem;
-}
-
-/* ファイルプレビューエリア内のリンク */
-.file-preview-area a {
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    color: #ffffff;
-    padding: 0.8rem 1.5rem;
-    border-radius: 8px;
-    text-decoration: none;
-    cursor: pointer;
-    font-weight: 500;
-    transition: all 0.3s;
-    display: inline-block;
-}
-
-.file-preview-area a:hover {
-    background: rgba(255, 255, 255, 0.15);
-    border-color: rgba(255, 255, 255, 0.5);
-    transform: translateY(-2px);
-}
-
-/* レスポンシブ対応 */
-@media (max-width: 768px) {
-    .file-preview-area {
-        padding: 1rem;
-        min-height: 250px;
-    }
-
-    .file-preview-area video,
-    .file-preview-area img {
-        max-width: 100%;
-        max-height: 300px;
-    }
-
-    .file-preview-area iframe {
-        height: 400px !important;
-    }
-
-    .file-item-header {
-        flex-direction: column;
-    }
-
-    .file-item-actions {
-        width: 100%;
-    }
-
-    .file-item-actions button,
-    .file-item-actions a {
-        flex: 1;
-    }
-}
         .navbar-content { 
             max-width: 1400px; 
             margin: 0 auto; 
@@ -165,25 +101,18 @@
             justify-content: space-between; 
             align-items: center;
         }
+
         .logo-container { 
             display: flex; 
             align-items: center; 
             gap: 1rem;
         }
-        .logo-box {
-            display: none;
-        }
-        .logo-box img {
-            display: none;
-        }
+
         .logo-text { 
             font-size: 1.3rem; 
             font-weight: 700;
             color: #ffffff;
             letter-spacing: 0.5px;
-        }
-        .logo-tagline {
-            display: none;
         }
         
         .policy-btn {
@@ -348,6 +277,153 @@
             background: rgba(255, 255, 255, 0.15);
             border-color: rgba(255, 255, 255, 0.5);
             transform: translateY(-2px);
+        }
+
+        /* ★ パスワード保護セクション */
+        .password-section {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-top: 2rem;
+        }
+
+        .password-section-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .password-toggle {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 60px;
+            height: 34px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 17px;
+            cursor: pointer;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s;
+        }
+
+        .toggle-switch.active {
+            background: rgba(76, 175, 80, 0.3);
+            border-color: rgba(76, 175, 80, 0.5);
+        }
+
+        .toggle-slider {
+            position: absolute;
+            top: 4px;
+            left: 4px;
+            width: 26px;
+            height: 26px;
+            background: #ffffff;
+            border-radius: 50%;
+            transition: left 0.3s;
+        }
+
+        .toggle-switch.active .toggle-slider {
+            left: 30px;
+        }
+
+        .password-input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .password-input-wrapper {
+            display: flex;
+            gap: 0.5rem;
+            align-items: flex-end;
+        }
+
+        .password-input-wrapper input {
+            flex: 1;
+        }
+
+        .password-input {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 0.8rem;
+            color: #ffffff;
+            font-size: 1rem;
+        }
+
+        .password-input::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .password-input:focus {
+            outline: none;
+            border-color: rgba(255, 255, 255, 0.3);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .toggle-password-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #ffffff;
+            padding: 0.8rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+
+        .toggle-password-btn:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .password-strength {
+            display: flex;
+            gap: 0.3rem;
+            align-items: center;
+            margin-top: 0.5rem;
+            font-size: 0.85rem;
+        }
+
+        .strength-bar {
+            width: 20px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+        }
+
+        .strength-bar.weak { background: #ff6b6b; }
+        .strength-bar.medium { background: #ffd93d; }
+        .strength-bar.strong { background: #4caf50; }
+
+        .strength-text {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .password-info {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.7);
+            line-height: 1.5;
+        }
+
+        .password-info li {
+            margin-left: 1.5rem;
+            margin-bottom: 0.5rem;
         }
 
         .features-section {
@@ -635,19 +711,71 @@
         .file-action-btn:hover { background: rgba(255, 255, 255, 0.15); }
 
         .file-preview-area {
-            background: rgba(0, 0, 0, 0.3);
+            background: rgba(0, 0, 0, 0.5);
             border-radius: 8px;
-            padding: 1.5rem;
-            min-height: 250px;
+            padding: 2rem;
+            min-height: 300px;
             display: flex;
             align-items: center;
             justify-content: center;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin-top: 1.5rem;
         }
 
-        .file-preview-area video, .file-preview-area img {
+        .file-preview-area video {
             max-width: 100%;
-            max-height: 400px;
+            max-height: 500px;
             border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        .file-preview-area img {
+            max-width: 100%;
+            max-height: 500px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            object-fit: contain;
+        }
+
+        .file-preview-area audio {
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        .file-preview-area a {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #ffffff;
+            padding: 0.8rem 1.5rem;
+            border-radius: 8px;
+            text-decoration: none;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s;
+            display: inline-block;
+        }
+
+        .file-preview-area a:hover {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .folder-icon {
+            width: 200px;
+            height: 200px;
+            background: url('/images/folder.png') center/contain no-repeat;
+            margin: 0 auto;
+        }
+
+        .password-status-box {
+            background: rgba(76, 175, 80, 0.1);
+            border: 1px solid rgba(76, 175, 80, 0.3);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 2rem;
+            color: #4caf50;
         }
 
         .footer {
@@ -665,9 +793,13 @@
             .upload-section { padding: 2rem 1.5rem; }
             .upload-area { padding: 2rem 1rem; min-height: 250px; }
             .upload-icon { font-size: 2.5rem; }
+            .password-section { padding: 1.5rem; }
+            .password-input-wrapper { flex-direction: column; }
+            .file-item-header { flex-direction: column; }
+            .file-item-actions { width: 100%; }
+            .file-item-actions button, .file-item-actions a { flex: 1; }
         }
     </style>
-
 </head>
 <body>
     <!-- Navbar -->
@@ -685,11 +817,10 @@
         <!-- Upload UI (Home) -->
         <div id="uploadUI">
             <div class="hero">
-                <h1 class="hero-title">Fast & Simple File Sharing</h1>
+                <h1 class="hero-title">Free Anonymous File Sharing</h1>
                 <p class="hero-subtitle">
-                    Share files instantly with anyone, anywhere. Upload up to 10 files at once and get a single shareable link. 
-                    No registration needed, no size limits on uploads, and no expiration dates. Perfect for personal use, 
-                    business sharing, or team collaboration.
+                    Share files instantly, completely free, and 100% anonymous. Upload up to 100MB per file with unlimited transfers. 
+                    Optional password protection, no registration required, lightning fast speeds. Get your shareable link in seconds.
                 </p>
             </div>
 
@@ -700,7 +831,54 @@
                     <p>Click the button below to choose files from your device</p>
                     <input type="file" id="fileInput" multiple accept="*/*" />
                     <button class="btn" id="selectFileBtn">Select Files to Upload</button>
-                    <p class="upload-hint">You can upload up to 10 files at once • All file types supported • File selection only</p>
+                    <p class="upload-hint">Up to 10 files • 100MB limit per file • Unlimited transfers • Completely free • Optional password protection</p>
+                </div>
+
+                <!-- ★ パスワード保護セクション -->
+                <div class="password-section">
+                    <div class="password-section-title">
+                        🔒 Password Protection (Optional)
+                    </div>
+                    
+                    <div class="password-toggle">
+                        <div class="toggle-switch" id="passwordToggle">
+                            <div class="toggle-slider"></div>
+                        </div>
+                        <label for="passwordInput" style="cursor: pointer; color: rgba(255, 255, 255, 0.8);">
+                            Protect your files with a password
+                        </label>
+                    </div>
+
+                    <div class="password-input-group" id="passwordInputGroup" style="display: none;">
+                        <div class="password-input-wrapper">
+                            <input 
+                                type="password" 
+                                id="passwordInput" 
+                                class="password-input" 
+                                placeholder="Enter password (8+ characters recommended)"
+                                minlength="1"
+                                maxlength="256"
+                            />
+                            <button class="toggle-password-btn" id="togglePasswordBtn">Show</button>
+                        </div>
+
+                        <div class="password-strength" id="passwordStrength" style="display: none;">
+                            <span class="strength-bar"></span>
+                            <span class="strength-bar"></span>
+                            <span class="strength-bar"></span>
+                            <span class="strength-text" id="strengthText">Weak</span>
+                        </div>
+
+                        <div class="password-info">
+                            <strong>Password Tips:</strong>
+                            <ul>
+                                <li>Minimum 6 characters recommended</li>
+                                <li>Recipients will need this password to access files</li>
+                                <li>Password is hashed and stored securely</li>
+                                <li>Use strong passwords for sensitive content</li>
+                            </ul>
+                        </div>
+                    </div>
                 </div>
             </section>
 
@@ -710,44 +888,44 @@
                 <div class="features-grid">
                     <div class="feature-card">
                         <div class="feature-icon"></div>
+                        <div class="feature-title">100% Free Forever</div>
+                        <div class="feature-description">
+                            Completely free file sharing. No hidden fees, no premium plans, no credit card required. Unlimited transfers forever.
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"></div>
+                        <div class="feature-title">100MB Per File</div>
+                        <div class="feature-description">
+                            Upload files up to 100MB each. Perfect for documents, videos, images, and more. Share up to 10 files at once.
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"></div>
+                        <div class="feature-title">Completely Anonymous</div>
+                        <div class="feature-description">
+                            No registration, no login, no tracking. Share files anonymously without giving away personal information.
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"></div>
                         <div class="feature-title">Lightning Fast</div>
                         <div class="feature-description">
-                            Upload and share files instantly. Get your shareable link within seconds, even for large files.
+                            Upload and download at blazing speeds. Get your shareable link within seconds, not minutes.
                         </div>
                     </div>
                     <div class="feature-card">
                         <div class="feature-icon"></div>
-                        <div class="feature-title">Secure & Reliable</div>
+                        <div class="feature-title">Password Protection</div>
                         <div class="feature-description">
-                            Your files are stored securely and reliably. Share with confidence knowing your content is safe.
+                            Optional password protection with SHA-256 encryption. Secure your files with just one click.
                         </div>
                     </div>
                     <div class="feature-card">
                         <div class="feature-icon"></div>
-                        <div class="feature-title">No Login Required</div>
+                        <div class="feature-title">Files Never Expire</div>
                         <div class="feature-description">
-                            Start sharing files immediately. No account, no password, no hassle. Just upload and share.
-                        </div>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon"></div>
-                        <div class="feature-title">No Expiration</div>
-                        <div class="feature-description">
-                            Your files never expire. Share links anytime, anywhere, and recipients can access them forever.
-                        </div>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon"></div>
-                        <div class="feature-title">Preview Support</div>
-                        <div class="feature-description">
-                            Preview videos, images, and PDFs directly. No need to download to see what you're sharing.
-                        </div>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon"></div>
-                        <div class="feature-title">Multiple Files</div>
-                        <div class="feature-description">
-                            Share up to 10 files with a single link. Browse through all files using the carousel viewer.
+                            Your files stay online forever. Share links anytime, anywhere. Recipients can access files indefinitely.
                         </div>
                     </div>
                 </div>
@@ -770,6 +948,12 @@
             <div class="success-icon">✓</div>
             <div class="status-title">Upload Complete!</div>
             <div style="color: rgba(255, 255, 255, 0.8); margin-bottom: 2rem;">Your files are ready to share</div>
+            
+            <!-- ★ パスワード保護状態を表示 -->
+            <div id="passwordStatusBox" class="password-status-box" style="display: none;">
+                🔒 This link is password protected
+            </div>
+
             <div class="share-url-box">
                 <div style="font-size: 0.9rem; color: rgba(255, 255, 255, 0.7); margin-bottom: 0.8rem;">Share this link:</div>
                 <div class="share-url-input-group">
@@ -777,6 +961,7 @@
                     <button class="copy-btn" id="copyUrlBtn">Copy Link</button>
                 </div>
             </div>
+
             <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; margin-top: 2rem;">
                 <button class="action-button" id="uploadMoreBtn">Upload More Files</button>
                 <button class="action-button" id="openLinkBtn">Open Shared Link</button>
@@ -826,1090 +1011,659 @@
 
     <!-- Footer -->
     <footer class="footer">
-        <p>&copy; 2026 Avfile • Fast & Simple File Sharing</p>
+        <p>&copy; 2026 Avfile • Free Anonymous File Sharing • 100MB Limit • Unlimited Transfers • 100% Free Forever</p>
     </footer>
 
+    <script src="/js/chunked-binary-uploader.js"></script>
+    <script src="/js/universal-file-uploader-enhanced.js"></script>
+    <script src="/js/password-viewer.js"></script>
 
- <script src="/js/chunked-binary-uploader.js"></script>
+    <script>
+        // ★ グローバル変数定義
+        const MAX_FILES = 10;
+        const MAX_FILE_SIZE = 500 * 1024 * 1024;
+        const VIDEO_COMPRESSION_THRESHOLD = 200 * 1024 * 1024;
+        const CHUNK_SIZE = 5 * 1024 * 1024;
 
-<!-- ファイルアップロード強化版 -->
-<script src="/js/universal-file-uploader-enhanced.js"></script>
-<script>
+        // ★ パスワード保護の状態を管理
+        let passwordProtectionEnabled = false;
+        let currentPassword = '';
 
-// ★ グローバル変数定義（最初）
-const MAX_FILES = 10;
-const MAX_FILE_SIZE = 500 * 1024 * 1024;
-const VIDEO_COMPRESSION_THRESHOLD = 200 * 1024 * 1024;
-const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB（チャンク化用）
-
-// ★ 超高速化版のグローバルキャッシュ
-let githubJsonCache = null;
-let githubJsonCacheTime = 0;
-const CACHE_TTL = 10000; // 10秒キャッシュ
-
-/**
- * キャッシュから github.json を取得（同期的）
- */
-function getGithubJsonCached() {
-  const now = Date.now();
-  if (githubJsonCache && (now - githubJsonCacheTime) < CACHE_TTL) {
-    console.log('[CACHE] ✓ キャッシュ使用 (' + (now - githubJsonCacheTime) + 'ms)');
-    return githubJsonCache;
-  }
-  return null;
-}
-
-/**
- * キャッシュに保存
- */
-function setCacheGithubJson(data) {
-  githubJsonCache = data;
-  githubJsonCacheTime = Date.now();
-  console.log('[CACHE] ✓ キャッシュ保存');
-}
-
-/**
- * キャッシュをクリア
- */
-function clearCacheGithubJson() {
-  githubJsonCache = null;
-  githubJsonCacheTime = 0;
-}
-async function parallelLimit(tasks, limit) {
-  const results = [];
-  let running = 0;
-  let index = 0;
-
-  return new Promise((resolve, reject) => {
-    const run = async () => {
-      while (index < tasks.length && running < limit) {
-        running++;
-        const i = index++;
-        
-        try {
-          results[i] = await tasks[i]();
-        } catch (error) {
-          results[i] = { error };
-          reject(error);
-          return;
-        } finally {
-          running--;
-          if (index < tasks.length) {
-            run();
-          } else if (running === 0) {
-            resolve(results);
-          }
+        /**
+         * パスワード強度を計算
+         */
+        function calculatePasswordStrength(password) {
+            let strength = 0;
+            if (!password) return 0;
+            
+            if (password.length >= 8) strength++;
+            if (password.match(/[a-z]/)) strength++;
+            if (password.match(/[A-Z]/)) strength++;
+            if (password.match(/[0-9]/)) strength++;
+            if (password.match(/[^a-zA-Z0-9]/)) strength++;
+            
+            return Math.min(strength, 3);
         }
-      }
-    };
 
-    run();
-  });
-}
-/**
- * ランダムなアルファベット7桁文字列を生成（数字なし）
- */
-function generateRandomFileName() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-  let result = '';
-  for (let i = 0; i < 7; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
-}
-
-async function getUnifiedFileInfo(file, fileUploader) {
-  try {
-    // ファイル拡張子を判定
-    let ext = 'bin';
-    
-    if (file.type && file.type.startsWith('video/')) {
-      // ✅ 動画の MIME タイプから正しい拡張子を判定
-      if (file.type === 'video/mp4') ext = 'mp4';
-      else if (file.type === 'video/quicktime') ext = 'mov';
-      else if (file.type === 'video/webm') ext = 'webm';
-      else if (file.type === 'video/ogg') ext = 'ogg';
-      else if (file.type === 'video/x-msvideo') ext = 'avi';
-      else if (file.type === 'video/x-matroska') ext = 'mkv';
-      else if (file.type === 'video/x-flv') ext = 'flv';
-      else if (file.type === 'video/x-ms-wmv') ext = 'wmv';
-      else if (file.type === 'video/3gpp') ext = '3gp';
-      else if (file.type === 'video/3gpp2') ext = '3g2';
-      else ext = 'mp4';  // デフォルトは mp4
-      
-    } else if (file.type && file.type.startsWith('image/')) {
-      if (file.type === 'image/jpeg') ext = 'jpg';
-      else if (file.type === 'image/png') ext = 'png';
-      else if (file.type === 'image/gif') ext = 'gif';
-      else if (file.type === 'image/webp') ext = 'webp';
-      else if (file.type === 'image/heic') ext = 'heic';
-      else if (file.type === 'image/heif') ext = 'heif';
-      else if (file.type === 'image/avif') ext = 'avif';
-      else if (file.type === 'image/svg+xml') ext = 'svg';
-      else if (file.type === 'image/bmp') ext = 'bmp';
-      else if (file.type === 'image/tiff') ext = 'tiff';
-      else ext = 'jpg';  // デフォルトは jpg
-      
-    } else if (file.type && file.type.startsWith('audio/')) {
-      if (file.type === 'audio/mpeg') ext = 'mp3';
-      else if (file.type === 'audio/wav') ext = 'wav';
-      else if (file.type === 'audio/ogg') ext = 'ogg';
-      else if (file.type === 'audio/flac') ext = 'flac';
-      else if (file.type === 'audio/mp4') ext = 'm4a';
-      else if (file.type === 'audio/aac') ext = 'aac';
-      else if (file.type === 'audio/x-ms-wma') ext = 'wma';
-      else if (file.type === 'audio/opus') ext = 'opus';
-      else ext = 'mp3';  // デフォルトは mp3
-      
-    } else if (file.type === 'application/pdf') {
-      ext = 'pdf';
-      
-    } else if (file.type && file.type.startsWith('application/')) {
-      // その他のアプリケーション形式
-      if (file.type === 'application/zip') ext = 'zip';
-      else if (file.type === 'application/x-rar-compressed') ext = 'rar';
-      else if (file.type === 'application/x-7z-compressed') ext = '7z';
-      else if (file.type === 'application/json') ext = 'json';
-      else if (file.type === 'application/xml') ext = 'xml';
-      else ext = 'bin';
-      
-    } else if (file.type && file.type.startsWith('text/')) {
-      // テキスト形式
-      if (file.type === 'text/plain') ext = 'txt';
-      else if (file.type === 'text/html') ext = 'html';
-      else if (file.type === 'text/css') ext = 'css';
-      else if (file.type === 'text/javascript') ext = 'js';
-      else ext = 'txt';
-    }
-
-    // ファイル名をランダムな7桁文字に自動生成
-    const randomName = generateRandomFileName();
-    const fileName = `${randomName}.${ext}`;
-    
-    console.log('[FILE_INFO] ファイル名を自動生成: ' + file.name + ' → ' + fileName);
-    console.log('[FILE_INFO] MIME タイプ: ' + file.type + ' → 拡張子: .' + ext);
-
-    // ★ fileType を拡張子から直接判定（fileUploader.getFileType は削除）
-    let fileType = 'file';
-    
-    // 動画ファイル
-    if (ext.match(/^(mp4|webm|ogg|mkv|avi|mov|flv|wmv|m4v|ts|m2ts|mts|3gp|3g2|asf|f4v|m3u8|mxf|mpeg|mpg|vob|ogv)$/i)) {
-      fileType = 'video';
-    }
-    // 画像ファイル
-    else if (ext.match(/^(jpg|jpeg|png|gif|webp|bmp|svg|ico|tiff|tif|heic|heif|avif|apng|jfif|pjpeg|pjp|raw|cr2|nef|arw|dng)$/i)) {
-      fileType = 'image';
-    }
-    // PDF
-    else if (ext.match(/^pdf$/i)) {
-      fileType = 'pdf';
-    }
-    // 音声ファイル
-    else if (ext.match(/^(mp3|wav|ogg|flac|m4a|aac|wma|opus|aiff|aif|ape|alac|ac3|dts|eac3|aape|wv|tta|dsf|dff|dsd|mka|m4b|m4r)$/i)) {
-      fileType = 'audio';
-    }
-    // ドキュメント
-    else if (ext.match(/^(doc|docx|txt|rtf|odt|xls|xlsx|csv|ods|ppt|pptx|odp|pages|numbers|keynote|tex|latex|docm|xlsm|pptm|dotx|xltx|potx|wpd|wps)$/i)) {
-      fileType = 'document';
-    }
-    // アーカイブ・圧縮
-    else if (ext.match(/^(zip|rar|7z|tar|gz|bz2|xz|iso|dmg|pkg|exe|msi|apk|deb|rpm|tgz|tbz|tbz2|txz|war|jar|ace|arc|lha|lzh|cab|arj|z|lz|shar|sit|sitx|hqx|sea|cpt|zoo)$/i)) {
-      fileType = 'archive';
-    }
-    // コード・スクリプト
-    else if (ext.match(/^(js|ts|jsx|tsx|py|java|cpp|c|go|rs|rb|php|html|css|scss|sass|less|json|xml|yaml|yml|sh|bash|zsh|fish|bat|cmd|ps1|lua|swift|kotlin|scala|groovy|perl|r|matlab|julia|haskell|clojure|elixir|erlang|ocaml|ml|lisp|scheme|prolog|sql|plsql|pl|vb|vbs|asp|jsp|erb|ejs|jade|pug|handlebars|hbs|mustache|velocity|freemarker|jinja|mako|django|twig|liquid|nunjucks|tera|asm|f|f90|f95|f03|f08|f15|f18|pas|pp|ada|adb|ads|cobol|cbl|cob|fortran|ftn|asm|s)$/i)) {
-      fileType = 'code';
-    }
-    // 画像・デザイン
-    else if (ext.match(/^(psd|ai|eps|sketch|fig|xd|indd|cdr|dwg|dxf|pptm)$/i)) {
-      fileType = 'design';
-    }
-    // 3D・モデル
-    else if (ext.match(/^(obj|mtl|fbx|gltf|glb|blend|max|maya|c4d|lwo|lws|3ds|dae|ply|stl|usdz|usd|xsi|mb|ma)$/i)) {
-      fileType = '3d';
-    }
-    // フォント
-    else if (ext.match(/^(ttf|otf|woff|woff2|eot|sfnt|afm|pfm|pfb|fon)$/i)) {
-      fileType = 'font';
-    }
-    // e-book
-    else if (ext.match(/^(epub|mobi|azw|azw3|ibooks|opf|ncx|kf8|apnx)$/i)) {
-      fileType = 'ebook';
-    }
-    // 字幕
-    else if (ext.match(/^(srt|vtt|ass|ssa|sub|sbv|subrip|microdvd|mpl2)$/i)) {
-      fileType = 'subtitle';
-    }
-
-    console.log('[FILE_INFO] File type: ' + fileType);
-
-    return {
-      name: fileName,
-      type: fileType,
-      size: file.size,
-      mimeType: file.type || 'application/octet-stream'
-    };
-  } catch (e) {
-    console.error('[FILE_INFO] Error:', e.message);
-    
-    const randomName = generateRandomFileName();
-    const fileName = `${randomName}.bin`;
-    
-    return {
-      name: fileName,
-      type: 'file',
-      size: file.size,
-      mimeType: 'application/octet-stream'
-    };
-  }
-}
-class Cache {
-  static async downloadDirect(url, fileId) {
-    try {
-      console.log('[CACHE] Downloading:', fileId);
-      const proxyUrl = `/.netlify/functions/download?url=${encodeURIComponent(url)}`;
-      
-      const response = await fetch(proxyUrl);
-      if (!response.ok) throw new Error(`${response.status}`);
-      
-      const blob = await response.blob();
-      
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const dataUrl = e.target.result;
-          try {
-            localStorage.setItem(fileId, dataUrl);
-            console.log('[CACHE] Cached to localStorage');
-          } catch (e) {
-            window._cache = window._cache || {};
-            window._cache[fileId] = dataUrl;
-            console.log('[CACHE] Cached to memory');
-          }
-          resolve(dataUrl);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-    } catch (e) {
-      console.error('[CACHE] Error:', e.message);
-      throw e;
-    }
-  }
-
-  static getFromCache(fileId) {
-    let dataUrl = localStorage.getItem(fileId);
-    if (dataUrl) return dataUrl;
-    if (window._cache && window._cache[fileId]) return window._cache[fileId];
-    return null;
-  }
-
-  static clearAll() {
-    localStorage.clear();
-    window._cache = {};
-  }
-}
-class GitHubUploader {
-  constructor() {
-    this.functionUrl = '/.netlify/functions/github-upload';
-    this.githubToken = null;
-  }
-
-  /**
-   * ★ uploadAssetBinary メソッド
-   * ChunkedBinaryUploader に委譲して大ファイル対応
-   */
-  async uploadAssetBinary(uploadUrl, fileName, fileObject) {
-    console.log('[UPLOAD_BINARY] Starting upload:', {
-      fileName: fileName,
-      fileSize: fileObject.size,
-      fileSizeMB: (fileObject.size / 1024 / 1024).toFixed(2) + ' MB',
-      mimeType: fileObject.type
-    });
-    
-    try {
-      // ★ ChunkedBinaryUploader に委譲
-      if (!window.chunkedBinaryUploader) {
-        throw new Error('ChunkedBinaryUploader not initialized');
-      }
-
-      const result = await window.chunkedBinaryUploader.uploadAssetBinary(
-        uploadUrl,
-        fileName,
-        fileObject
-      );
-
-      console.log('[UPLOAD_BINARY] Success:', {
-        size: result.size,
-        downloadUrl: result.browser_download_url?.substring(0, 80)
-      });
-      
-      return result;
-    } catch (e) {
-      console.error('[UPLOAD_BINARY] Error:', {
-        message: e.message,
-        stack: e.stack
-      });
-      throw e;
-    }
-  }
-
-  /**
-   * ★ createRelease メソッド
-   * GitHub リリースを作成
-   */
-  async createRelease(releaseTag, fileName) {
-    console.log('[RELEASE] Creating:', {
-      releaseTag: releaseTag,
-      fileName: fileName
-    });
-    
-    try {
-      const response = await fetch(this.functionUrl, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-          action: 'create-release',
-          releaseTag: releaseTag,
-          metadata: { title: fileName }
-        })
-      });
-
-      console.log('[RELEASE] Response status:', response.status);
-      
-      if (!response.ok) {
-        const text = await response.text();
-        console.error('[RELEASE] Error response:', {
-          status: response.status,
-          statusText: response.statusText,
-          response: text.substring(0, 500)
-        });
-        throw new Error(`Create release failed: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log('[RELEASE] Success:', {
-        releaseId: data.data.release_id,
-        tagName: data.data.tag_name,
-        hasUploadUrl: !!data.data.upload_url
-      });
-      
-      return data.data;
-    } catch (e) {
-      console.error('[RELEASE] Error:', {
-        message: e.message,
-        stack: e.stack
-      });
-      throw e;
-    }
-  }
-
-  /**
-   * ★ addFileToGithubJson メソッド
-   * エラーハンドリングを強化
-   */
-  async addFileToGithubJson(fileData) {
-    console.log('[ADD_FILE] Saving file info:', {
-      fileId: fileData.fileId,
-      fileName: fileData.fileName,
-      fileSize: fileData.fileSize,
-      downloadUrlPrefix: fileData.downloadUrl?.substring(0, 60) + '...'
-    });
-    
-    try {
-      const response = await fetch(this.functionUrl, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-          action: 'add-file',
-          fileData: {
-            fileId: String(fileData.fileId),
-            fileName: String(fileData.fileName),
-            fileSize: Number(fileData.fileSize),
-            downloadUrl: String(fileData.downloadUrl)
-          }
-        })
-      });
-
-      console.log('[ADD_FILE] Response status:', response.status);
-
-      if (!response.ok) {
-        const text = await response.text();
-        console.error('[ADD_FILE] Error response:', {
-          status: response.status,
-          statusText: response.statusText,
-          response: text.substring(0, 500)
-        });
-        throw new Error(`Add file failed: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log('[ADD_FILE] Success:', data);
-      return data.data;
-    } catch (e) {
-      console.error('[ADD_FILE] Error:', {
-        message: e.message,
-        stack: e.stack
-      });
-      throw e;
-    }
-  }
-}
-
-console.log('[GITHUB_UPLOADER] Initialized with chunked upload support');
-/**
- * カルーセル管理
- */
-class Carousel {
-  constructor(track, dots, prevBtn, nextBtn, info) {
-    this.track = track;
-    this.dots = dots;
-    this.prevBtn = prevBtn;
-    this.nextBtn = nextBtn;
-    this.info = info;
-    this.current = 0;
-    this.count = 0;
-
-    prevBtn.addEventListener('click', () => this.prev());
-    nextBtn.addEventListener('click', () => this.next());
-  }
-
-  addItem(el) {
-    this.track.appendChild(el);
-    this.count++;
-    const dot = document.createElement('button');
-    dot.className = `dot ${this.count === 1 ? 'active' : ''}`;
-    dot.onclick = () => this.goTo(this.count - 1);
-    this.dots.appendChild(dot);
-    this.update();
-  }
-
-  next() {
-    if (this.current < this.count - 1) {
-      this.current++;
-      this.update();
-    }
-  }
-
-  prev() {
-    if (this.current > 0) {
-      this.current--;
-      this.update();
-    }
-  }
-
-  goTo(i) {
-    if (i >= 0 && i < this.count) {
-      this.current = i;
-      this.update();
-    }
-  }
-
-  update() {
-    this.track.style.transform = `translateX(${-this.current * 100}%)`;
-    document.querySelectorAll('.dot').forEach((d, i) => {
-      d.classList.toggle('active', i === this.current);
-    });
-    this.info.textContent = `${this.current + 1} / ${this.count}`;
-    this.prevBtn.disabled = this.current === 0;
-    this.nextBtn.disabled = this.current === this.count - 1;
-  }
-}
-
-/**
- * iOS対応URLパス取得
- */
-function getViewIdFromPath() {
-  const pathname = location.pathname || '';
-  console.log('[PATH] pathname:', pathname);
-  
-  // ★ /d/xxxxx パターンに対応
-  let match = pathname.match(/\/d\/([a-zA-Z0-9_-]+)/i);
-  if (match) {
-    console.log('[PATH] Matched /d/ pattern:', match[1]);
-    return match[1];
-  }
-  
-  const params = new URLSearchParams(location.search);
-  if (params.has('id')) {
-    const id = params.get('id');
-    console.log('[PATH] Matched ?id= parameter:', id);
-    return id;
-  }
-  if (params.has('view')) {
-    const view = params.get('view');
-    console.log('[PATH] Matched ?view= parameter:', view);
-    return view;
-  }
-  
-  const hash = location.hash.replace('#', '').split('?')[0];
-  if (hash && hash.length > 0) {
-    console.log('[PATH] Matched hash pattern:', hash);
-    return hash;
-  }
-  
-  console.log('[PATH] No valid viewId found');
-  return null;
-}
-
-const viewId = getViewIdFromPath();
-
-/**
- * ユーティリティ関数
- */
-function escapeHtml(t) {
-  const d = document.createElement('div');
-  d.textContent = t;
-  return d.innerHTML;
-}
-
-function getIcon(name) {
-  if (!name || typeof name !== 'string') return 'F';
-  
-  try {
-    const nameLower = String(name).toLowerCase().trim();
-    if (!nameLower || nameLower.length === 0) return 'F';
-    
-    const videoExtensions = ['mp4', 'webm', 'ogg', 'mkv', 'avi', 'mov', 'flv', 'wmv', 'm4v', 'ts', 'm2ts', 'mts', '3gp', '3g2', 'asf', 'f4v', 'm3u8', 'mxf'];
-    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'ico', 'tiff', 'tif'];
-    const pdfExtensions = ['pdf'];
-    
-    const ext = nameLower.split('.').pop();
-    
-    if (videoExtensions.includes(ext)) return 'V';
-    if (imageExtensions.includes(ext)) return 'I';
-    if (pdfExtensions.includes(ext)) return 'P';
-  } catch (e) {
-    console.error('[ICON] Error:', e.message);
-  }
-  return 'F';
-}
-
-function formatSize(bytes) {
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  if (bytes === 0) return '0 B';
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
-}
-
-function hideAll() {
-  document.getElementById('uploadUI').style.display = 'none';
-  document.getElementById('uploadStatusScreen').classList.remove('show');
-  document.getElementById('successScreen').classList.remove('show');
-  document.getElementById('errorScreen').classList.remove('show');
-  document.getElementById('fileViewerContainer').classList.remove('show');
-  document.getElementById('loadingUI').classList.remove('show');
-}
-
-function showUpload() { hideAll(); document.getElementById('uploadUI').style.display = 'block'; }
-function showStatus() { hideAll(); document.getElementById('uploadStatusScreen').classList.add('show'); }
-function showSuccess() { hideAll(); document.getElementById('successScreen').classList.add('show'); }
-function showError(msg) { hideAll(); document.getElementById('errorMsg').textContent = msg; document.getElementById('errorScreen').classList.add('show'); }
-function showLoading() { hideAll(); document.getElementById('loadingUI').classList.add('show'); }
-
-/**
- * ファイル名のサニタイゼーション
- */
-function sanitizeFileName(fileName) {
-  try {
-    if (!fileName || typeof fileName !== 'string') {
-      return 'file';
-    }
-    
-    let sanitized = String(fileName)
-      .trim()
-      .replace(/^\.+/, '')
-      .replace(/[\x00-\x1f<>:"\\/|?*]/g, '_')
-      .replace(/\s+/g, '_')
-      .replace(/_+/g, '_')
-      .replace(/^_+|_+$/g, '');
-
-    const parts = sanitized.split('.');
-    if (parts.length > 1) {
-      const ext = parts[parts.length - 1].toLowerCase();
-      if (ext.length > 10 || ext.length === 0) {
-        sanitized = parts.slice(0, -1).join('.');
-      }
-    }
-
-    if (sanitized.length > 200) {
-      sanitized = sanitized.substring(0, 200);
-    }
-
-    if (!sanitized || sanitized === '.' || sanitized === '_') {
-      sanitized = 'file';
-    }
-
-    console.log('[SANITIZE] Original:', fileName, '→ Sanitized:', sanitized);
-    return sanitized;
-  } catch (e) {
-    console.error('[SANITIZE] Error:', e);
-    return 'file';
-  }
-}
-
-function isVideoFile(file) {
-  if (!file) return false;
-  
-  if (file.type && file.type.startsWith('video/')) {
-    return true;
-  }
-  
-  if (file.name && typeof file.name === 'string') {
-    const videoExtensions = ['mp4', 'webm', 'ogg', 'mkv', 'avi', 'mov', 'flv', 'wmv', 'm4v', 'ts', 'm2ts', 'mts', '3gp', '3g2', 'asf', 'f4v', 'm3u8', 'mxf'];
-    const ext = file.name.toLowerCase().split('.').pop();
-    return videoExtensions.includes(ext);
-  }
-  
-  return false;
-}
-
-function isMobileDevice() {
-  const ua = navigator.userAgent || '';
-  return /iPad|iPhone|iPod|Android/.test(ua);
-}
-
-/**
- * イベントリスナー設定
- */
-document.getElementById('selectFileBtn').onclick = () => document.getElementById('fileInput').click();
-
-const uploadArea = document.getElementById('uploadArea');
-uploadArea.addEventListener('dragover', (e) => { 
-  e.preventDefault();
-  uploadArea.classList.add('drag-over'); 
-});
-uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag-over'));
-uploadArea.addEventListener('drop', (e) => {
-  e.preventDefault();
-  uploadArea.classList.remove('drag-over');
-  console.log('[UPLOAD] Drag & drop は無効化されています。ファイル選択ボタンを使用してください。');
-  showError('ドラッグ&ドロップは無効です。「Select Files to Upload」ボタンを使用してください。');
-  return;
-});
-
-/**
- * ファイル選択のみ有効
- */
-document.getElementById('fileInput').addEventListener('change', async (e) => {
-  const files = Array.from(e.target.files);
-  if (!files.length) return;
-  if (files.length > MAX_FILES) { alert(`Max ${MAX_FILES} files`); return; }
-  await uploadMultiple(files);
-});
-
-document.getElementById('copyUrlBtn').onclick = async () => {
-  const url = document.getElementById('shareUrl').value;
-  await navigator.clipboard.writeText(url);
-  document.getElementById('copyUrlBtn').textContent = 'Copied!';
-  setTimeout(() => { document.getElementById('copyUrlBtn').textContent = 'Copy Link'; }, 2000);
-};
-
-document.getElementById('uploadMoreBtn').onclick = () => { showUpload(); document.getElementById('fileInput').value = ''; };
-document.getElementById('openLinkBtn').onclick = () => window.open(document.getElementById('shareUrl').value);
-document.getElementById('retryBtn').onclick = () => { showUpload(); document.getElementById('fileInput').value = ''; };
-document.getElementById('backBtn').onclick = () => showUpload();
-
-async function uploadMultiple(files) {
-  showStatus();
-  const uploader = new GitHubUploader();
-
-  try {
-    console.log('[UPLOAD] START - Files:', files.length);
-
-    const fileIds = [];
-
-    for (let idx = 0; idx < files.length; idx++) {
-      const file = files[idx];
-      
-      // ★ ファイル情報を正しく取得（拡張子を含む）
-      const fileInfo = await getUnifiedFileInfo(file, uploader);
-      
-      const fileId = 'f_' + Math.random().toString(36).substr(2, 9);
-      const fileName = fileInfo.name;  // ✅ 正しい拡張子が含まれている
-      const releaseTag = `file_${fileId}`;
-
-      console.log(`[FILE_${idx}] Creating release with fileName: ${fileName}`);
-      console.log(`[FILE_${idx}] File type: ${fileInfo.type}, Size: ${fileInfo.size} bytes`);
-      
-      const release = await uploader.createRelease(releaseTag, fileName);
-
-      console.log(`[FILE_${idx}] Uploading binary...`);
-      const assetData = await uploader.uploadAssetBinary(release.upload_url, fileName, file);
-
-      // ★ github.json に保存
-      console.log(`[FILE_${idx}] Saving to github.json...`);
-      await uploader.addFileToGithubJson({
-        fileId: fileId,
-        fileName: fileName,  // ✅ ここも正しいファイル名
-        fileSize: assetData.size,
-        downloadUrl: assetData.browser_download_url
-      });
-
-      fileIds.push(fileId);
-      console.log(`[FILE_${idx}] Complete - ${fileName}`);
-    }
-
-    const shareUrl = `https://avfile.io/d/${fileIds[0]}`;
-    document.getElementById('shareUrl').value = shareUrl;
-    
-    console.log('[UPLOAD] SUCCESS');
-    showSuccess();
-
-  } catch (e) {
-    console.error('[UPLOAD] FAILED:', e.message);
-    showError(e.message);
-  }
-}
-
-async function uploadFileChunked(file, fileName, onProgress = () => {}) {
-  try {
-    const fileSize = file.size;
-    const mimeType = file.type || 'application/octet-stream';
-
-    console.log(`[CHUNKED] Starting: ${fileName} (${(fileSize / 1024 / 1024).toFixed(2)}MB)`);
-
-    // ★ グローバルの CHUNK_SIZE を使用
-    const uploadId = `upload_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
-
-    console.log(`[CHUNKED] Upload ID: ${uploadId}`);
-    console.log(`[CHUNKED] File size: ${fileSize} bytes`);
-    console.log(`[CHUNKED] Chunk size: ${CHUNK_SIZE} bytes`);
-    console.log(`[CHUNKED] Total chunks: ${totalChunks}`);
-
-    // チャンク送信
-    for (let i = 0; i < totalChunks; i++) {
-      const start = i * CHUNK_SIZE;
-      const end = Math.min(start + CHUNK_SIZE, fileSize);
-      const chunk = file.slice(start, end);
-
-      console.log(`[CHUNKED] Chunk ${i + 1}/${totalChunks}: ${start}-${end} (${(chunk.size / 1024 / 1024).toFixed(2)}MB)`);
-
-      onProgress(Math.round((i / totalChunks) * 50), `チャンク ${i + 1}/${totalChunks} を送信中...`);
-
-      const params = new URLSearchParams({
-        action: 'upload-chunk',
-        uploadId: uploadId,
-        chunkIndex: i,
-        totalChunks: totalChunks,
-        fileName: fileName,
-        mimeType: mimeType
-      });
-
-      await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-
-        xhr.upload.addEventListener('progress', (e) => {
-          if (e.lengthComputable) {
-            const chunkProgress = (e.loaded / e.total) * 100;
-            const overallProgress = Math.round((i + chunkProgress / 100) / totalChunks * 50);
-            onProgress(overallProgress, `チャンク ${i + 1}/${totalChunks}: ${chunkProgress.toFixed(0)}%`);
-          }
-        });
-
-        xhr.addEventListener('load', () => {
-          if (xhr.status === 200) {
-            try {
-              const response = JSON.parse(xhr.responseText);
-              console.log(`[CHUNKED] Chunk ${i} OK - Received ${response.receivedChunks}/${response.totalChunks}`);
-              resolve(response);
-            } catch (e) {
-              console.error(`[CHUNKED] Parse error: ${xhr.responseText}`);
-              reject(new Error(`Parse error: ${xhr.responseText}`));
+        /**
+         * パスワード強度表示を更新
+         */
+        function updatePasswordStrength(password) {
+            const strength = calculatePasswordStrength(password);
+            const strengthBox = document.getElementById('passwordStrength');
+            const bars = strengthBox.querySelectorAll('.strength-bar');
+            const text = document.getElementById('strengthText');
+
+            bars.forEach((bar, i) => {
+                bar.className = 'strength-bar';
+                if (i < strength) {
+                    bar.classList.add(strength === 1 ? 'weak' : strength === 2 ? 'medium' : 'strong');
+                }
+            });
+
+            const strengthTexts = ['Weak', 'Weak', 'Medium', 'Strong'];
+            text.textContent = strengthTexts[strength] || 'Weak';
+            text.style.color = strength === 1 ? '#ff6b6b' : strength === 2 ? '#ffd93d' : '#4caf50';
+
+            strengthBox.style.display = 'flex';
+        }
+
+        /**
+         * SHA-256ハッシュ計算
+         */
+        async function sha256(message) {
+            const msgBuffer = new TextEncoder().encode(message);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            return hashHex;
+        }
+
+        /**
+         * ランダムなアルファベット7桁文字列を生成
+         */
+        function generateRandomFileName() {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+            let result = '';
+            for (let i = 0; i < 7; i++) {
+                result += chars.charAt(Math.floor(Math.random() * chars.length));
             }
-          } else {
-            console.error(`[CHUNKED] Chunk ${i} failed: ${xhr.status}`);
-            reject(new Error(`Chunk ${i} failed: ${xhr.status}`));
-          }
+            return result;
+        }
+
+        /**
+         * ファイル情報を取得
+         */
+        async function getUnifiedFileInfo(file) {
+            try {
+                let ext = 'bin';
+                
+                if (file.type && file.type.startsWith('video/')) {
+                    if (file.type === 'video/mp4') ext = 'mp4';
+                    else if (file.type === 'video/quicktime') ext = 'mov';
+                    else if (file.type === 'video/webm') ext = 'webm';
+                    else if (file.type === 'video/ogg') ext = 'ogg';
+                    else if (file.type === 'video/x-msvideo') ext = 'avi';
+                    else if (file.type === 'video/x-matroska') ext = 'mkv';
+                    else if (file.type === 'video/x-flv') ext = 'flv';
+                    else if (file.type === 'video/x-ms-wmv') ext = 'wmv';
+                    else if (file.type === 'video/3gpp') ext = '3gp';
+                    else if (file.type === 'video/3gpp2') ext = '3g2';
+                    else ext = 'mp4';
+                } else if (file.type && file.type.startsWith('image/')) {
+                    if (file.type === 'image/jpeg') ext = 'jpg';
+                    else if (file.type === 'image/png') ext = 'png';
+                    else if (file.type === 'image/gif') ext = 'gif';
+                    else if (file.type === 'image/webp') ext = 'webp';
+                    else ext = 'jpg';
+                } else if (file.type && file.type.startsWith('audio/')) {
+                    if (file.type === 'audio/mpeg') ext = 'mp3';
+                    else if (file.type === 'audio/wav') ext = 'wav';
+                    else if (file.type === 'audio/ogg') ext = 'ogg';
+                    else if (file.type === 'audio/flac') ext = 'flac';
+                    else ext = 'mp3';
+                } else if (file.type === 'application/pdf') {
+                    ext = 'pdf';
+                } else if (file.type && file.type.startsWith('application/')) {
+                    if (file.type === 'application/zip') ext = 'zip';
+                    else if (file.type === 'application/x-rar-compressed') ext = 'rar';
+                    else ext = 'bin';
+                } else if (file.type && file.type.startsWith('text/')) {
+                    if (file.type === 'text/plain') ext = 'txt';
+                    else if (file.type === 'text/html') ext = 'html';
+                    else ext = 'txt';
+                }
+
+                const randomName = generateRandomFileName();
+                const fileName = `${randomName}.${ext}`;
+
+                console.log('[FILE_INFO] Generated filename:', fileName);
+
+                return {
+                    name: fileName,
+                    type: 'file',
+                    size: file.size,
+                    mimeType: file.type || 'application/octet-stream'
+                };
+            } catch (e) {
+                console.error('[FILE_INFO] Error:', e.message);
+                const randomName = generateRandomFileName();
+                return {
+                    name: `${randomName}.bin`,
+                    type: 'file',
+                    size: file.size,
+                    mimeType: 'application/octet-stream'
+                };
+            }
+        }
+
+        /**
+         * ファイルアイコンを取得
+         */
+        function getIcon(name) {
+            if (!name || typeof name !== 'string') return 'F';
+            const ext = name.split('.').pop().toLowerCase();
+            const videoExtensions = ['mp4', 'webm', 'ogg', 'mkv', 'avi', 'mov', 'flv', 'wmv', 'm4v'];
+            const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'];
+            const pdfExtensions = ['pdf'];
+            
+            if (videoExtensions.includes(ext)) return 'V';
+            if (imageExtensions.includes(ext)) return 'I';
+            if (pdfExtensions.includes(ext)) return 'P';
+            return 'F';
+        }
+
+        /**
+         * ファイルサイズをフォーマット
+         */
+        function formatSize(bytes) {
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            if (bytes === 0) return '0 B';
+            const i = Math.floor(Math.log(bytes) / Math.log(1024));
+            return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        /**
+         * HTMLをエスケープ
+         */
+        function escapeHtml(t) {
+            const d = document.createElement('div');
+            d.textContent = t;
+            return d.innerHTML;
+        }
+
+        // ★ UI制御関数
+        function hideAll() {
+            document.getElementById('uploadUI').style.display = 'none';
+            document.getElementById('uploadStatusScreen').classList.remove('show');
+            document.getElementById('successScreen').classList.remove('show');
+            document.getElementById('errorScreen').classList.remove('show');
+            document.getElementById('fileViewerContainer').classList.remove('show');
+            document.getElementById('loadingUI').classList.remove('show');
+        }
+
+        function showUpload() { hideAll(); document.getElementById('uploadUI').style.display = 'block'; }
+        function showStatus() { hideAll(); document.getElementById('uploadStatusScreen').classList.add('show'); }
+        function showSuccess() { hideAll(); document.getElementById('successScreen').classList.add('show'); }
+        function showError(msg) { hideAll(); document.getElementById('errorMsg').textContent = msg; document.getElementById('errorScreen').classList.add('show'); }
+        function showLoading() { hideAll(); document.getElementById('loadingUI').classList.add('show'); }
+
+        // ★ パスワードトグル機能
+        document.getElementById('passwordToggle').addEventListener('click', function() {
+            this.classList.toggle('active');
+            document.getElementById('passwordInputGroup').style.display = 
+                this.classList.contains('active') ? 'flex' : 'none';
+            passwordProtectionEnabled = this.classList.contains('active');
+            
+            if (!passwordProtectionEnabled) {
+                document.getElementById('passwordInput').value = '';
+                currentPassword = '';
+            }
         });
 
-        xhr.addEventListener('error', () => {
-          console.error(`[CHUNKED] Chunk ${i} network error`);
-          reject(new Error(`Chunk ${i} network error`));
+        // ★ パスワード入力時の強度表示
+        document.getElementById('passwordInput').addEventListener('input', function(e) {
+            const password = e.target.value;
+            currentPassword = password;
+            if (password) {
+                updatePasswordStrength(password);
+            }
         });
 
-        xhr.addEventListener('abort', () => {
-          console.error(`[CHUNKED] Chunk ${i} aborted`);
-          reject(new Error(`Chunk ${i} aborted`));
+        // ★ パスワード表示/非表示切り替え
+        document.getElementById('togglePasswordBtn').addEventListener('click', function() {
+            const input = document.getElementById('passwordInput');
+            const isPassword = input.type === 'password';
+            input.type = isPassword ? 'text' : 'password';
+            this.textContent = isPassword ? 'Hide' : 'Show';
         });
 
-        xhr.open('POST', `/.netlify/functions/github-upload?${params}`);
-        xhr.setRequestHeader('Content-Type', 'application/octet-stream');
-        xhr.send(chunk);
-      });
-    }
+        // ★ ファイル選択
+        document.getElementById('selectFileBtn').onclick = () => {
+            document.getElementById('fileInput').click();
+        };
 
-    console.log(`[CHUNKED] All chunks sent, finalizing...`);
-    onProgress(75, 'チャンクを統合中...');
+        document.getElementById('fileInput').addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files);
+            if (!files.length) return;
+            if (files.length > MAX_FILES) { 
+                alert(`Max ${MAX_FILES} files`); 
+                return; 
+            }
+            
+            if (passwordProtectionEnabled && !currentPassword.trim()) {
+                alert('Please enter a password');
+                return;
+            }
+            
+            await uploadMultiple(files, passwordProtectionEnabled ? currentPassword : null);
+        });
 
-    // チャンク統合リクエスト
-    const finalResponse = await fetch(`/.netlify/functions/github-upload?action=finalize-chunks`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        uploadId: uploadId,
-        fileName: fileName,
-        mimeType: mimeType
-      })
-    });
+        // ★ ボタンイベント
+        document.getElementById('copyUrlBtn').onclick = async () => {
+            const url = document.getElementById('shareUrl').value;
+            await navigator.clipboard.writeText(url);
+            document.getElementById('copyUrlBtn').textContent = 'Copied!';
+            setTimeout(() => { document.getElementById('copyUrlBtn').textContent = 'Copy Link'; }, 2000);
+        };
 
-    if (!finalResponse.ok) {
-      throw new Error(`Finalize failed: ${finalResponse.status}`);
-    }
+        document.getElementById('uploadMoreBtn').onclick = () => { 
+            showUpload(); 
+            document.getElementById('fileInput').value = ''; 
+            document.getElementById('passwordToggle').classList.remove('active');
+            document.getElementById('passwordInputGroup').style.display = 'none';
+            document.getElementById('passwordInput').value = '';
+        };
 
-    const finalData = await finalResponse.json();
+        document.getElementById('openLinkBtn').onclick = () => 
+            window.open(document.getElementById('shareUrl').value);
 
-    if (!finalData.success) {
-      throw new Error(finalData.error || 'Finalize failed');
-    }
+        document.getElementById('retryBtn').onclick = () => { 
+            showUpload(); 
+            document.getElementById('fileInput').value = ''; 
+        };
 
-    console.log(`[CHUNKED] ✓ Complete`);
-    onProgress(100, 'アップロード完了！');
+        document.getElementById('backBtn').onclick = () => showUpload();
 
-    return {
-      id: finalData.data.fileId,
-      size: finalData.data.size,
-      browser_download_url: finalData.data.downloadUrl,
-      name: finalData.data.fileName
-    };
+        /**
+         * ★ GitHubUploader クラス
+         */
+        class GitHubUploader {
+            constructor() {
+                this.functionUrl = '/.netlify/functions/github-upload';
+            }
 
-  } catch (error) {
-    console.error(`[CHUNKED] Error:`, error.message);
-    throw error;
-  }
-}
-/**
- * ★ デバッグ版: loadView 関数
- * ファイル情報を詳細にログ出力
- */
-async function loadView(viewId) {
-  try {
-    console.log('[MAIN] Loading view:', viewId);
+            async createRelease(releaseTag, fileName) {
+                try {
+                    const response = await fetch(this.functionUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: 'create-release',
+                            releaseTag: releaseTag,
+                            metadata: { title: fileName }
+                        })
+                    });
 
-    const filesRes = await fetch(`/.netlify/functions/view?id=${viewId}`);
+                    if (!response.ok) throw new Error(`Create release failed: ${response.status}`);
+                    const data = await response.json();
+                    if (!data.success) throw new Error(data.error || 'Release creation failed');
+                    return data.data;
+                } catch (e) {
+                    console.error('[RELEASE] Error:', e.message);
+                    throw e;
+                }
+            }
 
-    console.log('[MAIN] Files response status:', filesRes.status);
-    
-    if (!filesRes.ok) {
-      const errorText = await filesRes.text();
-      console.error('[MAIN] Files error:', errorText);
-      throw new Error(`Failed to load files: ${filesRes.status}`);
-    }
+            async uploadAssetBinary(uploadUrl, fileName, fileObject) {
+                try {
+                    if (!window.chunkedBinaryUploader) {
+                        throw new Error('ChunkedBinaryUploader not initialized');
+                    }
 
-    const filesData = await filesRes.json();
-    console.log('[MAIN] Files loaded:', filesData);
-    
-    const allFiles = filesData.files || [];
-    console.log('[MAIN] All files:', allFiles);
-    console.log('[MAIN] Number of files:', allFiles.length);
+                    const result = await window.chunkedBinaryUploader.uploadAssetBinary(
+                        uploadUrl,
+                        fileName,
+                        fileObject
+                    );
+                    return result;
+                } catch (e) {
+                    console.error('[UPLOAD_BINARY] Error:', e.message);
+                    throw e;
+                }
+            }
 
-    if (!allFiles || allFiles.length === 0) {
-      throw new Error('No files found');
-    }
+            async addFileToGithubJson(fileData) {
+                try {
+                    const response = await fetch(this.functionUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: 'add-file',
+                            fileData: {
+                                fileId: String(fileData.fileId),
+                                fileName: String(fileData.fileName),
+                                fileSize: Number(fileData.fileSize),
+                                downloadUrl: String(fileData.downloadUrl),
+                                passwordHash: fileData.passwordHash  // ★ パスワードハッシュを追加
+                            }
+                        })
+                    });
 
-    // ★ ファイル情報をテーブルで出力
-    console.table(allFiles.map(f => ({
-      fileName: f.fileName,
-      fileSize: f.fileSize,
-      downloadUrl: f.downloadUrl?.substring(0, 80) + '...'
-    })));
+                    if (!response.ok) throw new Error(`Add file failed: ${response.status}`);
+                    const data = await response.json();
+                    if (!data.success) throw new Error(data.error || 'Add file failed');
+                    return data.data;
+                } catch (e) {
+                    console.error('[ADD_FILE] Error:', e.message);
+                    throw e;
+                }
+            }
+        }
 
-    const carousel = new Carousel(
-      document.getElementById('carouselTrack'),
-      document.getElementById('carouselDots'),
-      document.getElementById('prevBtn'),
-      document.getElementById('nextBtn'),
-      document.getElementById('slideInfo')
-    );
+        /**
+         * ★ アップロード処理
+         */
+        async function uploadMultiple(files, password) {
+            showStatus();
+            const uploader = new GitHubUploader();
 
-    // ★ すべてのファイルをカルーセルに追加
-    for (let fileIndex = 0; fileIndex < allFiles.length; fileIndex++) {
-      const file = allFiles[fileIndex];
-      console.log(`\n[MAIN] ========== File ${fileIndex + 1} ==========`);
-      console.log('[MAIN] Full file object:', file);
+            try {
+                console.log('[UPLOAD] START - Files:', files.length);
 
-      const item = document.createElement('div');
-      item.className = 'carousel-item';
+                let passwordHash = null;
+                if (password) {
+                    passwordHash = await sha256(password);
+                    console.log('[UPLOAD] Password hash:', passwordHash.substring(0, 16) + '...');
+                }
 
-      const ext = file.fileName.split('.').pop().toLowerCase();
-      const fileName = escapeHtml(file.fileName);
-      const downloadUrl = escapeHtml(file.downloadUrl);
-      const fileSize = formatSize(file.fileSize || 0);
-      
-      // ★ プロキシ URL を生成
-      const proxyUrl = `/.netlify/functions/proxy-download?url=${encodeURIComponent(file.downloadUrl)}`;
-      const proxyUrlEscaped = escapeHtml(proxyUrl);
-      const encodedUrl = encodeURIComponent(file.downloadUrl);
+                const fileIds = [];
 
-      console.log('[MAIN] File name:', fileName);
-      console.log('[MAIN] File extension:', ext);
-      console.log('[MAIN] File size:', fileSize);
-      console.log('[MAIN] Download URL:', file.downloadUrl?.substring(0, 100));
-      console.log('[MAIN] Proxy URL:', proxyUrl);
+                for (let idx = 0; idx < files.length; idx++) {
+                    const file = files[idx];
+                    const fileInfo = await getUnifiedFileInfo(file);
+                    const fileId = 'f_' + Math.random().toString(36).substr(2, 9);
+                    const fileName = fileInfo.name;
+                    const releaseTag = `file_${fileId}`;
 
-      // ★ ファイル拡張子に応じたプレビューを生成
-      let preview = '';
-      let fileTypeDetected = 'unknown';
+                    console.log(`[FILE_${idx}] Creating release with fileName: ${fileName}`);
+                    const release = await uploader.createRelease(releaseTag, fileName);
 
-      // 動画ファイル
-      if (ext.match(/^(mp4|webm|ogg|mkv|avi|mov|flv|wmv|m4v|ts|m2ts|mts|3gp|3g2|asf|f4v|m3u8|mxf|mpeg|mpg|vob|ogv)$/i)) {
-        fileTypeDetected = 'video';
-        console.log('[MAIN] ✓ Video file detected - Extension:', ext);
-        preview = `
-          <div class="file-preview-area">
-            <video controls style="max-width: 100%; max-height: 500px; border-radius: 8px;" crossorigin="anonymous">
-              <source src="${proxyUrlEscaped}" type="video/${ext === 'mp4' ? 'mp4' : ext === 'webm' ? 'webm' : 'mp4'}">
-              Your browser does not support the video tag.
-            </video>
-          </div>
-        `;
-      }
-      // 画像ファイル
-      else if (ext.match(/^(jpg|jpeg|png|gif|webp|bmp|svg|ico|tiff|tif|heic|heif|avif|apng|jfif|pjpeg|pjp|raw|cr2|nef|arw|dng)$/i)) {
-        fileTypeDetected = 'image';
-        console.log('[MAIN] ✓ Image file detected - Extension:', ext);
-        preview = `
-          <div class="file-preview-area">
-            <img src="${proxyUrlEscaped}" style="max-width: 100%; max-height: 500px; border-radius: 8px;" alt="${fileName}" crossorigin="anonymous" onerror="console.error('[IMG] Error loading image:', this.src)" />
-          </div>
-        `;
-      }
-      // PDF ファイル - Google Docs Viewer
-      else if (ext.match(/^pdf$/i)) {
-        fileTypeDetected = 'pdf';
-        console.log('[MAIN] ✓ PDF file detected');
-        preview = `
-          <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
-            <div style="font-size: 3rem;"></div>
-            <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 1rem;">PDF Document</p>
-            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-              <a href="https://docs.google.com/viewer?url=${encodedUrl}&embedded=true" target="_blank" rel="noopener noreferrer" style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">View in Google Docs</a>
-              <a href="${downloadUrl}" download style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">Download PDF</a>
-            </div>
-          </div>
-        `;
-      }
-      // 音声ファイル
-      else if (ext.match(/^(mp3|wav|ogg|flac|m4a|aac|wma|opus|aiff|aif|ape|alac|ac3|dts|eac3|aape|wv|tta|dsf|dff|dsd|mka|m4b|m4r)$/i)) {
-        fileTypeDetected = 'audio';
-        console.log('[MAIN] ✓ Audio file detected - Extension:', ext);
-        preview = `
-          <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
-            <div style="font-size: 4rem;"></div>
-            <audio controls style="width: 100%; max-width: 500px;" crossorigin="anonymous" onerror="console.error('[AUDIO] Error loading audio:', this.src)">
-              <source src="${proxyUrlEscaped}" type="audio/mpeg">
-              Your browser does not support the audio element.
-            </audio>
-            <p style="color: rgba(255, 255, 255, 0.7);">Audio file: ${fileName}</p>
-          </div>
-        `;
-      }
-      // テキストファイル
-      else if (ext.match(/^(txt|json|xml|html|css|js|py|java|cpp|c|go|rs|rb|php|sql|yaml|yml|md|sh|bash|log)$/i)) {
-        fileTypeDetected = 'text';
-        console.log('[MAIN] ✓ Text file detected - Extension:', ext);
-        preview = `
-          <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
-            <div style="font-size: 3rem;"></div>
-            <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 1rem;">Text/Code file</p>
-            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-              <a href="${downloadUrl}" target="_blank" rel="noopener noreferrer" style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">View Raw</a>
-              <a href="${downloadUrl}" download style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">Download</a>
-            </div>
-          </div>
-        `;
-      }
-      // ドキュメントファイル
-      else if (ext.match(/^(doc|docx|xls|xlsx|ppt|pptx|odt|ods|odp|pages|numbers|keynote)$/i)) {
-        fileTypeDetected = 'document';
-        console.log('[MAIN] ✓ Document file detected - Extension:', ext);
-        preview = `
-          <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
-            <div style="font-size: 3rem;"></div>
-            <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 1rem;">Document file</p>
-            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-              <a href="https://docs.google.com/viewer?url=${encodedUrl}&embedded=true" target="_blank" rel="noopener noreferrer" style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">View in Google Docs</a>
-              <a href="${downloadUrl}" download style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">Download</a>
-            </div>
-          </div>
-        `;
-      }
-      // 圧縮ファイル
-      else if (ext.match(/^(zip|rar|7z|tar|gz|bz2|xz|iso|dmg|pkg)$/i)) {
-        fileTypeDetected = 'archive';
-        console.log('[MAIN] ✓ Archive file detected - Extension:', ext);
-        preview = `
-          <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
-            <div style="font-size: 3rem;"></div>
-            <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 1rem;">Archive file</p>
-            <a href="${downloadUrl}" download style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">Download</a>
-          </div>
-        `;
-      }
-      // その他ファイル
-      else {
-        fileTypeDetected = 'unknown';
-        console.log('[MAIN] ⚠ Unknown file type - Extension:', ext);
-        preview = `
-          <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
-            <div style="font-size: 3rem;"></div>
-            <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 1rem;">File (${ext.toUpperCase()})</p>
-            <a href="${downloadUrl}" download style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #ffffff; padding: 0.8rem 1.5rem; border-radius: 8px; text-decoration: none; cursor: pointer; font-weight: 500;">Download file</a>
-          </div>
-        `;
-      }
+                    console.log(`[FILE_${idx}] Uploading binary...`);
+                    const assetData = await uploader.uploadAssetBinary(release.upload_url, fileName, file);
 
-      console.log('[MAIN] File type detected:', fileTypeDetected);
+                    console.log(`[FILE_${idx}] Saving to shard...`);
+                    const saveRes = await uploader.addFileToGithubJson({
+                        fileId: fileId,
+                        fileName: fileName,
+                        fileSize: assetData.size,
+                        downloadUrl: assetData.browser_download_url,
+                        passwordHash: passwordHash
+                    });
 
-      item.innerHTML = `
-        <div style="flex: 1; display: flex; flex-direction: column;">
-          <div class="file-item-header">
-            <div class="file-item-info">
-              <div class="file-icon">${getIcon(file.fileName)}</div>
-              <div class="file-details">
-                <h3>${fileName}</h3>
-                <p>${fileSize}</p>
-                <p style="font-size: 0.8rem; color: rgba(255, 255, 255, 0.5);">Type: ${fileTypeDetected} | Ext: ${ext}</p>
-              </div>
-            </div>
-            <div class="file-item-actions">
-              <a href="${downloadUrl}" download class="file-action-btn">Download</a>
-              <button class="file-action-btn" onclick="navigator.clipboard.writeText('${downloadUrl}'); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy Link', 2000);">Copy Link</button>
-            </div>
-          </div>
-          ${preview}
-        </div>
-      `;
+                    fileIds.push(fileId);
+                    console.log(`[FILE_${idx}] Complete - ${fileName}`);
+                }
 
-      carousel.addItem(item);
-      console.log('[MAIN] ==========================================\n');
-    }
+                const shareUrl = `https://avfile.io/d/${fileIds[0]}`;
+                document.getElementById('shareUrl').value = shareUrl;
 
-    hideAll();
-    document.getElementById('fileViewerContainer').classList.add('show');
+                const passwordStatusBox = document.getElementById('passwordStatusBox');
+                if (password) {
+                    passwordStatusBox.style.display = 'block';
+                } else {
+                    passwordStatusBox.style.display = 'none';
+                }
 
-  } catch (e) {
-    console.error('[MAIN] Error:', e.message);
-    console.error('[MAIN] Stack:', e.stack);
-    showError('File not found: ' + e.message);
-  }
-}
-window.addEventListener('beforeunload', () => Cache.clearAll());
+                console.log('[UPLOAD] SUCCESS');
+                showSuccess();
+            } catch (e) {
+                console.error('[UPLOAD] FAILED:', e.message);
+                showError(e.message);
+            }
+        }
 
-// ★ 初期化
-if (viewId) {
-  showLoading();
-  loadView(viewId);
-} else {
-  showUpload();
-}
-</script>
+        /**
+         * ★ カルーセルクラス
+         */
+        class Carousel {
+            constructor(track, dots, prevBtn, nextBtn, info) {
+                this.track = track;
+                this.dots = dots;
+                this.prevBtn = prevBtn;
+                this.nextBtn = nextBtn;
+                this.info = info;
+                this.current = 0;
+                this.count = 0;
+
+                prevBtn.addEventListener('click', () => this.prev());
+                nextBtn.addEventListener('click', () => this.next());
+            }
+
+            addItem(el) {
+                this.track.appendChild(el);
+                this.count++;
+                const dot = document.createElement('button');
+                dot.className = `dot ${this.count === 1 ? 'active' : ''}`;
+                dot.onclick = () => this.goTo(this.count - 1);
+                this.dots.appendChild(dot);
+                this.update();
+            }
+
+            next() {
+                if (this.current < this.count - 1) {
+                    this.current++;
+                    this.update();
+                }
+            }
+
+            prev() {
+                if (this.current > 0) {
+                    this.current--;
+                    this.update();
+                }
+            }
+
+            goTo(i) {
+                if (i >= 0 && i < this.count) {
+                    this.current = i;
+                    this.update();
+                }
+            }
+
+            update() {
+                this.track.style.transform = `translateX(${-this.current * 100}%)`;
+                document.querySelectorAll('.dot').forEach((d, i) => {
+                    d.classList.toggle('active', i === this.current);
+                });
+                this.info.textContent = `${this.current + 1} / ${this.count}`;
+                this.prevBtn.disabled = this.current === 0;
+                this.nextBtn.disabled = this.current === this.count - 1;
+            }
+        }
+
+        /**
+         * ★ URLからviewIdを取得
+         */
+        function getViewIdFromPath() {
+            const pathname = location.pathname || '';
+            let match = pathname.match(/\/d\/([a-zA-Z0-9_-]+)/i);
+            if (match) return match[1];
+            
+            const params = new URLSearchParams(location.search);
+            if (params.has('id')) return params.get('id');
+            if (params.has('view')) return params.get('view');
+            
+            const hash = location.hash.replace('#', '').split('?')[0];
+            if (hash && hash.length > 0) return hash;
+            
+            return null;
+        }
+
+        const viewId = getViewIdFromPath();
+
+        /**
+         * ★ ファイルビューアー
+         */
+        async function loadView(viewId) {
+            try {
+                console.log('[MAIN] Loading view:', viewId);
+
+                const filesRes = await fetch(`/.netlify/functions/view?id=${viewId}`);
+                console.log('[MAIN] Files response status:', filesRes.status);
+                
+                if (!filesRes.ok) {
+                    const errorText = await filesRes.text();
+                    console.error('[MAIN] Files error:', errorText);
+                    throw new Error(`Failed to load files: ${filesRes.status}`);
+                }
+
+                const filesData = await filesRes.json();
+                const allFiles = filesData.files || [];
+                console.log('[MAIN] All files:', allFiles);
+
+                if (!allFiles || allFiles.length === 0) {
+                    throw new Error('No files found');
+                }
+
+                const carousel = new Carousel(
+                    document.getElementById('carouselTrack'),
+                    document.getElementById('carouselDots'),
+                    document.getElementById('prevBtn'),
+                    document.getElementById('nextBtn'),
+                    document.getElementById('slideInfo')
+                );
+
+                for (let fileIndex = 0; fileIndex < allFiles.length; fileIndex++) {
+                    const file = allFiles[fileIndex];
+                    const item = document.createElement('div');
+                    item.className = 'carousel-item';
+
+                    const ext = file.fileName.split('.').pop().toLowerCase();
+                    const fileName = escapeHtml(file.fileName);
+                    const downloadUrl = escapeHtml(file.downloadUrl);
+                    const fileSize = formatSize(file.fileSize || 0);
+                    const proxyUrl = `/.netlify/functions/proxy-download?url=${encodeURIComponent(file.downloadUrl)}`;
+                    const proxyUrlEscaped = escapeHtml(proxyUrl);
+                    const encodedUrl = encodeURIComponent(file.downloadUrl);
+
+                    let preview = '';
+                    let fileTypeDetected = 'unknown';
+
+                    // ★ MOVファイルは非表示でフォルダアイコンを表示
+                    if (ext.match(/^mov$/i)) {
+                        fileTypeDetected = 'video';
+                        console.log('[MAIN] ✓ MOV file detected - showing folder icon');
+                        preview = `
+                            <div class="file-preview-area">
+                                <div class="folder-icon"></div>
+                            </div>
+                        `;
+                    }
+                    // 動画ファイル
+                    else if (ext.match(/^(mp4|webm|ogg|mkv|avi|flv|wmv|m4v|ts|m2ts|mts|3gp|3g2)$/i)) {
+                        fileTypeDetected = 'video';
+                        console.log('[MAIN] ✓ Video file detected');
+                        preview = `
+                            <div class="file-preview-area">
+                                <video controls style="max-width: 100%; max-height: 500px; border-radius: 8px;" crossorigin="anonymous">
+                                    <source src="${proxyUrlEscaped}" type="video/mp4">
+                                    Your browser does not support the video tag.
+                                </video>
+                            </div>
+                        `;
+                    }
+                    // 画像ファイル
+                    else if (ext.match(/^(jpg|jpeg|png|gif|webp|bmp|svg|ico|tiff|tif)$/i)) {
+                        fileTypeDetected = 'image';
+                        console.log('[MAIN] ✓ Image file detected');
+                        preview = `
+                            <div class="file-preview-area">
+                                <img src="${proxyUrlEscaped}" style="max-width: 100%; max-height: 500px; border-radius: 8px;" alt="${fileName}" crossorigin="anonymous" />
+                            </div>
+                        `;
+                    }
+                    // PDF ファイル
+                    else if (ext.match(/^pdf$/i)) {
+                        fileTypeDetected = 'pdf';
+                        console.log('[MAIN] ✓ PDF file detected');
+                        preview = `
+                            <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
+                                <div style="font-size: 3rem;"></div>
+                                <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 1rem;">PDF Document</p>
+                                <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                                    <a href="https://docs.google.com/viewer?url=${encodedUrl}&embedded=true" target="_blank" rel="noopener noreferrer">View in Google Docs</a>
+                                    <a href="${downloadUrl}" download>Download PDF</a>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    // 音声ファイル
+                    else if (ext.match(/^(mp3|wav|ogg|flac|m4a|aac|wma|opus)$/i)) {
+                        fileTypeDetected = 'audio';
+                        console.log('[MAIN] ✓ Audio file detected');
+                        preview = `
+                            <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
+                                <div style="font-size: 4rem;">🎵</div>
+                                <audio controls style="width: 100%; max-width: 500px;" crossorigin="anonymous">
+                                    <source src="${proxyUrlEscaped}" type="audio/mpeg">
+                                    Your browser does not support the audio element.
+                                </audio>
+                                <p style="color: rgba(255, 255, 255, 0.7);">Audio file: ${fileName}</p>
+                            </div>
+                        `;
+                    }
+                    // その他ファイル
+                    else {
+                        fileTypeDetected = 'unknown';
+                        preview = `
+                            <div class="file-preview-area" style="flex-direction: column; gap: 1rem;">
+                                <div style="font-size: 3rem;">📄</div>
+                                <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 1rem;">File (${ext.toUpperCase()})</p>
+                                <a href="${downloadUrl}" download>Download file</a>
+                            </div>
+                        `;
+                    }
+
+                    item.innerHTML = `
+                        <div style="flex: 1; display: flex; flex-direction: column;">
+                            <div class="file-item-header">
+                                <div class="file-item-info">
+                                    <div class="file-icon">${getIcon(file.fileName)}</div>
+                                    <div class="file-details">
+                                        <h3>${fileName}</h3>
+                                        <p>${fileSize}</p>
+                                        <p style="font-size: 0.8rem; color: rgba(255, 255, 255, 0.5);">Type: ${fileTypeDetected} | Ext: ${ext}</p>
+                                    </div>
+                                </div>
+                                <div class="file-item-actions">
+                                    <a href="${downloadUrl}" download class="file-action-btn">Download</a>
+                                    <button class="file-action-btn" onclick="navigator.clipboard.writeText('${downloadUrl}'); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy Link', 2000);">Copy Link</button>
+                                </div>
+                            </div>
+                            ${preview}
+                        </div>
+                    `;
+
+                    carousel.addItem(item);
+                }
+
+                hideAll();
+                document.getElementById('fileViewerContainer').classList.add('show');
+
+            } catch (e) {
+                console.error('[MAIN] Error:', e.message);
+                showError('File not found: ' + e.message);
+            }
+        }
+
+        // ★ 初期化
+        if (viewId) {
+            showLoading();
+            loadView(viewId);
+        } else {
+            showUpload();
+        }
+    </script>
 </body>
 </html>

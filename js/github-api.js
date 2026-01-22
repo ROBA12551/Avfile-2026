@@ -1,6 +1,8 @@
-class GitHubUploader {
-  constructor() {
-    this.functionUrl = '/.netlify/functions/github-upload';
+// js/github-api.js
+export class GitHubUploader {
+  constructor(functionBase = '/.netlify/functions/github-upload') {
+    this.functionUrl = functionBase;
+    this.base = functionBase;
   }
 
   /**
@@ -11,7 +13,6 @@ class GitHubUploader {
       if (!fileName || typeof fileName !== 'string') {
         return 'file';
       }
-
       let sanitized = String(fileName)
         .trim()
         .replace(/^\.+/, '') // 先頭のドットを削除
@@ -50,11 +51,11 @@ class GitHubUploader {
   /**
    * Release を作成
    */
-  async createRelease(releaseTag, fileName, description) {
+  async createRelease(releaseTag, titleOrFileName, description = '') {
     try {
-      // ★ 修正: ファイル名をサニタイズ
-      const sanitizedFileName = this.sanitizeFileName(fileName);
-
+      // ★ サニタイズ処理
+      const sanitizedFileName = this.sanitizeFileName(titleOrFileName);
+      
       const response = await fetch(this.functionUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -86,23 +87,57 @@ class GitHubUploader {
   }
 
   /**
-   * Asset（ファイル）をアップロード - iOS対応版
+   * Asset（ファイル）をアップロード - Binary形式
+   * （シンプル版の uploadAssetBinary に対応）
+   */
+  async uploadAssetBinary(uploadUrl, fileName, file) {
+    try {
+      const isBase64 = false;
+      const arrayBuffer = await file.arrayBuffer();
+      const body = new Uint8Array(arrayBuffer);
+
+      const res = await fetch(this.functionUrl, {
+        method: 'POST',
+        headers: {
+          'x-upload-url': uploadUrl,
+          'x-file-name': encodeURIComponent(fileName),
+          'x-is-base64': String(isBase64),
+        },
+        body,
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || 'upload failed');
+      }
+
+      // github-upload.js は download_url, name, size を返す
+      return {
+        browser_download_url: json.data.download_url,
+        name: json.data.name,
+        size: json.data.size,
+      };
+    } catch (error) {
+      console.error('❌ Binary upload error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Asset（ファイル）をアップロード - Base64形式（iOS対応版）
    */
   async uploadAsset(uploadUrl, fileName, base64Data) {
     try {
-      // ★ 修正: ファイル名をサニタイズ
       const sanitizedFileName = this.sanitizeFileName(fileName);
-
       console.log('[UPLOAD_ASSET] Original fileName:', fileName);
       console.log('[UPLOAD_ASSET] Sanitized fileName:', sanitizedFileName);
       console.log('[UPLOAD_ASSET] Base64 length:', base64Data ? base64Data.length : 0);
 
-      // ★ 修正: base64Data のバリデーション
+      // バリデーション
       if (!base64Data || typeof base64Data !== 'string') {
         throw new Error('Invalid base64 data provided');
       }
 
-      // ★ 修正: uploadUrl のバリデーション
       if (!uploadUrl || typeof uploadUrl !== 'string') {
         throw new Error('Invalid uploadUrl provided');
       }
@@ -113,10 +148,10 @@ class GitHubUploader {
         body: JSON.stringify({
           action: 'upload-asset',
           uploadUrl: uploadUrl,
-          fileName: sanitizedFileName,  // ★ サニタイズされたファイル名を使用
+          fileName: sanitizedFileName,
           fileBase64: base64Data,
-          fileId: 'auto',  // サーバー側で生成
-          fileSize: base64Data.length * 0.75, // Base64は25%大きいため
+          fileId: 'auto',
+          fileSize: base64Data.length * 0.75,
         }),
       });
 
@@ -171,26 +206,56 @@ class GitHubUploader {
   }
 
   /**
+   * ファイルを github.json に追加（シンプル版の addFileToGithubJson に対応）
+   */
+  async addFileToGithubJson(fileData) {
+    try {
+      const res = await fetch(this.functionUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add-file',
+          fileData,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || 'add-file failed');
+      }
+
+      return {
+        shard: json.shard,
+        shardNumber: json.shardNumber,
+        rotated: json.rotated,
+      };
+    } catch (error) {
+      console.error('❌ addFileToGithubJson error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
    * View を作成
    */
   async createView(fileIds, passwordHash, origin) {
     try {
-      // ★ 修正: fileIds のバリデーション
+      // バリデーション
       if (!Array.isArray(fileIds) || fileIds.length === 0) {
         throw new Error('fileIds must be a non-empty array');
       }
 
       console.log('[CREATE_VIEW] fileIds:', fileIds);
 
-      const res = await fetch('/.netlify/functions/github-upload', {
+      const res = await fetch(this.functionUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'create-view',
           fileIds: fileIds,
           passwordHash: passwordHash || null,
-          origin: origin || window.location.origin
-        })
+          origin: origin || window.location.origin,
+        }),
       });
 
       if (!res.ok) {
@@ -231,24 +296,21 @@ class GitHubUploader {
           data: {
             files: [],
             views: [],
-            lastUpdated: new Date().toISOString()
-          }
+            lastUpdated: new Date().toISOString(),
+          },
         };
       }
 
       const data = await response.json();
-      
-      // ★ 修正: レスポンス形式を複数パターン対応
+
+      // レスポンス形式を複数パターン対応
       if (data.success && data.data) {
         console.log('[GET_JSON] Success response received');
         return data;
       } else if (data.files !== undefined) {
         // 古い形式のレスポンス
         console.log('[GET_JSON] Legacy response format');
-        return {
-          success: true,
-          data: data
-        };
+        return { success: true, data };
       } else {
         console.warn('⚠️ github.json retrieval failed - unknown format');
         return {
@@ -256,8 +318,8 @@ class GitHubUploader {
           data: {
             files: [],
             views: [],
-            lastUpdated: new Date().toISOString()
-          }
+            lastUpdated: new Date().toISOString(),
+          },
         };
       }
     } catch (error) {
@@ -267,8 +329,8 @@ class GitHubUploader {
         data: {
           files: [],
           views: [],
-          lastUpdated: new Date().toISOString()
-        }
+          lastUpdated: new Date().toISOString(),
+        },
       };
     }
   }
@@ -278,12 +340,12 @@ class GitHubUploader {
    */
   async saveGithubJson(jsonData) {
     try {
-      // ★ 修正: jsonData のバリデーション
+      // バリデーション
       if (!jsonData || typeof jsonData !== 'object') {
         throw new Error('Invalid jsonData: must be an object');
       }
 
-      // ★ 修正: jsonData の構造を確認
+      // 構造を確認
       if (!jsonData.files) {
         jsonData.files = [];
       }
@@ -294,7 +356,7 @@ class GitHubUploader {
 
       console.log('[SAVE_JSON] Saving:', {
         files: jsonData.files.length,
-        views: jsonData.views.length
+        views: jsonData.views.length,
       });
 
       const response = await fetch(this.functionUrl, {
@@ -308,7 +370,9 @@ class GitHubUploader {
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => '');
-        throw new Error(`github.json save failed: ${response.statusText} - ${errorText}`);
+        throw new Error(
+          `github.json save failed: ${response.statusText} - ${errorText}`
+        );
       }
 
       const data = await response.json();
@@ -325,5 +389,25 @@ class GitHubUploader {
   }
 }
 
+/**
+ * View を ID で取得（シンプル版の fetchViewById に対応）
+ */
+export async function fetchViewById(id) {
+  try {
+    const res = await fetch(`/.netlify/functions/view?id=${encodeURIComponent(id)}`);
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.error || 'view failed');
+    }
+    return json.files?.[0];
+  } catch (error) {
+    console.error('❌ fetchViewById error:', error.message);
+    throw error;
+  }
+}
+
 // グローバルエクスポート
-window.GitHubUploader = GitHubUploader;
+if (typeof window !== 'undefined') {
+  window.GitHubUploader = GitHubUploader;
+  window.fetchViewById = fetchViewById;
+}
