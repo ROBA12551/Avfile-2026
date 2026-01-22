@@ -32,13 +32,16 @@ async initFFmpeg() {
   try {
     const coreURL = `${location.origin}/js/ffmpeg/ffmpeg-core.js`;
     const wasmURL = `${location.origin}/js/ffmpeg/ffmpeg-core.wasm`;
-    const workerURL = `${location.origin}/js/ffmpeg/worker.js`;
+
+    // ★重要：Worker はこれで「avfile.io の worker.js」を使う
+    const classWorkerURL = `${location.origin}/js/ffmpeg/worker.js`;
 
     console.log("[VIDEO_COMPRESSOR] Loading core:", coreURL);
     console.log("[VIDEO_COMPRESSOR] Loading wasm:", wasmURL);
-    console.log("[VIDEO_COMPRESSOR] Loading worker:", workerURL);
+    console.log("[VIDEO_COMPRESSOR] Using classWorkerURL:", classWorkerURL);
 
-    await this.ffmpeg.load({ coreURL, wasmURL, workerURL });
+    // ★workerURL じゃない。classWorkerURL が本命。
+    await this.ffmpeg.load({ classWorkerURL, coreURL, wasmURL });
 
     this.isLoaded = true;
     console.log("[VIDEO_COMPRESSOR] ✓ FFmpeg LOADED");

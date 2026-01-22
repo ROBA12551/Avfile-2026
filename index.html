@@ -860,15 +860,15 @@
         <p>&copy; 2026 Avfile • Fast & Simple File Sharing</p>
     </footer>
 <!-- これを body 終端に置く（他のJSより前でもOKだが、moduleは依存整理しやすい） -->
+<script type="module" src="/js/video-compressor-official.js"></script>
 
 <script src="/js/chunked-binary-uploader.js"></script>
 <script src="/js/universal-file-uploader-enhanced.js"></script>
-<script type="module" src="/js/video-compressor-official.js"></script>
 <script>
 
 const MAX_FILES = 10;
 const MAX_FILE_SIZE = 500 * 1024 * 1024;
-const VIDEO_COMPRESSION_THRESHOLD = 1 * 1024 * 1024;
+const VIDEO_COMPRESSION_THRESHOLD = 3 * 1024 * 1024;
 const CHUNK_SIZE = 5 * 1024 * 1024;
 
 // ★ グローバル関数: 並列処理制御
@@ -1082,6 +1082,19 @@ class GitHubUploader {
 
 async function waitForFFmpegReady(maxWaitTime = 120000) {
   console.log('[UPLOAD] Checking VideoCompressor status...');
+// videoCompressor が作られるまで待つ（最大2秒）
+const waitForVC = async (timeout = 2000) => {
+  const start = Date.now();
+  while (!window.videoCompressor && Date.now() - start < timeout) {
+    await new Promise(r => setTimeout(r, 50));
+  }
+  return !!window.videoCompressor;
+};
+
+if (!(await waitForVC(2000))) {
+  console.warn('[UPLOAD] videoCompressor not found (module not ready)');
+  return false;
+}
 
   const vc = window.videoCompressor;
   if (!vc) {
