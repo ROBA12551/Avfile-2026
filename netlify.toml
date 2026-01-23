@@ -1,54 +1,86 @@
+# ===============================
 # Netlify Configuration for Avfile
+# ===============================
 
 [build]
-  functions = "netlify/functions"
   publish = "."
+  functions = "netlify/functions"
 
 [build.environment]
   NODE_VERSION = "18"
   NODE_ENV = "production"
 
-# Cache settings for JavaScript files
+# ===============================
+# JavaScript
+# ===============================
 [[headers]]
   for = "/js/*.js"
   [headers.values]
     Content-Type = "application/javascript; charset=utf-8"
-    X-Content-Type-Options = "nosniff"
     Cache-Control = "public, max-age=0, must-revalidate"
+    X-Content-Type-Options = "nosniff"
 
-# Cache settings for HTML files
+# ===============================
+# HTML
+# ===============================
 [[headers]]
   for = "/*.html"
   [headers.values]
     Content-Type = "text/html; charset=utf-8"
-    X-Content-Type-Options = "nosniff"
     Cache-Control = "public, max-age=0, must-revalidate"
+    X-Content-Type-Options = "nosniff"
 
-# Cache settings for static assets
+# ===============================
+# Images / Static Assets
+# ===============================
 [[headers]]
   for = "/images/*"
   [headers.values]
-    Cache-Control = "public, max-age=31536000"
+    Cache-Control = "public, max-age=31536000, immutable"
 
-# Security headers for API
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# ===============================
+# Netlify Functions (API / proxy)
+# ===============================
 [[headers]]
   for = "/.netlify/functions/*"
   [headers.values]
     Cache-Control = "no-cache, no-store, must-revalidate"
     X-Content-Type-Options = "nosniff"
 
-# Default security headers
+    # CORS（media / proxy / fetch 用）
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Headers = "Content-Type, Authorization"
+    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
+
+# ===============================
+# 🔥 Global Default Headers
+# ===============================
 [[headers]]
   for = "/*"
   [headers.values]
+    # 🔴 COEP 完全無効化（超重要）
+    Cross-Origin-Embedder-Policy = "unsafe-none"
+
+    # セキュリティ（COEPと衝突しない）
     X-Content-Type-Options = "nosniff"
     X-Frame-Options = "SAMEORIGIN"
-    X-XSS-Protection = "1; mode=block"
+
+    # 古いので不要（Chrome無効）
+    # X-XSS-Protection = "1; mode=block"
+
+    # CORS（viewer / download / share）
     Access-Control-Allow-Origin = "*"
     Access-Control-Allow-Headers = "Content-Type, Authorization"
-    Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
+    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
 
+# ===============================
 # Redirects
+# ===============================
 [[redirects]]
   from = "/policy"
   to = "/policy.html"
