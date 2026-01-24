@@ -816,8 +816,6 @@
     <title>Avfile – Free Anonymous File Sharing</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <!-- 既存CSSを想定 -->
-    <link rel="stylesheet" href="/css/style.css" />
 </head>
 
 <body>
@@ -1226,7 +1224,7 @@
         function showError(msg) { hideAll(); document.getElementById('errorMsg').textContent = msg; document.getElementById('errorScreen').classList.add('show'); }
         function showLoading() { hideAll(); document.getElementById('loadingUI').classList.add('show'); }
 
-        // ★ パスワードトグル機能
+
         document.getElementById('passwordToggle').addEventListener('click', function() {
             this.classList.toggle('active');
             document.getElementById('passwordInputGroup').style.display = 
@@ -1239,7 +1237,6 @@
             }
         });
 
-        // ★ パスワード入力時の強度表示
         document.getElementById('passwordInput').addEventListener('input', function(e) {
             const password = e.target.value;
             currentPassword = password;
