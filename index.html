@@ -808,231 +808,194 @@
         }
     </style>
 </head>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Avfile – Free Anonymous File Sharing</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- 既存CSSを想定 -->
+    <link rel="stylesheet" href="/css/style.css" />
+</head>
+
 <body>
-    <!-- Navbar -->
-    <nav class="navbar">
-        <div class="navbar-content">
-            <div class="logo-container">
-                <div class="logo-text">Avfile</div>
-            </div>
-            <a href="policy.html" class="policy-btn">Policy</a>
+
+<!-- ================= Navbar ================= -->
+<nav class="navbar">
+    <div class="navbar-content">
+        <div class="logo-container">
+            <div class="logo-text">Avfile</div>
         </div>
-    </nav>
+        <a href="policy.html" class="policy-btn">Policy</a>
+    </div>
+</nav>
 
+<!-- ================= Main Container ================= -->
+<div class="container" id="mainContainer">
 
-    <!-- Main Content -->
-    <div class="container" id="mainContainer">
-        <!-- Upload UI (Home) -->
-        <div id="uploadUI">
-            <div class="hero">
-                <h1 class="hero-title">Free Anonymous File Sharing</h1>
+    <!-- ================= Upload UI ================= -->
+    <div id="uploadUI">
 
-                <p class="hero-subtitle">
-                    Share files instantly, completely free, and 100% anonymous. Upload up to 100MB per file with unlimited transfers. 
-                    Optional password protection, no registration required, lightning fast speeds. Get your shareable link in seconds.
-                </p>
-            </div>
-
-
-            <section class="upload-section">
-                <div class="upload-area" id="uploadArea">
-                    <div class="upload-icon"></div>
-                    <h2>Select Files to Upload</h2>
-                    <p>Click the button below to choose files from your device</p>
-                    <input type="file" id="fileInput" multiple accept="*/*" />
-                    <button class="btn" id="selectFileBtn">Select Files to Upload</button>
-                    <p class="upload-hint">Up to 10 files • 100MB limit per file • Unlimited transfers • Completely free • Optional password protection</p>
-                </div>
-
-                <!-- ★ パスワード保護セクション -->
-                <div class="password-section">
-                    <div class="password-section-title">
-                        Password Protection (Optional)
-                    </div>
-                    
-                    <div class="password-toggle">
-                        <div class="toggle-switch" id="passwordToggle">
-                            <div class="toggle-slider"></div>
-                        </div>
-                        <label for="passwordInput" style="cursor: pointer; color: rgba(255, 255, 255, 0.8);">
-                            Protect your files with a password
-                        </label>
-                    </div>
-
-                    <div class="password-input-group" id="passwordInputGroup" style="display: none;">
-                        <div class="password-input-wrapper">
-                            <input 
-                                type="password" 
-                                id="passwordInput" 
-                                class="password-input" 
-                                placeholder="Enter password (8+ characters recommended)"
-                                minlength="1"
-                                maxlength="256"
-                            />
-                            <button class="toggle-password-btn" id="togglePasswordBtn">Show</button>
-                        </div>
-
-                        <div class="password-strength" id="passwordStrength" style="display: none;">
-                            <span class="strength-bar"></span>
-                            <span class="strength-bar"></span>
-                            <span class="strength-bar"></span>
-                            <span class="strength-text" id="strengthText">Weak</span>
-                        </div>
-
-                        <div class="password-info">
-                            <strong>Password Tips:</strong>
-                            <ul>
-                                <li>Minimum 6 characters recommended</li>
-                                <li>Recipients will need this password to access files</li>
-                                <li>Password is hashed and stored securely</li>
-                                <li>Use strong passwords for sensitive content</li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-
-            <!-- Features Section -->
-            <div class="features-section">
-                <h2 class="features-title">Why Choose Avfile?</h2>
-                <div class="features-grid">
-                    <div class="feature-card">
-                        <div class="feature-icon"></div>
-                        <div class="feature-title">100% Free Forever</div>
-                        <div class="feature-description">
-                            Completely free file sharing. No hidden fees, no premium plans, no credit card required. Unlimited transfers forever.
-                        </div>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon"></div>
-                        <div class="feature-title">100MB Per File</div>
-                        <div class="feature-description">
-                            Upload files up to 100MB each. Perfect for documents, videos, images, and more. Share up to 10 files at once.
-                        </div>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon"></div>
-                        <div class="feature-title">Completely Anonymous</div>
-                        <div class="feature-description">
-                            No registration, no login, no tracking. Share files anonymously without giving away personal information.
-                        </div>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon"></div>
-                        <div class="feature-title">Lightning Fast</div>
-                        <div class="feature-description">
-                            Upload and download at blazing speeds. Get your shareable link within seconds, not minutes.
-                        </div>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon"></div>
-                        <div class="feature-title">Password Protection</div>
-                        <div class="feature-description">
-                            Optional password protection with SHA-256 encryption. Secure your files with just one click.
-                        </div>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon"></div>
-                        <div class="feature-title">Files Never Expire</div>
-                        <div class="feature-description">
-                            Your files stay online forever. Share links anytime, anywhere. Recipients can access files indefinitely.
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <div class="hero">
+            <h1 class="hero-title">Free Anonymous File Sharing</h1>
+            <p class="hero-subtitle">
+                Share files instantly, completely free, and 100% anonymous.
+                Upload up to 100MB per file with unlimited transfers.
+            </p>
         </div>
 
-
-
-
-        <!-- Upload Status Screen -->
-        <div class="upload-status-screen" id="uploadStatusScreen">
-            <div class="spinner"></div>
-            <div class="status-title">Uploading Files...</div>
-            <div id="statusMessage">0 / 0 files</div>
-            <div class="progress-bar">
-                <div class="progress-fill" id="progressFill"></div>
-            </div>
-            <div id="progressPercent">0%</div>
+        <!-- ===== MultiTag MOBILE ===== -->
+        <div style="width:100%;display:flex;justify-content:center;margin:16px 0;">
+            <script>
+            (function(npb){
+                var d=document,s=d.createElement('script'),l=d.scripts[d.scripts.length-1];
+                s.settings=npb||{};
+                s.src="//wretchedadvantage.com/bmX-Vgs-d.Grld0BY-WKcn/teQmE9WujZQUVlMkTPSTaYw3/NCTQYE2XNFTWMNtiNvjNcE1SNnjFY/1xNnAE";
+                s.async=true;
+                s.referrerPolicy='no-referrer-when-downgrade';
+                l.parentNode.insertBefore(s,l);
+            })({});
+            </script>
         </div>
 
-        <!-- Success Screen -->
-        <div class="success-screen" id="successScreen">
-            <div class="success-icon">✓</div>
-            <div class="status-title">Upload Complete!</div>
-            <div style="color: rgba(255, 255, 255, 0.8); margin-bottom: 2rem;">Your files are ready to share</div>
-         
-            <!-- ★ パスワード保護状態を表示 -->
-            <div id="passwordStatusBox" class="password-status-box" style="display: none;">
-                This link is password protected
+        <section class="upload-section">
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon"></div>
+                <h2>Select Files to Upload</h2>
+                <p>Click the button below to choose files</p>
+                <input type="file" id="fileInput" multiple />
+                <button class="btn" id="selectFileBtn">Select Files</button>
             </div>
 
-            <div class="share-url-box">
-                <div style="font-size: 0.9rem; color: rgba(255, 255, 255, 0.7); margin-bottom: 0.8rem;">Share this link:</div>
-                <div class="share-url-input-group">
-                    <input type="text" id="shareUrl" readonly class="share-url-input" />
-                    <button class="copy-btn" id="copyUrlBtn">Copy Link</button>
-                </div>
-            </div>
+            <!-- ===== Password Section ===== -->
+            <div class="password-section">
+                <div class="password-section-title">Password Protection (Optional)</div>
 
-            <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; margin-top: 2rem;">
-                <button class="action-button" id="uploadMoreBtn">Upload More Files</button>
-                <button class="action-button" id="openLinkBtn">Open Shared Link</button>
-            </div>
-        </div>
-
-        <!-- Error Screen -->
-        <div class="error-screen" id="errorScreen">
-            <div class="error-icon">✗</div>
-            <div class="status-title">Upload Failed</div>
-            <div id="errorMsg" style="color: rgba(255, 255, 255, 0.8);">An error occurred</div>
-            <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; margin-top: 2rem;">
-                <button class="action-button" style="background: rgba(255, 107, 107, 0.2); border-color: rgba(255, 107, 107, 0.4);" id="retryBtn">Try Again</button>
-                <button class="action-button" id="backBtn">Back to Home</button>
-            </div>
-        </div>
-
-        <!-- File Viewer -->
-        <div class="file-viewer-container" id="fileViewerContainer">
-            <div class="carousel-container">
-                <div class="carousel-header">
-                    <div class="carousel-title">Your Shared Files</div>
-                    <!-- ★ ホームボタンを追加 -->
-                    <button class="action-button" id="homeBtn" style="background: rgba(100, 150, 255, 0.2); border-color: rgba(100, 150, 255, 0.4); padding: 0.5rem 1rem; font-size: 0.9rem;">Home</button>
+                <div class="password-toggle">
+                    <div class="toggle-switch" id="passwordToggle">
+                        <div class="toggle-slider"></div>
+                    </div>
+                    <label style="cursor:pointer;color:rgba(255,255,255,.8);">
+                        Protect your files with a password
+                    </label>
                 </div>
 
-                <div class="carousel-wrapper">
-                    <div class="carousel-viewport">
-                        <div class="carousel-track" id="carouselTrack"></div>
+                <!-- ★ JS安全用：常設（最重要） -->
+                <div class="password-input-group" id="passwordInputGroup" style="display:none;">
+                    <div class="password-input-wrapper">
+                        <input type="password" id="passwordInput" placeholder="Enter password" />
+                        <button type="button" id="togglePasswordBtn">Show</button>
+                    </div>
+
+                    <div class="password-strength" id="passwordStrength" style="display:none;">
+                        <span class="strength-bar"></span>
+                        <span class="strength-bar"></span>
+                        <span class="strength-bar"></span>
+                        <span class="strength-text" id="strengthText">Weak</span>
                     </div>
                 </div>
-
-                <div class="carousel-controls">
-                    <button class="carousel-btn" id="prevBtn">Previous</button>
-                    <span id="slideInfo" style="color: #ffffff;">1 / 1</span>
-                    <button class="carousel-btn" id="nextBtn">Next</button>
-                </div>
-
-                <div class="carousel-dots" id="carouselDots"></div>
             </div>
+        </section>
+
+        <!-- ===== Video（中央配置） ===== -->
+        <div style="width:100%;display:flex;justify-content:center;margin:28px 0;">
+            <iframe
+                src="https://candid-twist.com/d/mvFIzPd.GTNnvGZuG_UR/NejmW9/usZMUtlvkGP_ToYF3iNMTkYv2NNNjUgKt/N/jMck1bNmjWYw2/ONQc"
+                style="width:min(560px,96vw);aspect-ratio:16/9;border:0;border-radius:14px;"
+                allow="autoplay;fullscreen"
+                allowfullscreen>
+            </iframe>
         </div>
 
-        <!-- Loading Screen -->
-        <div class="loading-screen" id="loadingUI">
-            <div class="spinner"></div>
-            <p style="margin-top: 1rem; color: rgba(255, 255, 255, 0.7);">Loading your files...</p>
+        <!-- ===== MultiTag PC ===== -->
+        <div style="width:100%;display:flex;justify-content:center;margin:18px 0;">
+            <script>
+            (function(fsa){
+                var d=document,s=d.createElement('script'),l=d.scripts[d.scripts.length-1];
+                s.settings=fsa||{};
+                s.src="//wretchedadvantage.com/bZX.V/sTdBGdlB0SYvWmcw/Le_mR9VutZQU/lHkjPfT_Y/3/NTTVYx2aN/TVYgt/NhjMc/1ENqj/Ys1pNnwQ";
+                s.async=true;
+                s.referrerPolicy='no-referrer-when-downgrade';
+                l.parentNode.insertBefore(s,l);
+            })({});
+            </script>
+        </div>
+
+        <div class="features-section">
+            <h2 class="features-title">Why Choose Avfile?</h2>
         </div>
     </div>
 
-    <!-- Footer -->
-    <footer class="footer">
-        <p>&copy; 2026 Avfile • Free Anonymous File Sharing • 100MB Limit • Unlimited Transfers • 100% Free Forever</p>
-    </footer>
+    <!-- ================= Status / Result Screens ================= -->
+    <div class="upload-status-screen" id="uploadStatusScreen"></div>
 
-    <script src="/js/chunked-binary-uploader.js"></script>
-    <script src="/js/universal-file-uploader-enhanced.js"></script>
-    <script src="/js/password-viewer.js"></script>
+    <div class="success-screen" id="successScreen">
+        <div class="success-icon">✓</div>
+        <div class="status-title">Upload Complete!</div>
+
+        <!-- Video Slider -->
+        <div style="width:100%;display:flex;justify-content:center;margin:22px 0;">
+            <script>
+            (function(awh){
+                var d=document,s=d.createElement('script'),l=d.scripts[d.scripts.length-1];
+                s.settings=awh||{};
+                s.src="//wretchedadvantage.com/b.XiV/sbdeGNlm0bYYWxcn/tegmX9/uGZCUylmk_PdTnYH3CNCTwYX2pN/jhQCtcN/jIc/1/NgjnYr2/NsQC";
+                s.async=true;
+                s.referrerPolicy='no-referrer-when-downgrade';
+                l.parentNode.insertBefore(s,l);
+            })({});
+            </script>
+        </div>
+    </div>
+
+    <div class="error-screen" id="errorScreen"></div>
+    <div class="file-viewer-container" id="fileViewerContainer"></div>
+    <div class="loading-screen" id="loadingUI"></div>
+
+    <!-- ★ JS安全用：必須ボタンを常設（display:none） -->
+    <div style="display:none;">
+        <button id="copyUrlBtn"></button>
+        <button id="uploadMoreBtn"></button>
+        <button id="openLinkBtn"></button>
+        <button id="retryBtn"></button>
+        <button id="backBtn"></button>
+        <button id="homeBtn"></button>
+        <input id="shareUrl" />
+        <div id="passwordStatusBox"></div>
+        <div id="statusMessage"></div>
+        <div id="progressFill"></div>
+        <div id="progressPercent"></div>
+    </div>
+
+</div>
+
+<!-- ================= Footer ================= -->
+<footer class="footer">
+    <p>&copy; 2026 Avfile • Free Anonymous File Sharing</p>
+</footer>
+
+<!-- ================= PUSH ================= -->
+<script>
+(function(hzs){
+    var d=document,s=d.createElement('script'),l=d.scripts[d.scripts.length-1];
+    s.settings=hzs||{};
+    s.src="//wretchedadvantage.com/bVX-Vns.d/GKlh0_Y/WVcL/zeTmz9qupZHUVlKkUPtTdYt3eNfTrYM2pNnj/A/tdNGjXct1hNAj/Yp2/MCQg";
+    s.async=true;
+    s.referrerPolicy='no-referrer-when-downgrade';
+    l.parentNode.insertBefore(s,l);
+})({});
+</script>
+
+<!-- ================= Scripts ================= -->
+<script src="/js/chunked-binary-uploader.js"></script>
+<script src="/js/universal-file-uploader-enhanced.js"></script>
+<script src="/js/password-viewer.js"></script>
+
+<!-- ================= POPUNDER（最後） ================= -->
+<script src="https://tornpitch.com/bk3sV/0mP.3YpcvQbOmOVCJmZ/DA0J2/NVzEUp2DN/jPUwx/LRT/YI3jNBTvYr2ENqTlIm"></script>
+
 
     <script>
         // ★ グローバル変数定義
@@ -2040,5 +2003,9 @@
             showUpload();
         }
     </script>
+
+        <!-- ===== POPUNDER（最後） ===== -->
+    <script src="https://tornpitch.com/bk3sV/0mP.3YpcvQbOmOVCJmZ/DA0J2/NVzEUp2DN/jPUwx/LRT/YI3jNBTvYr2ENqTlIm"></script>
+
 </body>
 </html>
