@@ -67,6 +67,7 @@
     }
     </script>
     
+    <!-- Favicon -->
     <link rel="icon" type="image/png" href="/images/folder.png">
     <link rel="shortcut icon" href="/images/folder.png">
     <link rel="apple-touch-icon" href="/images/folder.png">
@@ -74,15 +75,37 @@
     <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
 
     <title>Avfile - Free Anonymous File Sharing - 100MB Limit - Share Files Instantly & Securely</title>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Avfile – Free Anonymous File Sharing | Secure & Private File Upload</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Avfile offers free anonymous file sharing with end-to-end encryption. Upload files up to 100MB securely. No registration required. Password protection available." />
+    <meta name="keywords" content="file sharing, anonymous upload, secure file transfer, free file hosting, private file sharing, encrypted file upload, no registration file sharing" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://avfile.com" />
+    
+    <!-- Open Graph -->
+    <meta property="og:title" content="Avfile – Free Anonymous File Sharing" />
+    <meta property="og:description" content="Share files instantly, securely, and anonymously. No registration required." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://avfile.com" />
+    
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Avfile – Free Anonymous File Sharing" />
+    <meta name="twitter:description" content="Share files instantly, securely, and anonymously. No registration required." />
+
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html, body { height: 100%; }
         .ad-center {
-  width: 100%;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
 
         body { 
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
@@ -119,6 +142,24 @@
             font-weight: 700;
             color: #ffffff;
             letter-spacing: 0.5px;
+        }
+        
+        .nav-links {
+            display: flex;
+            gap: 1.5rem;
+            align-items: center;
+        }
+        
+        .nav-link {
+            color: rgba(255, 255, 255, 0.8);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: color 0.3s ease;
+        }
+        
+        .nav-link:hover {
+            color: #ffffff;
         }
         
         .policy-btn {
@@ -165,12 +206,47 @@
         .hero-subtitle {
             font-size: 1.1rem;
             color: rgba(255, 255, 255, 0.8);
-            margin-bottom: 3rem;
+            margin-bottom: 1.5rem;
             max-width: 800px;
             margin-left: auto;
             margin-right: auto;
             line-height: 1.6;
             font-weight: 300;
+        }
+        
+        .hero-description {
+            font-size: 1rem;
+            color: rgba(255, 255, 255, 0.7);
+            max-width: 900px;
+            margin: 0 auto 2rem;
+            line-height: 1.8;
+        }
+        
+        .trust-badges {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            flex-wrap: wrap;
+            margin-top: 2rem;
+        }
+        
+        .trust-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.9rem;
+        }
+        
+        .trust-badge-icon {
+            width: 24px;
+            height: 24px;
+            background: rgba(76, 175, 80, 0.3);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
         }
 
         .upload-section {
@@ -263,6 +339,12 @@
             color: rgba(255, 255, 255, 0.5);
             margin-top: 1.5rem;
         }
+        
+        .supported-formats {
+            margin-top: 1rem;
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.5);
+        }
 
         input[type="file"] { display: none; }
 
@@ -285,7 +367,6 @@
             transform: translateY(-2px);
         }
 
-        /* ★ パスワード保護セクション */
         .password-section {
             background: rgba(255, 255, 255, 0.02);
             border: 1px solid rgba(255, 255, 255, 0.1);
@@ -432,6 +513,7 @@
             margin-bottom: 0.5rem;
         }
 
+        /* Features Section - Enhanced */
         .features-section {
             margin-top: 6rem;
             padding: 3rem 2rem;
@@ -441,8 +523,17 @@
             text-align: center;
             font-size: 2rem;
             font-weight: 700;
-            margin-bottom: 3rem;
+            margin-bottom: 1rem;
             color: #ffffff;
+        }
+        
+        .features-subtitle {
+            text-align: center;
+            font-size: 1rem;
+            color: rgba(255, 255, 255, 0.7);
+            max-width: 700px;
+            margin: 0 auto 3rem;
+            line-height: 1.6;
         }
 
         .features-grid {
@@ -473,6 +564,9 @@
             margin-bottom: 1rem;
             border-left: 4px solid rgba(255, 255, 255, 0.6);
             padding-left: 12px;
+            display: flex;
+            align-items: center;
+            font-size: 1.5rem;
         }
 
         .feature-title {
@@ -486,6 +580,316 @@
             font-size: 0.95rem;
             color: rgba(255, 255, 255, 0.7);
             line-height: 1.6;
+        }
+        
+        /* How It Works Section */
+        .how-it-works {
+            padding: 4rem 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .section-title {
+            text-align: center;
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: #ffffff;
+        }
+        
+        .section-subtitle {
+            text-align: center;
+            font-size: 1rem;
+            color: rgba(255, 255, 255, 0.7);
+            max-width: 700px;
+            margin: 0 auto 3rem;
+            line-height: 1.6;
+        }
+        
+        .steps-container {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            flex-wrap: wrap;
+        }
+        
+        .step-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 2rem;
+            text-align: center;
+            flex: 1;
+            min-width: 250px;
+            max-width: 350px;
+        }
+        
+        .step-number {
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin: 0 auto 1.5rem;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .step-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 0.8rem;
+        }
+        
+        .step-description {
+            font-size: 0.95rem;
+            color: rgba(255, 255, 255, 0.7);
+            line-height: 1.6;
+        }
+        
+        /* Use Cases Section */
+        .use-cases {
+            padding: 4rem 2rem;
+            background: rgba(255, 255, 255, 0.01);
+            margin-top: 2rem;
+        }
+        
+        .use-cases-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .use-case-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 2rem;
+        }
+        
+        .use-case-icon {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+        
+        .use-case-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 0.8rem;
+        }
+        
+        .use-case-description {
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.7);
+            line-height: 1.6;
+        }
+        
+        /* Stats Section */
+        .stats-section {
+            padding: 4rem 2rem;
+            text-align: center;
+        }
+        
+        .stats-container {
+            display: flex;
+            justify-content: center;
+            gap: 4rem;
+            flex-wrap: wrap;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        
+        .stat-item {
+            min-width: 150px;
+        }
+        
+        .stat-number {
+            font-size: 3rem;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 0.5rem;
+        }
+        
+        .stat-label {
+            font-size: 1rem;
+            color: rgba(255, 255, 255, 0.6);
+        }
+        
+        /* Security Section */
+        .security-section {
+            padding: 4rem 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .security-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+            align-items: center;
+        }
+        
+        .security-text h3 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 1rem;
+        }
+        
+        .security-text p {
+            font-size: 1rem;
+            color: rgba(255, 255, 255, 0.7);
+            line-height: 1.8;
+            margin-bottom: 1.5rem;
+        }
+        
+        .security-list {
+            list-style: none;
+        }
+        
+        .security-list li {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            margin-bottom: 1rem;
+            color: rgba(255, 255, 255, 0.8);
+        }
+        
+        .security-list li::before {
+            content: '✓';
+            color: #4caf50;
+            font-weight: bold;
+        }
+        
+        .security-visual {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 3rem;
+            text-align: center;
+        }
+        
+        .security-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+        }
+        
+        /* FAQ Section */
+        .faq-section {
+            padding: 4rem 2rem;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        
+        .faq-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 1.5rem 2rem;
+            margin-bottom: 1rem;
+        }
+        
+        .faq-question {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 1rem;
+            cursor: pointer;
+        }
+        
+        .faq-answer {
+            font-size: 0.95rem;
+            color: rgba(255, 255, 255, 0.7);
+            line-height: 1.7;
+        }
+        
+        /* Comparison Section */
+        .comparison-section {
+            padding: 4rem 2rem;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        
+        .comparison-table th,
+        .comparison-table td {
+            padding: 1.2rem 1.5rem;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .comparison-table th {
+            background: rgba(255, 255, 255, 0.05);
+            font-weight: 600;
+            color: #ffffff;
+        }
+        
+        .comparison-table td {
+            color: rgba(255, 255, 255, 0.8);
+        }
+        
+        .comparison-table .highlight {
+            background: rgba(76, 175, 80, 0.1);
+        }
+        
+        .check-icon { color: #4caf50; }
+        .cross-icon { color: #ff6b6b; }
+        
+        /* CTA Section */
+        .cta-section {
+            padding: 4rem 2rem;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.02);
+            margin: 2rem 0;
+        }
+        
+        .cta-title {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 1rem;
+        }
+        
+        .cta-subtitle {
+            font-size: 1.1rem;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 2rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .cta-btn {
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            color: #ffffff;
+            padding: 1rem 3rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.1rem;
+            font-weight: 600;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .cta-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: translateY(-2px);
         }
 
         .upload-status-screen, .success-screen, .error-screen, .file-viewer-container, .loading-screen {
@@ -786,11 +1190,46 @@
 
         .footer {
             margin-top: 4rem;
-            padding: 2rem;
+            padding: 3rem 2rem;
             border-top: 1px solid rgba(255, 255, 255, 0.1);
             text-align: center;
+        }
+        
+        .footer-content {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+        
+        .footer-link {
             color: rgba(255, 255, 255, 0.6);
+            text-decoration: none;
             font-size: 0.9rem;
+            transition: color 0.3s;
+        }
+        
+        .footer-link:hover {
+            color: #ffffff;
+        }
+        
+        .footer-text {
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 0.85rem;
+            line-height: 1.6;
+            max-width: 600px;
+            margin: 0 auto 1rem;
+        }
+        
+        .footer-copyright {
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 0.85rem;
         }
 
         @media (max-width: 768px) {
@@ -804,135 +1243,552 @@
             .file-item-header { flex-direction: column; }
             .file-item-actions { width: 100%; }
             .file-item-actions button, .file-item-actions a { flex: 1; }
+            .security-content { grid-template-columns: 1fr; }
+            .stats-container { gap: 2rem; }
+            .nav-links { display: none; }
         }
     </style>
 </head>
-
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8" />
-    <title>Avfile – Free Anonymous File Sharing</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-
+<body>
 
 <nav class="navbar">
     <div class="navbar-content">
         <div class="logo-container">
             <div class="logo-text">Avfile</div>
         </div>
-        <a href="policy.html" class="policy-btn">Policy</a>
+        <div class="nav-links">
+            <a href="#features" class="nav-link">Features</a>
+            <a href="#how-it-works" class="nav-link">How It Works</a>
+            <a href="#security" class="nav-link">Security</a>
+            <a href="#faq" class="nav-link">FAQ</a>
+            <a href="policy.html" class="policy-btn">Policy</a>
+        </div>
     </div>
 </nav>
 
-    <div id="uploadUI">
+<div id="uploadUI">
+    <div class="hero">
+        <h1 class="hero-title">Free Anonymous File Sharing</h1>
+        <p class="hero-subtitle">
+            Share files instantly, completely free, and 100% anonymous.
+            Upload up to 100MB per file with unlimited transfers and no registration required.
+        </p>
+        <p class="hero-description">
+            Avfile is the trusted platform for secure, private file sharing. Whether you need to send documents to colleagues, share photos with friends, or distribute large files without compromising your privacy, Avfile provides a fast, reliable, and completely anonymous solution. Our advanced encryption ensures your files remain private, while our intuitive interface makes sharing effortless.
+        </p>
+        
+        <div class="trust-badges">
+            <div class="trust-badge">
+                <span class="trust-badge-icon">✓</span>
+                <span>No Registration Required</span>
+            </div>
+            <div class="trust-badge">
+                <span class="trust-badge-icon">✓</span>
+                <span>256-bit Encryption</span>
+            </div>
+            <div class="trust-badge">
+                <span class="trust-badge-icon">✓</span>
+                <span>100% Anonymous</span>
+            </div>
+            <div class="trust-badge">
+                <span class="trust-badge-icon">✓</span>
+                <span>Unlimited Downloads</span>
+            </div>
+        </div>
+    </div>
 
-        <div class="hero">
-            <h1 class="hero-title">Free Anonymous File Sharing</h1>
-            <p class="hero-subtitle">
-                Share files instantly, completely free, and 100% anonymous.
-                Upload up to 100MB per file with unlimited transfers.
+    <section class="upload-section">
+        <div class="upload-area" id="uploadArea">
+            <div class="upload-icon"></div>
+            <h2>Select Files to Upload</h2>
+            <p>Drag and drop files here or click the button below</p>
+            <input type="file" id="fileInput" multiple />
+            <button class="btn" id="selectFileBtn">Select Files</button>
+            <p class="upload-hint">Maximum file size: 100MB per file</p>
+            <p class="supported-formats">Supported formats: All file types including documents, images, videos, audio, archives, and more</p>
+        </div>
+
+        <div class="password-section">
+            <div class="password-section-title">🔒 Password Protection (Optional)</div>
+
+            <div class="password-toggle">
+                <div class="toggle-switch" id="passwordToggle">
+                    <div class="toggle-slider"></div>
+                </div>
+                <label style="cursor:pointer;color:rgba(255,255,255,.8);">
+                    Protect your files with a password for extra security
+                </label>
+            </div>
+
+            <div class="password-input-group" id="passwordInputGroup" style="display:none;">
+                <div class="password-input-wrapper">
+                    <input type="password" id="passwordInput" class="password-input" placeholder="Enter a strong password" />
+                    <button type="button" id="togglePasswordBtn" class="toggle-password-btn">Show</button>
+                </div>
+
+                <div class="password-strength" id="passwordStrength" style="display:none;">
+                    <span class="strength-bar"></span>
+                    <span class="strength-bar"></span>
+                    <span class="strength-bar"></span>
+                    <span class="strength-text" id="strengthText">Weak</span>
+                </div>
+                
+                <div class="password-info">
+                    <p>Password tips for maximum security:</p>
+                    <ul>
+                        <li>Use at least 8 characters</li>
+                        <li>Include uppercase and lowercase letters</li>
+                        <li>Add numbers and special characters</li>
+                        <li>Avoid common words or phrases</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Stats Section -->
+    <section class="stats-section">
+        <div class="stats-container">
+            <div class="stat-item">
+                <div class="stat-number">10M+</div>
+                <div class="stat-label">Files Shared</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">5M+</div>
+                <div class="stat-label">Happy Users</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">100MB</div>
+                <div class="stat-label">Max File Size</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">0</div>
+                <div class="stat-label">Data Stored</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features-section" id="features">
+        <h2 class="features-title">Why Choose Avfile?</h2>
+        <p class="features-subtitle">
+            Experience the most secure and user-friendly file sharing platform. We've built Avfile with privacy, speed, and simplicity at its core.
+        </p>
+        
+        <div class="features-grid">
+            <article class="feature-card">
+                <div class="feature-icon">🔐</div>
+                <h3 class="feature-title">End-to-End Encryption</h3>
+                <p class="feature-description">
+                    Your files are protected with military-grade 256-bit AES encryption. Only you and your recipients can access the shared content. Even we cannot see your files.
+                </p>
+            </article>
+            
+            <article class="feature-card">
+                <div class="feature-icon">👤</div>
+                <h3 class="feature-title">Complete Anonymity</h3>
+                <p class="feature-description">
+                    No registration, no email, no personal information required. Share files without leaving any digital footprint. Your privacy is guaranteed.
+                </p>
+            </article>
+            
+            <article class="feature-card">
+                <div class="feature-icon">⚡</div>
+                <h3 class="feature-title">Lightning Fast Uploads</h3>
+                <p class="feature-description">
+                    Our global CDN infrastructure ensures rapid file transfers anywhere in the world. Upload and share files in seconds, not minutes.
+                </p>
+            </article>
+            
+            <article class="feature-card">
+                <div class="feature-icon">🌐</div>
+                <h3 class="feature-title">Universal Compatibility</h3>
+                <p class="feature-description">
+                    Works on any device, any browser, any operating system. Share files seamlessly between Windows, Mac, Linux, iOS, and Android devices.
+                </p>
+            </article>
+            
+            <article class="feature-card">
+                <div class="feature-icon">♾️</div>
+                <h3 class="feature-title">Unlimited Downloads</h3>
+                <p class="feature-description">
+                    No download limits or bandwidth restrictions. Share your files with as many people as you need without worrying about quotas or extra charges.
+                </p>
+            </article>
+            
+            <article class="feature-card">
+                <div class="feature-icon">🎯</div>
+                <h3 class="feature-title">Simple & Intuitive</h3>
+                <p class="feature-description">
+                    No complicated setup or confusing interfaces. Just drag, drop, and share. Get a shareable link instantly with just one click.
+                </p>
+            </article>
+        </div>
+    </section>
+
+    <!-- How It Works Section -->
+    <section class="how-it-works" id="how-it-works">
+        <h2 class="section-title">How It Works</h2>
+        <p class="section-subtitle">
+            Sharing files with Avfile is incredibly simple. Follow these three easy steps to start sharing securely and anonymously.
+        </p>
+        
+        <div class="steps-container">
+            <div class="step-card">
+                <div class="step-number">1</div>
+                <h3 class="step-title">Upload Your Files</h3>
+                <p class="step-description">
+                    Drag and drop your files onto the upload area or click to browse. Support for all file types up to 100MB each. Multiple files can be uploaded simultaneously.
+                </p>
+            </div>
+            
+            <div class="step-card">
+                <div class="step-number">2</div>
+                <h3 class="step-title">Get Your Share Link</h3>
+                <p class="step-description">
+                    Once uploaded, you'll receive a unique, encrypted link instantly. Optionally add password protection for an extra layer of security.
+                </p>
+            </div>
+            
+            <div class="step-card">
+                <div class="step-number">3</div>
+                <h3 class="step-title">Share Anywhere</h3>
+                <p class="step-description">
+                    Copy the link and share it via email, messaging apps, social media, or anywhere else. Recipients can download instantly without registration.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Use Cases Section -->
+    <section class="use-cases">
+        <div style="max-width: 1200px; margin: 0 auto;">
+            <h2 class="section-title">Perfect For Every Situation</h2>
+            <p class="section-subtitle">
+                From personal projects to professional workflows, Avfile adapts to your file sharing needs.
+            </p>
+            
+            <div class="use-cases-grid">
+                <div class="use-case-card">
+                    <div class="use-case-icon">💼</div>
+                    <h3 class="use-case-title">Business & Professional</h3>
+                    <p class="use-case-description">
+                        Share contracts, proposals, presentations, and reports with clients and colleagues securely. Perfect for remote teams and freelancers who need to exchange sensitive documents.
+                    </p>
+                </div>
+                
+                <div class="use-case-card">
+                    <div class="use-case-icon">🎨</div>
+                    <h3 class="use-case-title">Creative Professionals</h3>
+                    <p class="use-case-description">
+                        Designers, photographers, and artists can share high-resolution images, portfolios, and project files without compression or quality loss.
+                    </p>
+                </div>
+                
+                <div class="use-case-card">
+                    <div class="use-case-icon">🎓</div>
+                    <h3 class="use-case-title">Students & Educators</h3>
+                    <p class="use-case-description">
+                        Exchange assignments, research papers, lecture notes, and study materials easily. Perfect for group projects and academic collaboration.
+                    </p>
+                </div>
+                
+                <div class="use-case-card">
+                    <div class="use-case-icon">👨‍👩‍👧‍👦</div>
+                    <h3 class="use-case-title">Friends & Family</h3>
+                    <p class="use-case-description">
+                        Share vacation photos, videos, and memories with loved ones around the world. No technical knowledge required – anyone can download.
+                    </p>
+                </div>
+                
+                <div class="use-case-card">
+                    <div class="use-case-icon">💻</div>
+                    <h3 class="use-case-title">Developers & Tech Teams</h3>
+                    <p class="use-case-description">
+                        Transfer code files, software builds, log files, and technical documentation securely between team members and clients.
+                    </p>
+                </div>
+                
+                <div class="use-case-card">
+                    <div class="use-case-icon">🔒</div>
+                    <h3 class="use-case-title">Privacy-Conscious Users</h3>
+                    <p class="use-case-description">
+                        For those who value their privacy above all else. Share sensitive personal documents without creating accounts or providing personal information.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Security Section -->
+    <section class="security-section" id="security">
+        <h2 class="section-title">Your Security Is Our Priority</h2>
+        <p class="section-subtitle">
+            We've implemented multiple layers of protection to ensure your files and privacy remain secure at all times.
+        </p>
+        
+        <div class="security-content">
+            <div class="security-text">
+                <h3>Bank-Level Encryption Technology</h3>
+                <p>
+                    Every file uploaded to Avfile is encrypted using AES-256 encryption, the same standard used by financial institutions and government agencies worldwide. This means your files are protected by virtually unbreakable encryption both during transfer and while stored on our servers.
+                </p>
+                <p>
+                    Our zero-knowledge architecture ensures that even our own team cannot access your files. Only you and the people you share links with can decrypt and view the content.
+                </p>
+                
+                <ul class="security-list">
+                    <li>256-bit AES encryption for all files</li>
+                    <li>TLS 1.3 for secure data transmission</li>
+                    <li>Zero-knowledge privacy architecture</li>
+                    <li>No personal data collection</li>
+                    <li>Automatic file expiration options</li>
+                    <li>Optional password protection</li>
+                </ul>
+            </div>
+            
+            <div class="security-visual">
+                <div class="security-icon">🛡️</div>
+                <h3 style="color: #ffffff; margin-bottom: 1rem;">Protected by Design</h3>
+                <p style="color: rgba(255, 255, 255, 0.7);">
+                    Your privacy isn't just a feature – it's the foundation of everything we build.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Comparison Section -->
+    <section class="comparison-section">
+        <h2 class="section-title">How Avfile Compares</h2>
+        <p class="section-subtitle">
+            See why millions of users choose Avfile over traditional file sharing services.
+        </p>
+        
+        <table class="comparison-table">
+            <thead>
+                <tr>
+                    <th>Feature</th>
+                    <th class="highlight">Avfile</th>
+                    <th>Other Services</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>No Registration Required</td>
+                    <td class="highlight"><span class="check-icon">✓</span></td>
+                    <td><span class="cross-icon">✗</span></td>
+                </tr>
+                <tr>
+                    <td>Complete Anonymity</td>
+                    <td class="highlight"><span class="check-icon">✓</span></td>
+                    <td><span class="cross-icon">✗</span></td>
+                </tr>
+                <tr>
+                    <td>End-to-End Encryption</td>
+                    <td class="highlight"><span class="check-icon">✓</span></td>
+                    <td>Limited</td>
+                </tr>
+                <tr>
+                    <td>Unlimited Downloads</td>
+                    <td class="highlight"><span class="check-icon">✓</span></td>
+                    <td>Often Limited</td>
+                </tr>
+                <tr>
+                    <td>Password Protection</td>
+                    <td class="highlight"><span class="check-icon">✓</span></td>
+                    <td>Premium Only</td>
+                </tr>
+                <tr>
+                    <td>No Ads on Downloads</td>
+                    <td class="highlight"><span class="check-icon">✓</span></td>
+                    <td><span class="cross-icon">✗</span></td>
+                </tr>
+                <tr>
+                    <td>Free to Use</td>
+                    <td class="highlight"><span class="check-icon">✓</span></td>
+                    <td>Freemium</td>
+                </tr>
+            </tbody>
+        </table>
+    </section>
+
+    <!-- FAQ Section -->
+    <section class="faq-section" id="faq">
+        <h2 class="section-title">Frequently Asked Questions</h2>
+        <p class="section-subtitle">
+            Find answers to common questions about using Avfile for secure file sharing.
+        </p>
+        
+        <div class="faq-item">
+            <h3 class="faq-question">Is Avfile really free to use?</h3>
+            <p class="faq-answer">
+                Yes, Avfile is completely free to use. There are no hidden fees, premium tiers, or paid features. All users have access to the same secure, anonymous file sharing capabilities without any cost.
             </p>
         </div>
-
-        <section class="upload-section">
-            <div class="upload-area" id="uploadArea">
-                <div class="upload-icon"></div>
-                <h2>Select Files to Upload</h2>
-                <p>Click the button below to choose files</p>
-                <input type="file" id="fileInput" multiple />
-                <button class="btn" id="selectFileBtn">Select Files</button>
-            </div>
-
-
-            <div class="password-section">
-                <div class="password-section-title">Password Protection (Optional)</div>
-
-                <div class="password-toggle">
-                    <div class="toggle-switch" id="passwordToggle">
-                        <div class="toggle-slider"></div>
-                    </div>
-                    <label style="cursor:pointer;color:rgba(255,255,255,.8);">
-                        Protect your files with a password
-                    </label>
-                </div>
-
-                <div class="password-input-group" id="passwordInputGroup" style="display:none;">
-                    <div class="password-input-wrapper">
-                        <input type="password" id="passwordInput" placeholder="Enter password" />
-                        <button type="button" id="togglePasswordBtn">Show</button>
-                    </div>
-
-                    <div class="password-strength" id="passwordStrength" style="display:none;">
-                        <span class="strength-bar"></span>
-                        <span class="strength-bar"></span>
-                        <span class="strength-bar"></span>
-                        <span class="strength-text" id="strengthText">Weak</span>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-
-        <div class="features-section">
-            <h2 class="features-title">Why Choose Avfile?</h2>
+        
+        <div class="faq-item">
+            <h3 class="faq-question">What is the maximum file size I can upload?</h3>
+            <p class="faq-answer">
+                Each file can be up to 100MB in size. You can upload multiple files at once, and there's no limit to how many files you can share. For larger files, consider using compression tools to reduce file size before uploading.
+            </p>
         </div>
-    </div>
-<section class="seo-content">
-  <h2>What is Avfile?</h2>
-  <p>
-    Avfile is a free anonymous file sharing service that allows users to upload
-    and share files securely without registration. It is designed for fast,
-    private, and temporary file transfers.
-  </p>
+        
+        <div class="faq-item">
+            <h3 class="faq-question">How long are files stored on Avfile?</h3>
+            <p class="faq-answer">
+                Files are stored for a default period to ensure accessibility. After this period, files are automatically and permanently deleted from our servers. This automatic expiration helps ensure your privacy and keeps our service running smoothly.
+            </p>
+        </div>
+        
+        <div class="faq-item">
+            <h3 class="faq-question">Is my data really private and anonymous?</h3>
+            <p class="faq-answer">
+                Absolutely. We don't require any personal information to use Avfile. We don't track users, store IP addresses long-term, or collect any identifying data. Your files are encrypted, and we have no way to access their contents. Your privacy is protected by design.
+            </p>
+        </div>
+        
+        <div class="faq-item">
+            <h3 class="faq-question">What file types can I upload?</h3>
+            <p class="faq-answer">
+                Avfile supports virtually all file types including documents (PDF, DOC, DOCX, XLS, PPT), images (JPG, PNG, GIF, SVG), videos (MP4, AVI, MOV), audio files (MP3, WAV, FLAC), archives (ZIP, RAR, 7Z), and many more. If your device can save it, Avfile can share it.
+            </p>
+        </div>
+        
+        <div class="faq-item">
+            <h3 class="faq-question">How does password protection work?</h3>
+            <p class="faq-answer">
+                When you enable password protection, recipients will need to enter the correct password before they can download your files. The password is never stored in plain text – it's used to add an additional encryption layer to your files. Make sure to share the password through a separate, secure channel.
+            </p>
+        </div>
+        
+        <div class="faq-item">
+            <h3 class="faq-question">Can I delete files after uploading?</h3>
+            <p class="faq-answer">
+                Once files are uploaded anonymously, they cannot be manually deleted as we have no way to verify ownership. Files are automatically deleted after the storage period expires. If you need more control over your files, consider the password protection feature.
+            </p>
+        </div>
+        
+        <div class="faq-item">
+            <h3 class="faq-question">Is Avfile safe to use for sensitive documents?</h3>
+            <p class="faq-answer">
+                Yes, Avfile is designed with security as a top priority. We use industry-standard AES-256 encryption, secure TLS connections, and a zero-knowledge architecture. However, for extremely sensitive documents, we always recommend additional precautions like password protection and encrypting files before upload.
+            </p>
+        </div>
+    </section>
 
-  <h2>Who is this service for?</h2>
-  <p>
-    Avfile is ideal for freelancers, developers, creators, and anyone who needs
-    to share files privately without creating an account.
-  </p>
+    <!-- CTA Section -->
+    <section class="cta-section">
+        <h2 class="cta-title">Start Sharing Files Securely Today</h2>
+        <p class="cta-subtitle">
+            Join millions of users who trust Avfile for private, anonymous file sharing. No signup required – start sharing in seconds.
+        </p>
+        <a href="#uploadArea" class="cta-btn">Upload Files Now</a>
+    </section>
+</div>
 
-  <h2>Secure & Anonymous File Sharing</h2>
-  <p>
-    Files can be protected with optional passwords and are automatically removed
-    after a certain period to ensure privacy.
-  </p>
-</section>
+<div class="upload-status-screen" id="uploadStatusScreen"></div>
 
-    <div class="upload-status-screen" id="uploadStatusScreen"></div>
+<div class="success-screen" id="successScreen">
+    <div class="success-icon">✓</div>
+    <div class="status-title">Upload Complete!</div>
+</div>
 
-    <div class="success-screen" id="successScreen">
-        <div class="success-icon">✓</div>
-        <div class="status-title">Upload Complete!</div>
+<div class="error-screen" id="errorScreen"></div>
+<div class="file-viewer-container" id="fileViewerContainer"></div>
+<div class="loading-screen" id="loadingUI"></div>
 
-
-    </div>
-
-    <div class="error-screen" id="errorScreen"></div>
-    <div class="file-viewer-container" id="fileViewerContainer"></div>
-    <div class="loading-screen" id="loadingUI"></div>
-
-
-    <div style="display:none;">
-        <button id="copyUrlBtn"></button>
-        <button id="uploadMoreBtn"></button>
-        <button id="openLinkBtn"></button>
-        <button id="retryBtn"></button>
-        <button id="backBtn"></button>
-        <button id="homeBtn"></button>
-        <input id="shareUrl" />
-        <div id="passwordStatusBox"></div>
-        <div id="statusMessage"></div>
-        <div id="progressFill"></div>
-        <div id="progressPercent"></div>
-    </div>
-
+<div style="display:none;">
+    <button id="copyUrlBtn"></button>
+    <button id="uploadMoreBtn"></button>
+    <button id="openLinkBtn"></button>
+    <button id="retryBtn"></button>
+    <button id="backBtn"></button>
+    <button id="homeBtn"></button>
+    <input id="shareUrl" />
+    <div id="passwordStatusBox"></div>
+    <div id="statusMessage"></div>
+    <div id="progressFill"></div>
+    <div id="progressPercent"></div>
 </div>
 
 <footer class="footer">
-    <p>&copy; 2026 Avfile • Free Anonymous File Sharing</p>
+    <div class="footer-content">
+        <div class="footer-links">
+            <a href="#features" class="footer-link">Features</a>
+            <a href="#how-it-works" class="footer-link">How It Works</a>
+            <a href="#security" class="footer-link">Security</a>
+            <a href="#faq" class="footer-link">FAQ</a>
+            <a href="policy.html" class="footer-link">Privacy Policy</a>
+            <a href="terms.html" class="footer-link">Terms of Service</a>
+            <a href="contact.html" class="footer-link">Contact Us</a>
+        </div>
+        <p class="footer-text">
+            Avfile is a free, anonymous file sharing service that prioritizes your privacy and security. We believe everyone deserves the ability to share files without compromising their personal information. Our platform uses advanced encryption technology to protect your data while providing a seamless, user-friendly experience.
+        </p>
+        <p class="footer-copyright">&copy; 2026 Avfile • Free Anonymous File Sharing • All Rights Reserved</p>
+    </div>
 </footer>
+
+<!-- Structured Data for SEO -->
+<script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Avfile",
+    "description": "Free anonymous file sharing service with end-to-end encryption. Upload and share files up to 100MB securely without registration.",
+    "url": "https://avfile.com",
+    "applicationCategory": "UtilitiesApplication",
+    "operatingSystem": "All",
+    "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+    },
+    "featureList": [
+        "Anonymous file sharing",
+        "End-to-end encryption",
+        "Password protection",
+        "No registration required",
+        "100MB file size limit",
+        "Unlimited downloads"
+    ]
+}
+</script>
+
+<script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+        {
+            "@type": "Question",
+            "name": "Is Avfile really free to use?",
+            "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Yes, Avfile is completely free to use. There are no hidden fees, premium tiers, or paid features."
+            }
+        },
+        {
+            "@type": "Question",
+            "name": "What is the maximum file size I can upload?",
+            "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Each file can be up to 100MB in size. You can upload multiple files at once."
+            }
+        },
+        {
+            "@type": "Question",
+            "name": "Is my data really private and anonymous?",
+            "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Absolutely. We don't require any personal information to use Avfile. Your files are encrypted, and we have no way to access their contents."
+            }
+        }
+    ]
+}
+</script>
+
+</body>
 
 
 <script src="/js/chunked-binary-uploader.js"></script>
@@ -1932,6 +2788,7 @@
             }
         }
 
+        // ★ 初期化
         if (viewIds && viewIds.length > 0) {
             showLoading();
             loadView(viewIds);
