@@ -109,5 +109,17 @@
     ],
     "createdAt": "2026-01-29T07:20:12.414Z",
     "passwordHash": null
+  },
+  {
+    "groupId": "g_arla2nwkv",
+    "fileIds": [
+      "f_h7402l2f6",
+      "f_qyddp9cav",
+      "f_d8d5uu9pn",
+      "f_j2pt1o2m8",
+      "f_z2k8lbpf8"
+    ],
+    "createdAt": "2026-01-29T11:39:52.533Z",
+    "passwordHash": null
   }
 ]
