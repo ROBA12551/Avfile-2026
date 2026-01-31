@@ -165,5 +165,15 @@
     ],
     "createdAt": "2026-01-31T09:36:54.042Z",
     "passwordHash": null
+  },
+  {
+    "groupId": "g_0h5y93lbm",
+    "fileIds": [
+      "f_qxlbfvh95",
+      "f_pi03kqluj",
+      "f_f12sjw6x7"
+    ],
+    "createdAt": "2026-01-31T09:58:39.525Z",
+    "passwordHash": null
   }
 ]
