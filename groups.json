@@ -204,5 +204,15 @@
     ],
     "createdAt": "2026-01-31T15:44:27.739Z",
     "passwordHash": null
+  },
+  {
+    "groupId": "g_9xu1pyz3l",
+    "fileIds": [
+      "f_rp1usxa40",
+      "f_owi8nd1dp",
+      "f_80f4fgj2s"
+    ],
+    "createdAt": "2026-01-31T17:58:29.128Z",
+    "passwordHash": null
   }
 ]
